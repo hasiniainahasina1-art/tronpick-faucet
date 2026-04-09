@@ -1,231 +1,177 @@
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-const fs = require('fs');
-const path = require('path');
-
 puppeteer.use(StealthPlugin());
+
+const fs = require('fs');
 
 const EMAIL = process.env.TRONPICK_EMAIL;
 const PASSWORD = process.env.TRONPICK_PASSWORD;
-const PROXY_USERNAME = process.env.PROXY_USERNAME;
-const PROXY_PASSWORD = process.env.PROXY_PASSWORD;
-const PROXY_HOST = '198.23.239.134';
-const PROXY_PORT = '6540';
 
-if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
-    console.error('❌ Variables d\'environnement manquantes');
-    process.exit(1);
+const MAX_RETRIES = 3;
+
+const delay = (ms) => new Promise(res => setTimeout(res, ms));
+
+const humanDelay = async (min = 800, max = 3000) => {
+    await delay(Math.floor(Math.random() * (max - min) + min));
+};
+
+async function simulateHuman(page) {
+    await page.mouse.move(200 + Math.random()*300, 200 + Math.random()*300);
+    await humanDelay();
+    await page.evaluate(() => window.scrollBy(0, 200));
+    await humanDelay();
+    await page.evaluate(() => window.scrollBy(0, -100));
 }
 
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-const humanDelay = async (min = 500, max = 2000) => {
-    const ms = Math.floor(Math.random() * (max - min + 1)) + min;
-    await delay(ms);
-};
+async function detectBlock(page) {
+    const content = await page.content();
 
-const humanMouseMove = async (page, targetX, targetY) => {
-    const start = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
-    const steps = 25;
-    for (let i = 1; i <= steps; i++) {
-        const t = i / steps;
-        const cp = {
-            x: start.x + (Math.random() - 0.5) * 200,
-            y: start.y + (Math.random() - 0.5) * 200
-        };
-        const x = Math.pow(1 - t, 2) * start.x + 2 * (1 - t) * t * cp.x + Math.pow(t, 2) * targetX;
-        const y = Math.pow(1 - t, 2) * start.y + 2 * (1 - t) * t * cp.y + Math.pow(t, 2) * targetY;
-        await page.mouse.move(x, y);
-        await delay(Math.floor(Math.random() * 20) + 10);
+    if (content.includes('cf-challenge') || content.includes('Cloudflare')) {
+        return 'cloudflare';
     }
-};
 
-const randomScroll = async (page) => {
-    const scrollY = Math.floor(Math.random() * 300) + 100;
-    await page.evaluate((y) => window.scrollBy({ top: y, behavior: 'smooth' }), scrollY);
-    await humanDelay(300, 800);
-    await page.evaluate((y) => window.scrollBy({ top: -y / 2, behavior: 'smooth' }), scrollY);
-};
-
-// Fonction pour attendre un élément de connexion réussie (dashboard, logout, etc.)
-async function waitForLoginSuccess(page, timeoutMs = 15000) {
-    const start = Date.now();
-    const selectors = [
-        'a[href*="dashboard"]',
-        'a[href*="account"]',
-        'a:contains("Logout")',
-        'a:contains("Sign out")',
-        '.user-menu',
-        '.navbar-user',
-        '[data-testid="user-menu"]'
-    ];
-    while (Date.now() - start < timeoutMs) {
-        for (const sel of selectors) {
-            try {
-                const el = await page.$(sel);
-                if (el) return true;
-            } catch (e) {}
-        }
-        // Vérifier aussi le changement d'URL (redirection)
-        if (!page.url().includes('login.php')) return true;
-        await delay(1000);
+    if (content.toLowerCase().includes('captcha')) {
+        return 'captcha';
     }
-    return false;
+
+    return null;
 }
 
-// Fonction pour gérer Turnstile s'il apparaît
-async function handleTurnstileIfPresent(page) {
-    const frames = page.frames();
-    const turnstileFrame = frames.find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
-    if (!turnstileFrame) return false;
+async function handleTurnstile(page) {
+    const frame = page.frames().find(f =>
+        f.url().includes('challenges.cloudflare.com')
+    );
 
-    console.log('🛡️ Turnstile détecté. Interaction...');
+    if (!frame) return false;
+
+    console.log('🛡️ Turnstile détecté');
+
     try {
-        await turnstileFrame.waitForSelector('body', { timeout: 5000 });
-        const frameBox = await turnstileFrame.boundingBox();
-        if (frameBox) {
-            await humanMouseMove(page, frameBox.x + 150, frameBox.y + 150);
+        await delay(5000);
+
+        const checkbox = await frame.$('input[type="checkbox"]');
+        if (checkbox) {
+            await checkbox.click();
+            console.log('✅ Tentative clic Turnstile');
         }
-        await turnstileFrame.click('input[type="checkbox"]');
-        console.log('✅ Clic sur la case Turnstile');
-        // Attendre que le challenge se résolve (max 25s)
-        const start = Date.now();
-        while (Date.now() - start < 25000) {
-            const stillThere = page.frames().some(f => f.url().includes('challenges.cloudflare.com/turnstile'));
-            if (!stillThere) {
-                console.log('✅ Turnstile disparu, challenge résolu');
-                return true;
-            }
-            // Vérifier si case cochée
-            try {
-                const checked = await turnstileFrame.$eval('input[type="checkbox"]', cb => cb.checked);
-                if (checked) console.log('✅ Case cochée');
-            } catch (e) {}
-            await delay(2000);
-        }
-        console.log('⚠️ Timeout attente Turnstile');
-        return false;
+
+        await delay(8000);
+
+        return true;
     } catch (e) {
-        console.log('⚠️ Erreur interaction Turnstile:', e.message);
         return false;
     }
 }
 
-(async () => {
-    let browser;
-    const status = {
-        success: false,
-        time: new Date().toISOString(),
-        message: ''
-    };
+async function findLoginButton(page) {
+    return await page.evaluateHandle(() => {
+        const btns = [...document.querySelectorAll('button')];
+        return btns.find(b =>
+            b.textContent.toLowerCase().includes('log') ||
+            b.textContent.toLowerCase().includes('sign')
+        );
+    });
+}
+
+async function isLoggedIn(page) {
+    return await page.evaluate(() => {
+        return document.body.innerText.includes('Dashboard') ||
+               document.body.innerText.includes('Logout') ||
+               !window.location.href.includes('login');
+    });
+}
+
+async function runBot(attempt = 1) {
+    console.log(`\n🚀 Tentative ${attempt}/${MAX_RETRIES}`);
+
+    const browser = await puppeteer.launch({
+        headless: false, // 🔥 important
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-blink-features=AutomationControlled'
+        ]
+    });
+
+    const page = await browser.newPage();
 
     try {
-        console.log('🚀 Lancement du navigateur avec proxy résidentiel...');
-        browser = await puppeteer.launch({
-            headless: 'new',
-            args: [
-                '--disable-blink-features=AutomationControlled',
-                `--proxy-server=http://${PROXY_HOST}:${PROXY_PORT}`,
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--disable-gpu',
-                '--window-size=1280,720'
-            ]
+        await page.setViewport({ width: 1366, height: 768 });
+
+        await page.goto('https://tronpick.io/login.php', {
+            waitUntil: 'domcontentloaded',
+            timeout: 60000
         });
 
-        const page = await browser.newPage();
-        await page.authenticate({ username: PROXY_USERNAME, password: PROXY_PASSWORD });
-        console.log('✅ Proxy authentifié');
+        await humanDelay(2000, 4000);
+        await simulateHuman(page);
 
-        page.on('dialog', async dialog => { await dialog.accept(); });
-        await page.setViewport({ width: 1280, height: 720 });
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        // 🔍 Détection blocage
+        const blockType = await detectBlock(page);
+        if (blockType) {
+            throw new Error(`Blocage détecté: ${blockType}`);
+        }
 
-        // --- LOGIN PAGE ---
-        console.log('🌐 Accès login...');
-        await page.goto('https://tronpick.io/login.php', { waitUntil: 'networkidle2', timeout: 30000 });
-        await humanDelay(1000, 2000);
-        await randomScroll(page);
+        // 📧 Email
+        const emailInput = await page.$('input[type="email"], input[name="email"]');
+        if (!emailInput) throw new Error('Champ email introuvable');
 
-        // Remplissage
-        console.log('⌨️ Remplissage identifiants...');
-        const emailSelector = 'input[type="email"], input[name="email"], input#email';
-        await page.waitForSelector(emailSelector, { timeout: 10000 });
-        await page.click(emailSelector);
-        await humanDelay(200, 400);
-        await page.type(emailSelector, EMAIL, { delay: () => Math.floor(Math.random() * 80) + 30 });
-        await humanDelay(400, 800);
-        await humanMouseMove(page, 600, 400);
-        await randomScroll(page);
+        await emailInput.click();
+        await humanDelay();
+        await page.keyboard.type(EMAIL, { delay: 80 });
 
-        const passwordSelector = 'input[type="password"], input[name="password"], input#password';
-        await page.click(passwordSelector);
-        await humanDelay(200, 400);
-        await page.type(passwordSelector, PASSWORD, { delay: () => Math.floor(Math.random() * 100) + 40 });
-        await humanDelay(500, 1000);
-        await humanMouseMove(page, 700, 500);
-        await randomScroll(page);
+        await humanDelay();
 
-        // Vérifier Turnstile avant clic
-        console.log('⏳ Vérification Turnstile avant clic...');
-        await handleTurnstileIfPresent(page);
-        await delay(2000);
+        // 🔑 Password
+        const passInput = await page.$('input[type="password"]');
+        await passInput.click();
+        await page.keyboard.type(PASSWORD, { delay: 100 });
 
-        // Trouver et cliquer sur "Log in"
-        console.log('🔐 Recherche bouton "Log in"...');
-        const loginButton = await page.evaluateHandle(() => {
-            const buttons = Array.from(document.querySelectorAll('button'));
-            return buttons.find(btn => btn.textContent.trim() === 'Log in');
-        });
-        if (!loginButton) throw new Error('Bouton "Log in" introuvable');
+        await humanDelay(2000, 3000);
 
-        const box = await loginButton.boundingBox();
-        if (box) await humanMouseMove(page, box.x + box.width / 2, box.y + box.height / 2);
-        await humanDelay(200, 500);
+        // 🛡️ Turnstile avant clic
+        await handleTurnstile(page);
 
-        // Clic sur Log in (sans waitForNavigation car AJAX)
-        console.log('🖱️ Clic sur "Log in"...');
-        await loginButton.click();
+        // 🔘 Bouton login
+        const loginBtn = await findLoginButton(page);
+        if (!loginBtn) throw new Error('Bouton login introuvable');
 
-        // Après le clic, attendre que Turnstile apparaisse éventuellement
-        console.log('⏳ Attente post-clic...');
-        await delay(3000);
-        const turnstileHandled = await handleTurnstileIfPresent(page);
-        if (turnstileHandled) {
-            console.log('✅ Turnstile post-clic traité');
-            // Après résolution, il se peut que le site redirige automatiquement
+        await loginBtn.click();
+
+        console.log('🖱️ Clic login');
+
+        await humanDelay(5000, 8000);
+
+        // 🛡️ Turnstile après clic
+        await handleTurnstile(page);
+
+        await humanDelay(5000, 8000);
+
+        // ✅ Vérification login
+        const success = await isLoggedIn(page);
+
+        if (success) {
+            console.log('✅ LOGIN RÉUSSI');
+            await browser.close();
+            return true;
+        }
+
+        throw new Error('Login échoué');
+
+    } catch (err) {
+        console.log('❌', err.message);
+        await browser.close();
+
+        if (attempt < MAX_RETRIES) {
+            console.log('🔁 Retry...');
             await delay(5000);
-        }
-
-        // Attendre un signe de connexion réussie
-        console.log('🔍 Attente de confirmation de connexion...');
-        const loggedIn = await waitForLoginSuccess(page, 20000);
-        const currentUrl = page.url();
-        console.log('📍 URL finale :', currentUrl);
-
-        if (loggedIn || !currentUrl.includes('login.php')) {
-            status.success = true;
-            status.message = 'Connexion réussie !';
-            console.log('✅ Connexion réussie !');
+            return runBot(attempt + 1);
         } else {
-            // Vérifier message d'erreur
-            const errorMsg = await page.evaluate(() => {
-                const err = document.querySelector('.alert-danger, .error, .message-error');
-                return err ? err.textContent.trim() : null;
-            });
-            status.message = errorMsg ? `Échec: ${errorMsg}` : 'Échec de connexion';
-            console.log('❌', status.message);
+            console.log('💀 Échec total');
+            return false;
         }
-
-    } catch (error) {
-        console.error('❌ Erreur fatale :', error);
-        status.message = error.message;
-    } finally {
-        if (browser) await browser.close();
     }
+}
 
-    const statusPath = path.join(__dirname, 'public', 'status.json');
-    fs.writeFileSync(statusPath, JSON.stringify(status, null, 2));
-    console.log('📝 Statut enregistré :', status.success ? 'SUCCÈS' : 'ÉCHEC');
-})();
+// 🚀 Lancement
+runBot();
