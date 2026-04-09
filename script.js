@@ -46,7 +46,35 @@ const randomScroll = async (page) => {
     await page.evaluate((y) => window.scrollBy({ top: -y / 2, behavior: 'smooth' }), scrollY);
 };
 
-// Attente d'un signe de connexion réussie (élément ou URL)
+// 📋 Fonction pour lister tous les éléments interactifs visibles
+async function listAllButtons(page) {
+    console.log('\n🔎 ANALYSE DE L\'INTERFACE (éléments visibles) :');
+    const elements = await page.evaluate(() => {
+        const selectors = 'button, a, input, [role="button"], [onclick]';
+        const els = Array.from(document.querySelectorAll(selectors));
+        return els
+            .filter(el => {
+                const rect = el.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0; // visible
+            })
+            .map(el => {
+                return {
+                    tag: el.tagName,
+                    type: el.type || null,
+                    text: (el.textContent || el.value || el.placeholder || el.getAttribute('aria-label') || '').trim().substring(0, 40),
+                    id: el.id || null,
+                    class: el.className || null,
+                    href: el.href || null
+                };
+            });
+    });
+    elements.forEach((el, i) => {
+        console.log(`${i+1}. [${el.tag}] ${el.type ? `type="${el.type}"` : ''} "${el.text}"`);
+    });
+    console.log(`✅ Total : ${elements.length} éléments interactifs visibles\n`);
+    return elements;
+}
+
 async function waitForLoginSuccess(page, timeoutMs = 20000) {
     const start = Date.now();
     const selectors = [
@@ -71,31 +99,24 @@ async function waitForLoginSuccess(page, timeoutMs = 20000) {
     return false;
 }
 
-// Gestion robuste de Turnstile avec attente d'iframe et interaction
 async function handleTurnstile(page, timeoutMs = 30000) {
     console.log('🛡️ Attente de l\'iframe Turnstile...');
     try {
-        // Attendre que l'iframe Turnstile apparaisse (max timeoutMs)
         const frame = await page.waitForFrame(
             f => f.url().includes('challenges.cloudflare.com/turnstile'),
             { timeout: timeoutMs }
         );
         console.log('✅ Iframe Turnstile trouvée');
 
-        // Attendre que le contenu de l'iframe soit chargé
         await frame.waitForSelector('body', { timeout: 5000 });
-        
-        // Mouvement de souris vers l'iframe
         const frameBox = await frame.boundingBox();
         if (frameBox) {
             await humanMouseMove(page, frameBox.x + 150, frameBox.y + 150);
         }
 
-        // Clic sur la case à cocher
         await frame.click('input[type="checkbox"]');
         console.log('✅ Clic sur la case Turnstile');
 
-        // Attendre que le challenge se résolve (disparition de l'iframe ou case cochée)
         const start = Date.now();
         while (Date.now() - start < 25000) {
             const stillThere = page.frames().some(f => f.url().includes('challenges.cloudflare.com/turnstile'));
@@ -107,7 +128,6 @@ async function handleTurnstile(page, timeoutMs = 30000) {
                 const checked = await frame.$eval('input[type="checkbox"]', cb => cb.checked);
                 if (checked) {
                     console.log('✅ Case Turnstile cochée');
-                    // Attendre un peu pour la validation silencieuse
                     await delay(3000);
                     return true;
                 }
@@ -178,7 +198,10 @@ async function handleTurnstile(page, timeoutMs = 30000) {
         await humanMouseMove(page, 700, 500);
         await randomScroll(page);
 
-        // Vérifier Turnstile avant clic (rare)
+        // 📋 LISTER LES ÉLÉMENTS AVANT CLIC
+        await listAllButtons(page);
+
+        // Vérifier Turnstile avant clic
         await handleTurnstile(page, 5000).catch(() => {});
 
         // Trouver et cliquer sur "Log in"
@@ -193,26 +216,21 @@ async function handleTurnstile(page, timeoutMs = 30000) {
         if (box) await humanMouseMove(page, box.x + box.width / 2, box.y + box.height / 2);
         await humanDelay(200, 500);
 
-        // Clic sur Log in (la requête AJAX va partir)
         console.log('🖱️ Clic sur "Log in"...');
         await loginButton.click();
 
-        // Attendre que le réseau soit inactif après le clic (AJAX)
         console.log('⏳ Attente de la fin des requêtes AJAX...');
         await page.waitForNetworkIdle({ timeout: 10000 }).catch(() => console.log('⚠️ Network idle timeout, poursuite...'));
 
-        // Gérer Turnstile qui apparaît après le clic
         console.log('⏳ Gestion Turnstile post-clic...');
         const turnstileResolved = await handleTurnstile(page, 25000);
         if (turnstileResolved) {
             console.log('✅ Turnstile résolu');
-            // Attendre à nouveau la fin des requêtes après validation
             await page.waitForNetworkIdle({ timeout: 10000 }).catch(() => {});
         } else {
             console.log('⚠️ Turnstile non résolu ou non apparu');
         }
 
-        // Attendre la confirmation de connexion
         console.log('🔍 Attente de confirmation de connexion...');
         const loggedIn = await waitForLoginSuccess(page, 15000);
         const currentUrl = page.url();
@@ -229,6 +247,9 @@ async function handleTurnstile(page, timeoutMs = 30000) {
             });
             status.message = errorMsg ? `Échec: ${errorMsg}` : 'Échec de connexion';
             console.log('❌', status.message);
+            
+            // 📋 RELISTER APRÈS ÉCHEC POUR VOIR LES CHANGEMENTS
+            await listAllButtons(page);
         }
 
     } catch (error) {
