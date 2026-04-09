@@ -1,4 +1,7 @@
 const puppeteer = require('puppeteer-core');
+const fs = require('fs');
+const path = require('path');
+
 const EMAIL = process.env.TRONPICK_EMAIL;
 const PASSWORD = process.env.TRONPICK_PASSWORD;
 const BROWSERLESS_TOKEN = process.env.BROWSERLESS_TOKEN;
@@ -8,61 +11,57 @@ if (!EMAIL || !PASSWORD || !BROWSERLESS_TOKEN) {
     process.exit(1);
 }
 
+// Délai aléatoire
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Recherche du texte et retourne l'élément trouvé (pour pouvoir l'entourer)
-async function findTurnstileElement(page) {
-    const keywords = [
-        'vérifier que vous êtes humain',
-        'verify you are human',
-        'vérifiez que vous êtes humain',
-        'verify that you are human',
-        'confirm you are human'
-    ];
+// Fonction pour explorer une frame et lister tous les éléments d'interface
+async function exploreFrame(frame, frameIndex = 0) {
+    const indent = '  '.repeat(frameIndex);
+    console.log(`\n${indent}📁 Frame ${frameIndex}: ${frame.url().substring(0, 80)}`);
 
-    // Recherche dans la page principale
-    const elementHandle = await page.evaluateHandle((kw) => {
-        const bodyText = document.body.innerText.toLowerCase();
-        for (const k of kw) {
-            if (bodyText.includes(k)) {
-                // Trouver l'élément contenant exactement ce texte
-                const xpath = `//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${k}')]`;
-                const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-                return result.singleNodeValue;
-            }
+    try {
+        // Récupérer tous les éléments pertinents
+        const elements = await frame.evaluate(() => {
+            const selectors = [
+                'input', 'button', 'a', 'select', 'textarea',
+                '[role="button"]', '[onclick]', 'div[class*="btn"]', 'span[class*="btn"]',
+                'label', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div[class*="captcha"]',
+                'iframe', 'form', '[class*="error"]', '[class*="message"]'
+            ];
+            const els = Array.from(document.querySelectorAll(selectors.join(',')));
+
+            return els.map(el => {
+                const rect = el.getBoundingClientRect();
+                const isVisible = rect.width > 0 && rect.height > 0;
+                const text = (el.textContent || el.value || el.placeholder || el.getAttribute('aria-label') || '').trim().substring(0, 50);
+                return {
+                    tag: el.tagName,
+                    type: el.type || null,
+                    id: el.id || null,
+                    className: el.className || null,
+                    name: el.name || null,
+                    href: el.href || null,
+                    text: text,
+                    disabled: el.disabled || false,
+                    visible: isVisible,
+                    position: isVisible ? { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) } : null
+                };
+            }).filter(el => el.visible); // on ne garde que les éléments visibles
+        });
+
+        console.log(`${indent}   ✅ ${elements.length} élément(s) visible(s) trouvé(s) :`);
+        elements.forEach((el, i) => {
+            console.log(`${indent}   ${i+1}. [${el.tag}] ${el.type || ''} "${el.text}" (id=${el.id}, class=${el.className})`);
+        });
+
+        // Explorer les frames enfants
+        const childFrames = frame.childFrames();
+        for (let i = 0; i < childFrames.length; i++) {
+            await exploreFrame(childFrames[i], frameIndex + 1);
         }
-        return null;
-    }, keywords);
-
-    const element = await elementHandle.asElement();
-    if (element) {
-        console.log('✅ Texte trouvé dans la page principale.');
-        return element;
+    } catch (e) {
+        console.log(`${indent}   ❌ Frame inaccessible (cross-origin) : ${e.message}`);
     }
-
-    // Recherche dans les iframes
-    const frames = page.frames();
-    for (const frame of frames) {
-        try {
-            const frameElement = await frame.evaluateHandle((kw) => {
-                const bodyText = document.body.innerText.toLowerCase();
-                for (const k of kw) {
-                    if (bodyText.includes(k)) {
-                        const xpath = `//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${k}')]`;
-                        const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-                        return result.singleNodeValue;
-                    }
-                }
-                return null;
-            }, keywords);
-            const el = await frameElement.asElement();
-            if (el) {
-                console.log('✅ Texte trouvé dans une iframe.');
-                return el;
-            }
-        } catch (e) {}
-    }
-    return null;
 }
 
 (async () => {
@@ -80,43 +79,31 @@ async function findTurnstileElement(page) {
         console.log('🌐 Accès à la page de login...');
         await page.goto('https://tronpick.io/login.php', { waitUntil: 'networkidle2', timeout: 30000 });
 
+        // Attendre le champ email
         const emailSelector = 'input[type="email"], input[name="email"], input#email';
         await page.waitForSelector(emailSelector, { timeout: 10000 });
+        console.log('✅ Champ email détecté');
+
+        // Remplir les champs
+        console.log('⌨️ Remplissage des identifiants...');
         await page.type(emailSelector, EMAIL, { delay: 30 });
         const passwordSelector = 'input[type="password"], input[name="password"], input#password';
         await page.type(passwordSelector, PASSWORD, { delay: 30 });
 
-        console.log('⏳ Attente de 8 secondes pour le chargement du captcha...');
-        await delay(8000);
+        console.log('⏳ Attente de 10 secondes pour le chargement des scripts/captcha...');
+        await delay(10000);
 
-        // Recherche de l'élément contenant le texte
-        const turnstileElement = await findTurnstileElement(page);
+        // Explorer tous les éléments visibles de la page principale et des iframes
+        console.log('\n🔍 EXPLORATION DE L\'INTERFACE :');
+        await exploreFrame(page.mainFrame());
 
-        if (turnstileElement) {
-            console.log('🎯 LE MESSAGE "VÉRIFIER QUE VOUS ÊTES HUMAIN" EST PRÉSENT !');
-            // Entourer l'élément d'un rectangle rouge sur la capture
-            await page.evaluate((el) => {
-                el.style.border = '5px solid red';
-                el.style.backgroundColor = 'rgba(255, 0, 0, 0.2)';
-            }, turnstileElement);
-        } else {
-            console.log('❌ LE MESSAGE "VÉRIFIER QUE VOUS ÊTES HUMAIN" N\'A PAS ÉTÉ TROUVÉ.');
-        }
-
-        // Capture d'écran avec annotation éventuelle
+        // Prendre une capture d'écran (optionnel, mais utile)
         const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
-        console.log('📸 CAPTURE_BASE64_START');
+        console.log('\n📸 CAPTURE_BASE64_START');
         console.log(screenshot);
         console.log('📸 CAPTURE_BASE64_END');
 
-        // Message final très visible
-        console.log('\n========================================');
-        if (turnstileElement) {
-            console.log('✅ RÉSULTAT : TEXTE TROUVÉ');
-        } else {
-            console.log('❌ RÉSULTAT : TEXTE NON TROUVÉ');
-        }
-        console.log('========================================\n');
+        console.log('\n✅ Diagnostic terminé.');
 
     } catch (error) {
         console.error('❌ Erreur :', error);
