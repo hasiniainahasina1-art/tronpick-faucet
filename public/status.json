@@ -1,5 +1,5 @@
 {
-  "success": false,
-  "time": "2026-04-09T10:13:04.295Z",
-  "message": "SyntaxError: Failed to execute 'querySelectorAll' on 'Document': 'button:contains(\"CLAIM\")' is not a valid selector.\nre (pptr:internal:3:12826)\nIe (pptr:internal:3:13100)\npptr:evaluateHandle;PQueryHandler.queryOne%20(%2Fhome%2Frunner%2Fwork%2Ftronpick-faucet%2Ftronpick-faucet%2Fnode_modules%2Fpuppeteer-core%2Flib%2Fcjs%2Fpuppeteer%2Fcommon%2FQueryHandler.js%3A130%3A73):2:16"
+  "success": true,
+  "time": "2026-04-09T10:18:22.923Z",
+  "message": "Faucet visité et CLAIM cliqué avec succès"
 }
