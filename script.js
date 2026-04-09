@@ -34,12 +34,16 @@ const humanDelay = async (min = 500, max = 2000) => {
     try {
         console.log('🚀 Lancement du navigateur avec proxy résidentiel...');
         browser = await puppeteer.launch({
-            headless: false,
+            headless: 'new',  // 🔧 Nouveau mode headless (furtif)
             args: [
                 '--disable-blink-features=AutomationControlled',
                 `--proxy-server=http://${PROXY_HOST}:${PROXY_PORT}`,
-                '--no-sandbox',              // 🔧 Correction pour GitHub Actions
-                '--disable-setuid-sandbox'    // 🔧 Correction supplémentaire
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--disable-gpu',
+                '--window-size=1280,720'
             ]
         });
 
@@ -75,7 +79,7 @@ const humanDelay = async (min = 500, max = 2000) => {
         await page.type(passwordSelector, PASSWORD, { delay: 50 });
         await humanDelay(500, 1000);
 
-        // --- TURNSTILE ---
+        // --- TURNSTILE (gestion headless) ---
         console.log('⏳ Attente de l\'apparition éventuelle de Turnstile...');
         await delay(5000);
 
@@ -86,7 +90,7 @@ const humanDelay = async (min = 500, max = 2000) => {
                 await turnstileFrame.waitForSelector('body', { timeout: 5000 });
                 await turnstileFrame.click('input[type="checkbox"]');
                 console.log('✅ Clic sur la case Turnstile effectué');
-                await delay(20000); // Attendre validation
+                await delay(20000);
             } catch (e) {
                 console.log('⚠️ Interaction Turnstile échouée, on tente la connexion directe.');
             }
