@@ -11,32 +11,6 @@ if (!EMAIL || !PASSWORD || !BROWSERLESS_TOKEN) {
     process.exit(1);
 }
 
-async function exploreAllFrames(frame, depth = 0) {
-    const indent = '  '.repeat(depth);
-    console.log(`${indent}🌐 Frame ${depth}: ${frame.url().substring(0, 80)}`);
-    try {
-        const elements = await frame.evaluate(() => {
-            const els = Array.from(document.querySelectorAll('button, input[type="submit"], a, div[role="button"], span[role="button"], [onclick]'));
-            return els.map(el => ({
-                tag: el.tagName,
-                text: (el.textContent || el.value || el.getAttribute('aria-label') || '').trim().substring(0, 60),
-                disabled: el.disabled || false,
-                visible: el.offsetParent !== null
-            }));
-        });
-        elements.filter(el => el.visible).forEach(el => {
-            console.log(`${indent}   🔘 [${el.tag}] "${el.text}" ${el.disabled ? '(DÉSACTIVÉ)' : ''}`);
-        });
-    } catch (e) {
-        console.log(`${indent}   ❌ Frame inaccessible (cross-origin)`);
-    }
-
-    const childFrames = frame.childFrames();
-    for (const child of childFrames) {
-        await exploreAllFrames(child, depth + 1);
-    }
-}
-
 (async () => {
     let browser;
     const status = {
@@ -56,63 +30,159 @@ async function exploreAllFrames(frame, depth = 0) {
         await page.setViewport({ width: 1280, height: 720 });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-        // --- LOGIN ---
-        console.log('🌐 Connexion...');
+        // ------------------- LOGIN -------------------
+        console.log('🌐 Accès à la page de login...');
         await page.goto('https://tronpick.io/login.php', { waitUntil: 'networkidle2', timeout: 30000 });
-        await page.waitForSelector('input[type="email"], input[name="email"]', { timeout: 10000 });
-        await page.type('input[type="email"]', EMAIL, { delay: 30 });
-        await page.type('input[type="password"]', PASSWORD, { delay: 30 });
-        await Promise.all([
-            page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {}),
-            page.keyboard.press('Enter')
-        ]);
-        await page.waitForTimeout(4000);
+        console.log('   URL actuelle :', page.url());
 
-        // --- FAUCET ---
-        console.log('🚰 Accès faucet...');
-        await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
+        // Attendre que le champ email soit présent et visible
+        const emailSelector = 'input[type="email"], input[name="email"], input#email';
+        await page.waitForSelector(emailSelector, { timeout: 15000, visible: true });
+        console.log('✅ Champ email détecté et visible');
 
-        console.log('⏳ Attente de 20 secondes pour chargement complet...');
-        await page.waitForTimeout(20000);
+        // Saisie des identifiants avec un délai humain
+        console.log('⌨️ Saisie des identifiants...');
+        await page.type(emailSelector, EMAIL, { delay: 50 });
+        const passwordSelector = 'input[type="password"], input[name="password"], input#password';
+        await page.type(passwordSelector, PASSWORD, { delay: 50 });
 
-        // --- DIAGNOSTIC : lister les éléments cliquables ---
-        console.log('\n🔍 ÉLÉMENTS CLIQUABLES TROUVÉS :');
-        await exploreAllFrames(page.mainFrame());
+        // Récupérer les sélecteurs de bouton de connexion possibles
+        const loginButtonSelectors = [
+            'button[type="submit"]',
+            'input[type="submit"]',
+            'form button',
+            'form input[type="submit"]',
+            'button:contains("Login")',   // Ne fonctionne pas avec Puppeteer, mais on gère via JS
+        ];
 
-        // --- CAPTURE D'ÉCRAN (avec gestion d'erreur) ---
-        let screenshotBase64 = '';
-        try {
-            const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
-            screenshotBase64 = screenshot;
-            console.log('\n📸 Capture d\'écran prise avec succès.');
-        } catch (e) {
-            console.log('⚠️ Impossible de prendre la capture d\'écran :', e.message);
+        let loginSuccess = false;
+
+        // Essayer d'abord les sélecteurs CSS simples
+        for (const sel of loginButtonSelectors) {
+            try {
+                const btn = await page.$(sel);
+                if (btn) {
+                    console.log(`   Tentative de clic avec sélecteur : ${sel}`);
+                    await Promise.all([
+                        page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(e => console.log('   Navigation timeout ou erreur :', e.message)),
+                        btn.click()
+                    ]);
+                    await page.waitForTimeout(3000);
+                    console.log('   URL après tentative :', page.url());
+                    if (!page.url().includes('login.php') && !page.url().includes('login')) {
+                        loginSuccess = true;
+                        console.log('✅ Connexion réussie !');
+                        break;
+                    }
+                }
+            } catch (e) {
+                console.log(`   Échec avec ${sel} :`, e.message);
+            }
         }
 
-        // --- TENTATIVE DE CLIC ---
-        console.log('\n🎯 Tentative de clic sur le bouton CLAIM...');
-        let claimClicked = false;
+        // Si toujours pas connecté, recherche par texte avec evaluate
+        if (!loginSuccess) {
+            console.log('🔄 Recherche du bouton par texte...');
+            const clicked = await page.evaluate(() => {
+                const keywords = ['login', 'sign in', 'connexion', 'se connecter', 'enter'];
+                const elements = Array.from(document.querySelectorAll('button, input[type="submit"], a'));
+                for (const el of elements) {
+                    const text = (el.textContent || el.value || '').toLowerCase();
+                    if (keywords.some(kw => text.includes(kw))) {
+                        el.click();
+                        return true;
+                    }
+                }
+                return false;
+            });
+            if (clicked) {
+                await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => {});
+                await page.waitForTimeout(3000);
+                console.log('   URL après clic texte :', page.url());
+                if (!page.url().includes('login.php')) {
+                    loginSuccess = true;
+                    console.log('✅ Connexion réussie via texte !');
+                }
+            }
+        }
 
+        // Dernière chance : touche Entrée
+        if (!loginSuccess) {
+            console.log('⌨️ Tentative avec touche Entrée...');
+            await page.focus(passwordSelector);
+            await page.keyboard.press('Enter');
+            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => {});
+            await page.waitForTimeout(3000);
+            console.log('   URL après Entrée :', page.url());
+            if (!page.url().includes('login.php')) {
+                loginSuccess = true;
+                console.log('✅ Connexion réussie via Entrée !');
+            }
+        }
+
+        if (!loginSuccess) {
+            throw new Error('ÉCHEC DE CONNEXION : Impossible de se connecter après plusieurs tentatives.');
+        }
+
+        // ------------------- FAUCET -------------------
+        console.log('🚰 Accès à la page faucet...');
+        await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
+        console.log('   URL faucet :', page.url());
+
+        // Attendre 20 secondes pour le chargement complet
+        console.log('⏳ Attente de 20 secondes...');
+        await page.waitForTimeout(20000);
+
+        // ------------------- RECHERCHE DU BOUTON CLAIM -------------------
+        console.log('\n🔍 ÉLÉMENTS CLIQUABLES TROUVÉS :');
+        // Explorer les frames comme précédemment
+        async function exploreFrames(frame, depth = 0) {
+            const indent = '  '.repeat(depth);
+            console.log(`${indent}🌐 Frame ${depth}: ${frame.url().substring(0, 80)}`);
+            try {
+                const elements = await frame.evaluate(() => {
+                    const els = Array.from(document.querySelectorAll('button, input[type="submit"], a, div[role="button"], span[role="button"], [onclick]'));
+                    return els.map(el => ({
+                        tag: el.tagName,
+                        text: (el.textContent || el.value || el.getAttribute('aria-label') || '').trim().substring(0, 60),
+                        disabled: el.disabled || false,
+                        visible: el.offsetParent !== null
+                    }));
+                });
+                elements.filter(el => el.visible).forEach(el => {
+                    console.log(`${indent}   🔘 [${el.tag}] "${el.text}" ${el.disabled ? '(DÉSACTIVÉ)' : ''}`);
+                });
+            } catch (e) {
+                console.log(`${indent}   ❌ Frame inaccessible`);
+            }
+            const children = frame.childFrames();
+            for (const child of children) {
+                await exploreFrames(child, depth + 1);
+            }
+        }
+        await exploreFrames(page.mainFrame());
+
+        // Tentative de clic sur CLAIM
+        let claimClicked = false;
         const clickInFrame = async (frame) => {
             try {
                 return await frame.evaluate(() => {
-                    const keywords = ['claim', 'get', 'receive', 'roll', 'withdraw', 'collect', 'free'];
-                    const elements = Array.from(document.querySelectorAll('button, input[type="submit"], a, div[role="button"], span[role="button"]'));
-                    for (const el of elements) {
-                        const text = (el.textContent || el.value || el.getAttribute('aria-label') || '').toLowerCase();
-                        if (keywords.some(kw => text.includes(kw)) && !el.disabled && el.offsetParent !== null) {
+                    const kw = ['claim', 'get', 'receive', 'roll', 'withdraw', 'collect', 'free'];
+                    const els = Array.from(document.querySelectorAll('button, input[type="submit"], a, div[role="button"]'));
+                    for (const el of els) {
+                        const txt = (el.textContent || el.value || '').toLowerCase();
+                        if (kw.some(k => txt.includes(k)) && !el.disabled && el.offsetParent !== null) {
                             el.click();
-                            return { clicked: true, text: text };
+                            return { clicked: true, text: txt };
                         }
                     }
                     return { clicked: false };
                 });
             } catch (e) {
-                return { clicked: false, error: e.message };
+                return { clicked: false };
             }
         };
 
-        // Essayer la frame principale
         const mainClick = await clickInFrame(page.mainFrame());
         if (mainClick.clicked) {
             console.log(`✅ CLAIM cliqué (page principale) : "${mainClick.text}"`);
@@ -120,9 +190,9 @@ async function exploreAllFrames(frame, depth = 0) {
         } else {
             const frames = page.frames();
             for (let i = 1; i < frames.length; i++) {
-                const frameClick = await clickInFrame(frames[i]);
-                if (frameClick.clicked) {
-                    console.log(`✅ CLAIM cliqué (iframe ${i}) : "${frameClick.text}"`);
+                const fClick = await clickInFrame(frames[i]);
+                if (fClick.clicked) {
+                    console.log(`✅ CLAIM cliqué (iframe ${i}) : "${fClick.text}"`);
                     claimClicked = true;
                     break;
                 }
@@ -130,7 +200,7 @@ async function exploreAllFrames(frame, depth = 0) {
         }
 
         if (!claimClicked) {
-            console.log('❌ Aucun bouton CLAIM trouvé ou clicable.');
+            console.log('❌ Aucun bouton CLAIM trouvé.');
             status.message = 'Bouton CLAIM introuvable';
         } else {
             await page.waitForTimeout(5000);
@@ -138,13 +208,6 @@ async function exploreAllFrames(frame, depth = 0) {
         }
 
         status.success = claimClicked;
-
-        // Afficher la capture en base64 si disponible
-        if (screenshotBase64) {
-            console.log('\n📸 CAPTURE_BASE64_START');
-            console.log(screenshotBase64);
-            console.log('📸 CAPTURE_BASE64_END');
-        }
 
     } catch (error) {
         console.error('❌ Erreur :', error);
