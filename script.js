@@ -107,7 +107,6 @@ async function waitForLoginSuccess(page, timeoutMs = 30000) {
         await page.goto('https://tronpick.io/login.php', { waitUntil: 'networkidle2', timeout: 30000 });
         console.log('   URL actuelle :', page.url());
 
-        // Mouvements aléatoires initiaux
         await humanDelay(1000, 2500);
         await randomMouseMove(page);
         await randomScroll(page);
@@ -117,13 +116,11 @@ async function waitForLoginSuccess(page, timeoutMs = 30000) {
         await page.waitForSelector(emailSelector, { timeout: 15000, visible: true });
         console.log('✅ Champ email détecté');
 
-        // Cliquer sur le champ email avant de taper (simule un focus humain)
         await page.click(emailSelector);
         await humanDelay(300, 700);
         await randomMouseMove(page);
 
         console.log('⌨️ Saisie identifiants avec délais réalistes...');
-        // Saisie lente avec délais variables entre les lettres
         await page.type(emailSelector, EMAIL, { delay: () => Math.floor(Math.random() * 80) + 30 });
         await humanDelay(600, 1200);
         await randomMouseMove(page);
@@ -137,7 +134,6 @@ async function waitForLoginSuccess(page, timeoutMs = 30000) {
         await randomMouseMove(page);
         await randomScroll(page);
 
-        // Recherche EXACTE du bouton "Log in"
         console.log('🔍 Recherche bouton "Log in"...');
         const loginButton = await page.evaluateHandle(() => {
             const buttons = Array.from(document.querySelectorAll('button'));
@@ -148,7 +144,6 @@ async function waitForLoginSuccess(page, timeoutMs = 30000) {
             throw new Error('Bouton "Log in" introuvable');
         }
 
-        // Approcher la souris du bouton avant de cliquer
         const box = await loginButton.boundingBox();
         if (box) {
             await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 15 });
@@ -158,14 +153,12 @@ async function waitForLoginSuccess(page, timeoutMs = 30000) {
         console.log('🔐 Clic sur "Log in"...');
         await loginButton.click();
 
-        // Après le clic, continuer à simuler une présence humaine
         console.log('⏳ Attente de la validation de connexion (max 40s)...');
         const startWait = Date.now();
         let loggedIn = false;
         while (Date.now() - startWait < 40000 && !loggedIn) {
-            loggedIn = await waitForLoginSuccess(page, 5000); // vérifie toutes les 5s
+            loggedIn = await waitForLoginSuccess(page, 5000);
             if (!loggedIn) {
-                // Simuler une activité humaine pendant l'attente
                 await randomMouseMove(page);
                 await humanDelay(1500, 3000);
                 await randomScroll(page);
@@ -173,7 +166,6 @@ async function waitForLoginSuccess(page, timeoutMs = 30000) {
         }
 
         if (!loggedIn) {
-            // Prendre une capture pour diagnostic
             console.log('📸 Capture après échec connexion :');
             const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
             console.log('📸 CAPTURE_BASE64_START');
@@ -195,46 +187,68 @@ async function waitForLoginSuccess(page, timeoutMs = 30000) {
         await randomMouseMove(page);
         await randomScroll(page);
 
-        // --- RECHERCHE ET CLIC SUR CLAIM ---
+        // --- RECHERCHE DU BOUTON CLAIM AVANT SCROLL ET ATTENTE SUPPLÉMENTAIRE ---
         console.log('\n🎯 Recherche bouton CLAIM...');
         let claimClicked = false;
+        let claimButtonHandle = null;
 
-        const clickClaimInFrame = async (frame) => {
+        // Fonction pour trouver l'élément CLAIM sans cliquer
+        const findClaimInFrame = async (frame) => {
             try {
-                return await frame.evaluate(() => {
+                const handle = await frame.evaluateHandle(() => {
                     const keywords = ['claim', 'get', 'receive', 'roll', 'withdraw', 'collect', 'free', 'claim now', 'get reward'];
                     const elements = Array.from(document.querySelectorAll('button, input[type="submit"], a, div[role="button"], span[role="button"]'));
                     for (const el of elements) {
                         const text = (el.textContent || el.value || el.getAttribute('aria-label') || '').toLowerCase();
                         if (keywords.some(kw => text.includes(kw)) && !el.disabled && el.offsetParent !== null) {
-                            el.click();
-                            return { clicked: true, text: text };
+                            return el;
                         }
                     }
-                    return { clicked: false };
+                    return null;
                 });
+                return handle;
             } catch (e) {
-                return { clicked: false };
+                return null;
             }
         };
 
-        const mainClick = await clickClaimInFrame(page.mainFrame());
-        if (mainClick.clicked) {
-            console.log(`✅ CLAIM cliqué (page principale) : "${mainClick.text}"`);
-            claimClicked = true;
-        } else {
+        // Chercher d'abord dans la page principale
+        claimButtonHandle = await findClaimInFrame(page.mainFrame());
+        let foundInFrame = 'page principale';
+
+        if (!claimButtonHandle) {
             const frames = page.frames();
             for (let i = 1; i < frames.length; i++) {
-                const frameClick = await clickClaimInFrame(frames[i]);
-                if (frameClick.clicked) {
-                    console.log(`✅ CLAIM cliqué (iframe ${i}) : "${frameClick.text}"`);
-                    claimClicked = true;
+                claimButtonHandle = await findClaimInFrame(frames[i]);
+                if (claimButtonHandle) {
+                    foundInFrame = `iframe ${i}`;
                     break;
                 }
             }
         }
 
-        if (!claimClicked) {
+        if (claimButtonHandle) {
+            console.log(`📍 Bouton CLAIM trouvé dans ${foundInFrame}`);
+
+            // Scroll vers le bouton
+            await page.evaluate((el) => {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, claimButtonHandle);
+            console.log('📜 Scroll vers le bouton CLAIM effectué');
+
+            // Attendre 15 secondes AVANT de cliquer
+            console.log('⏳ Attente de 15 secondes avant le clic...');
+            await humanDelay(14000, 16000);
+
+            // Clic
+            await claimButtonHandle.click();
+            console.log('✅ CLAIM cliqué après attente');
+            claimClicked = true;
+
+            // Attendre après clic
+            await humanDelay(4000, 6000);
+            status.message = 'CLAIM cliqué avec succès';
+        } else {
             console.log('❌ Bouton CLAIM non trouvé. Éléments visibles :');
             const visibleElements = await page.evaluate(() => {
                 return Array.from(document.querySelectorAll('button, a, input[type="submit"]'))
@@ -243,9 +257,6 @@ async function waitForLoginSuccess(page, timeoutMs = 30000) {
             });
             console.log(JSON.stringify(visibleElements, null, 2));
             status.message = 'Bouton CLAIM introuvable';
-        } else {
-            await humanDelay(4000, 6000);
-            status.message = 'CLAIM cliqué avec succès';
         }
 
         status.success = claimClicked;
