@@ -11,12 +11,10 @@ if (!EMAIL || !PASSWORD || !BROWSERLESS_TOKEN) {
     process.exit(1);
 }
 
-// Fonction pour explorer récursivement toutes les frames
 async function exploreAllFrames(frame, depth = 0) {
     const indent = '  '.repeat(depth);
     console.log(`${indent}🌐 Frame ${depth}: ${frame.url().substring(0, 80)}`);
     try {
-        // Lister les éléments cliquables dans cette frame
         const elements = await frame.evaluate(() => {
             const els = Array.from(document.querySelectorAll('button, input[type="submit"], a, div[role="button"], span[role="button"], [onclick]'));
             return els.map(el => ({
@@ -33,7 +31,6 @@ async function exploreAllFrames(frame, depth = 0) {
         console.log(`${indent}   ❌ Frame inaccessible (cross-origin)`);
     }
 
-    // Parcourir les frames enfants
     const childFrames = frame.childFrames();
     for (const child of childFrames) {
         await exploreAllFrames(child, depth + 1);
@@ -75,25 +72,27 @@ async function exploreAllFrames(frame, depth = 0) {
         console.log('🚰 Accès faucet...');
         await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
 
-        // Attendre 20 secondes pour être sûr que tout est chargé
-        console.log('⏳ Attente de 20 secondes pour le chargement complet...');
+        console.log('⏳ Attente de 20 secondes pour chargement complet...');
         await page.waitForTimeout(20000);
 
-        // --- EXPLORATION DES FRAMES ---
+        // --- DIAGNOSTIC : lister les éléments cliquables ---
         console.log('\n🔍 ÉLÉMENTS CLIQUABLES TROUVÉS :');
         await exploreAllFrames(page.mainFrame());
 
-        // --- CAPTURE D'ÉCRAN ---
-        const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
-        console.log('\n📸 CAPTURE_BASE64_START');
-        console.log(screenshot);
-        console.log('📸 CAPTURE_BASE64_END');
+        // --- CAPTURE D'ÉCRAN (avec gestion d'erreur) ---
+        let screenshotBase64 = '';
+        try {
+            const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
+            screenshotBase64 = screenshot;
+            console.log('\n📸 Capture d\'écran prise avec succès.');
+        } catch (e) {
+            console.log('⚠️ Impossible de prendre la capture d\'écran :', e.message);
+        }
 
-        // --- TENTATIVE DE CLIC AVANCÉE ---
+        // --- TENTATIVE DE CLIC ---
         console.log('\n🎯 Tentative de clic sur le bouton CLAIM...');
         let claimClicked = false;
 
-        // Fonction pour cliquer dans une frame donnée
         const clickInFrame = async (frame) => {
             try {
                 return await frame.evaluate(() => {
@@ -119,7 +118,6 @@ async function exploreAllFrames(frame, depth = 0) {
             console.log(`✅ CLAIM cliqué (page principale) : "${mainClick.text}"`);
             claimClicked = true;
         } else {
-            // Essayer toutes les iframes
             const frames = page.frames();
             for (let i = 1; i < frames.length; i++) {
                 const frameClick = await clickInFrame(frames[i]);
@@ -141,6 +139,13 @@ async function exploreAllFrames(frame, depth = 0) {
 
         status.success = claimClicked;
 
+        // Afficher la capture en base64 si disponible
+        if (screenshotBase64) {
+            console.log('\n📸 CAPTURE_BASE64_START');
+            console.log(screenshotBase64);
+            console.log('📸 CAPTURE_BASE64_END');
+        }
+
     } catch (error) {
         console.error('❌ Erreur :', error);
         status.message = error.message;
@@ -148,7 +153,6 @@ async function exploreAllFrames(frame, depth = 0) {
         if (browser) await browser.close();
     }
 
-    // Sauvegarde du statut
     const statusPath = path.join(__dirname, 'public', 'status.json');
     fs.writeFileSync(statusPath, JSON.stringify(status, null, 2));
     console.log('📝 Statut enregistré');
