@@ -1,5 +1,5 @@
 {
   "success": false,
-  "time": "2026-04-09T18:37:26.152Z",
-  "message": "Failed to launch the browser process! undefined\n[2295:2295:0409/183726.405315:ERROR:ozone_platform_x11.cc(244)] Missing X server or $DISPLAY\n[2295:2295:0409/183726.405355:ERROR:env.cc(258)] The platform failed to initialize.  Exiting.\n\n\nTROUBLESHOOTING: https://pptr.dev/troubleshooting\n"
+  "time": "2026-04-09T18:45:34.280Z",
+  "message": "Échec de connexion (toujours sur login.php)"
 }
