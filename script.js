@@ -11,7 +11,32 @@ if (!EMAIL || !PASSWORD || !BROWSERLESS_TOKEN) {
     process.exit(1);
 }
 
-// Fonction d'attente d'un élément ou changement d'URL
+// --- Fonctions utilitaires pour simulation humaine ---
+const humanDelay = async (min = 500, max = 2000) => {
+    const ms = Math.floor(Math.random() * (max - min) + min);
+    await new Promise(resolve => setTimeout(resolve, ms));
+};
+
+const randomMouseMove = async (page) => {
+    const width = 1280;
+    const height = 720;
+    const x = Math.floor(Math.random() * width);
+    const y = Math.floor(Math.random() * height);
+    await page.mouse.move(x, y, { steps: Math.floor(Math.random() * 20) + 10 });
+};
+
+const randomScroll = async (page) => {
+    const scrollAmount = Math.floor(Math.random() * 500) + 100;
+    await page.evaluate((amount) => {
+        window.scrollBy({ top: amount, behavior: 'smooth' });
+    }, scrollAmount);
+    await humanDelay(300, 800);
+    await page.evaluate((amount) => {
+        window.scrollBy({ top: -amount / 2, behavior: 'smooth' });
+    }, scrollAmount);
+};
+
+// Fonction d'attente de succès de connexion (inchangée)
 async function waitForLoginSuccess(page, timeoutMs = 30000) {
     const start = Date.now();
     const checkInterval = 2000;
@@ -27,14 +52,12 @@ async function waitForLoginSuccess(page, timeoutMs = 30000) {
     ];
 
     while (Date.now() - start < timeoutMs) {
-        // Vérifier si l'URL a changé
         const currentUrl = page.url();
         if (!currentUrl.includes('login.php') && !currentUrl.includes('login')) {
             console.log(`✅ URL changée : ${currentUrl}`);
             return true;
         }
 
-        // Vérifier la présence d'un élément de session connectée
         for (const sel of successSelectors) {
             try {
                 const el = await page.$(sel);
@@ -46,7 +69,6 @@ async function waitForLoginSuccess(page, timeoutMs = 30000) {
             } catch (e) {}
         }
 
-        // Vérifier la présence d'un message d'erreur
         const errorMsg = await page.evaluate(() => {
             const errors = document.querySelectorAll('.alert-danger, .error, .message-error, [class*="error"]');
             return errors.length > 0 ? errors[0].textContent.trim() : null;
@@ -80,19 +102,40 @@ async function waitForLoginSuccess(page, timeoutMs = 30000) {
         await page.setViewport({ width: 1280, height: 720 });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-        // --- LOGIN ---
+        // --- LOGIN avec simulation humaine renforcée ---
         console.log('🌐 Accès login...');
         await page.goto('https://tronpick.io/login.php', { waitUntil: 'networkidle2', timeout: 30000 });
         console.log('   URL actuelle :', page.url());
+
+        // Mouvements aléatoires initiaux
+        await humanDelay(1000, 2500);
+        await randomMouseMove(page);
+        await randomScroll(page);
+        await humanDelay(500, 1500);
 
         const emailSelector = 'input[type="email"], input[name="email"], input#email';
         await page.waitForSelector(emailSelector, { timeout: 15000, visible: true });
         console.log('✅ Champ email détecté');
 
-        console.log('⌨️ Saisie identifiants...');
-        await page.type(emailSelector, EMAIL, { delay: 30 });
+        // Cliquer sur le champ email avant de taper (simule un focus humain)
+        await page.click(emailSelector);
+        await humanDelay(300, 700);
+        await randomMouseMove(page);
+
+        console.log('⌨️ Saisie identifiants avec délais réalistes...');
+        // Saisie lente avec délais variables entre les lettres
+        await page.type(emailSelector, EMAIL, { delay: () => Math.floor(Math.random() * 80) + 30 });
+        await humanDelay(600, 1200);
+        await randomMouseMove(page);
+
         const passwordSelector = 'input[type="password"], input[name="password"], input#password';
-        await page.type(passwordSelector, PASSWORD, { delay: 30 });
+        await page.click(passwordSelector);
+        await humanDelay(300, 700);
+        await page.type(passwordSelector, PASSWORD, { delay: () => Math.floor(Math.random() * 100) + 40 });
+
+        await humanDelay(800, 1500);
+        await randomMouseMove(page);
+        await randomScroll(page);
 
         // Recherche EXACTE du bouton "Log in"
         console.log('🔍 Recherche bouton "Log in"...');
@@ -105,12 +148,29 @@ async function waitForLoginSuccess(page, timeoutMs = 30000) {
             throw new Error('Bouton "Log in" introuvable');
         }
 
+        // Approcher la souris du bouton avant de cliquer
+        const box = await loginButton.boundingBox();
+        if (box) {
+            await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 15 });
+            await humanDelay(200, 500);
+        }
+
         console.log('🔐 Clic sur "Log in"...');
         await loginButton.click();
 
-        // Attendre la confirmation de connexion (AJAX possible)
-        console.log('⏳ Attente de la validation de connexion (max 30s)...');
-        const loggedIn = await waitForLoginSuccess(page, 30000);
+        // Après le clic, continuer à simuler une présence humaine
+        console.log('⏳ Attente de la validation de connexion (max 40s)...');
+        const startWait = Date.now();
+        let loggedIn = false;
+        while (Date.now() - startWait < 40000 && !loggedIn) {
+            loggedIn = await waitForLoginSuccess(page, 5000); // vérifie toutes les 5s
+            if (!loggedIn) {
+                // Simuler une activité humaine pendant l'attente
+                await randomMouseMove(page);
+                await humanDelay(1500, 3000);
+                await randomScroll(page);
+            }
+        }
 
         if (!loggedIn) {
             // Prendre une capture pour diagnostic
@@ -123,7 +183,7 @@ async function waitForLoginSuccess(page, timeoutMs = 30000) {
         }
 
         console.log('✅ Connecté avec succès !');
-        await page.waitForTimeout(2000);
+        await humanDelay(1000, 2000);
 
         // --- FAUCET ---
         console.log('🚰 Accès faucet...');
@@ -131,7 +191,9 @@ async function waitForLoginSuccess(page, timeoutMs = 30000) {
         console.log('   URL faucet :', page.url());
 
         console.log('⏳ Attente de 15 secondes pour chargement complet...');
-        await page.waitForTimeout(15000);
+        await humanDelay(10000, 15000);
+        await randomMouseMove(page);
+        await randomScroll(page);
 
         // --- RECHERCHE ET CLIC SUR CLAIM ---
         console.log('\n🎯 Recherche bouton CLAIM...');
@@ -182,7 +244,7 @@ async function waitForLoginSuccess(page, timeoutMs = 30000) {
             console.log(JSON.stringify(visibleElements, null, 2));
             status.message = 'Bouton CLAIM introuvable';
         } else {
-            await page.waitForTimeout(5000);
+            await humanDelay(4000, 6000);
             status.message = 'CLAIM cliqué avec succès';
         }
 
