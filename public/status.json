@@ -1,5 +1,5 @@
 {
   "success": false,
-  "time": "2026-04-09T13:22:40.736Z",
-  "message": "Requesting main frame too early!"
+  "time": "2026-04-09T13:27:59.578Z",
+  "message": "Protocol error (Input.dispatchMouseEvent): Target closed"
 }
