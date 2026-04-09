@@ -1,5 +1,5 @@
 {
   "success": false,
-  "time": "2026-04-09T17:04:35.910Z",
-  "message": "Node is either not clickable or not an Element"
+  "time": "2026-04-09T17:14:26.046Z",
+  "message": "Requesting main frame too early!"
 }
