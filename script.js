@@ -1,126 +1,144 @@
-const puppeteer = require('puppeteer-core');
-const fs = require('fs');
-const path = require('path');
+const puppeteer = require('puppeteer-extra');
+const Stealth = require('puppeteer-extra-plugin-stealth');
+
+puppeteer.use(Stealth());
 
 const EMAIL = process.env.TRONPICK_EMAIL;
 const PASSWORD = process.env.TRONPICK_PASSWORD;
-const BROWSERLESS_TOKEN = process.env.BROWSERLESS_TOKEN;
 
-if (!EMAIL || !PASSWORD || !BROWSERLESS_TOKEN) {
-    console.error('❌ Variables d\'environnement manquantes');
-    process.exit(1);
+// 🔁 liste proxies
+const proxies = [
+    "http://user:pass@host1:port",
+    "http://user:pass@host2:port",
+    "http://user:pass@host3:port"
+];
+
+const delay = ms => new Promise(r => setTimeout(r, ms));
+const rand = (a, b) => Math.floor(Math.random() * (b - a) + a);
+
+function getRandomProxy() {
+    return proxies[Math.floor(Math.random() * proxies.length)];
 }
 
-const delay = (ms) => new Promise(r => setTimeout(r, ms));
+// 🎭 comportement humain variable
+async function humanBehavior(page) {
+    await page.mouse.move(rand(100, 800), rand(100, 600), { steps: rand(10, 30) });
+    await delay(rand(300, 1500));
 
-async function waitForTurnstileAndClick(page) {
-    // Attendre que l'iframe Turnstile soit présente
-    console.log('⏳ Attente de l\'iframe Turnstile...');
-    const frame = await page.waitForFrame(
-        f => f.url().includes('challenges.cloudflare.com/turnstile'),
-        { timeout: 15000 }
-    ).catch(() => null);
-
-    if (!frame) {
-        console.log('⚠️ Iframe Turnstile non trouvée');
-        return false;
+    if (Math.random() > 0.5) {
+        await page.evaluate(() => window.scrollBy(0, window.innerHeight / 2));
     }
 
-    console.log('✅ Iframe Turnstile trouvée');
+    await delay(rand(500, 2000));
+}
 
-    // Attendre que le contenu soit chargé
-    await frame.waitForSelector('body', { timeout: 5000 }).catch(() => {});
+// ⌨️ typing humain
+async function humanType(page, selector, text) {
+    await page.click(selector);
 
-    // Cliquer sur la case
-    const clicked = await frame.evaluate(() => {
-        const label = document.querySelector('label');
-        if (label) { label.click(); return true; }
-        const cb = document.querySelector('input[type="checkbox"]');
-        if (cb) { cb.click(); return true; }
-        return false;
+    for (let char of text) {
+        await page.keyboard.type(char);
+        await delay(rand(50, 180));
+    }
+}
+
+// 🔍 détecter blocage
+async function isBlocked(page) {
+    const content = await page.content();
+
+    return content.includes("captcha") ||
+           content.includes("verify you are human") ||
+           content.includes("Cloudflare");
+}
+
+// 🔐 tentative login
+async function attemptLogin(attempt) {
+
+    const proxy = getRandomProxy();
+
+    console.log(`\n🚀 Tentative ${attempt} avec proxy: ${proxy}`);
+
+    const browser = await puppeteer.launch({
+        headless: false,
+        args: [`--proxy-server=${proxy}`],
+        userDataDir: `./profile_${attempt}`
     });
 
-    if (clicked) {
-        console.log('✅ Clic effectué sur Turnstile');
-    }
+    const page = await browser.newPage();
 
-    // Attendre que l'iframe disparaisse ou que la case soit cochée
-    console.log('⏳ Attente résolution Turnstile (max 30s)...');
-    const start = Date.now();
-    while (Date.now() - start < 30000) {
-        const frames = page.frames();
-        const stillThere = frames.some(f => f.url().includes('challenges.cloudflare.com/turnstile'));
-        if (!stillThere) {
-            console.log('✅ Iframe Turnstile disparue - challenge résolu');
-            return true;
-        }
-        try {
-            const isChecked = await frame.evaluate(() => {
-                const cb = document.querySelector('input[type="checkbox"]');
-                return cb ? cb.checked : false;
-            });
-            if (isChecked) {
-                console.log('✅ Case cochée');
-                await delay(2000);
-                return true;
-            }
-        } catch (e) {}
-        await delay(2000);
-    }
-    console.log('⚠️ Turnstile non résolu dans le temps imparti');
-    return false;
-}
-
-(async () => {
-    let browser;
-    const status = { success: false, time: new Date().toISOString(), message: '' };
     try {
-        browser = await puppeteer.connect({
-            browserWSEndpoint: `wss://chrome.browserless.io?token=${BROWSERLESS_TOKEN}`
+
+        await page.goto('https://tronpick.io/login.php', {
+            waitUntil: 'domcontentloaded'
         });
-        const page = await browser.newPage();
-        page.on('dialog', d => d.accept());
-        await page.setViewport({ width: 1280, height: 720 });
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36');
 
-        // Login page
-        await page.goto('https://tronpick.io/login.php', { waitUntil: 'networkidle2', timeout: 30000 });
-        await page.type('input[type="email"]', EMAIL, { delay: 30 });
-        await page.type('input[type="password"]', PASSWORD, { delay: 30 });
+        await humanBehavior(page);
 
-        // Laisser Turnstile apparaître
-        await delay(3000);
+        await humanType(page, 'input[type="email"]', EMAIL);
+        await delay(rand(800, 2000));
 
-        const resolved = await waitForTurnstileAndClick(page);
+        await humanType(page, 'input[type="password"]', PASSWORD);
+        await delay(rand(1000, 2500));
 
-        // Attendre un peu pour la stabilité de la page principale
-        await page.waitForFunction(() => document.readyState === 'complete', { timeout: 10000 });
-        await delay(2000);
+        // 👉 pause variable avant login
+        await delay(rand(2000, 5000));
 
-        // Cliquer sur Log in
-        const loginBtn = await page.evaluateHandle(() => {
-            return Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === 'Log in');
-        });
-        if (!loginBtn) throw new Error('Bouton Log in non trouvé');
+        const btns = await page.$$('button, input[type="submit"]');
 
-        await Promise.all([
-            page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {}),
-            loginBtn.click()
-        ]);
+        for (let btn of btns) {
+            const txt = await page.evaluate(el => el.innerText || el.value, btn);
+            if (txt && txt.toLowerCase().includes('log')) {
+                await btn.click();
+                break;
+            }
+        }
+
+        await page.waitForNavigation({ timeout: 20000 }).catch(() => {});
         await delay(5000);
 
-        if (!page.url().includes('login.php')) {
-            status.success = true;
-            status.message = 'Connexion réussie';
-        } else {
-            status.message = 'Échec connexion';
+        const url = page.url();
+
+        if (!url.includes('login')) {
+            console.log('✅ SUCCÈS');
+            await browser.close();
+            return true;
         }
+
+        if (await isBlocked(page)) {
+            console.log('🚫 Bloqué par Cloudflare');
+        }
+
+        await browser.close();
+        return false;
+
     } catch (e) {
-        console.error('❌', e);
-        status.message = e.message;
-    } finally {
-        if (browser) await browser.close();
-        fs.writeFileSync(path.join(__dirname, 'public', 'status.json'), JSON.stringify(status));
-        console.log('📝 Statut enregistré:', status.success ? 'SUCCÈS' : 'ÉCHEC');
+        console.log('❌ Erreur:', e.message);
+        await browser.close();
+        return false;
     }
+}
+
+// 🔁 retry intelligent
+(async () => {
+
+    const MAX_RETRY = 5;
+
+    for (let i = 1; i <= MAX_RETRY; i++) {
+
+        const success = await attemptLogin(i);
+
+        if (success) {
+            console.log('🎉 LOGIN FINAL RÉUSSI');
+            return;
+        }
+
+        // 🧠 backoff intelligent
+        const waitTime = rand(5000, 15000) * i;
+
+        console.log(`⏳ Attente ${waitTime / 1000}s avant retry...`);
+        await delay(waitTime);
+    }
+
+    console.log('❌ ÉCHEC TOTAL APRÈS PLUSIEURS TENTATIVES');
+
 })();
