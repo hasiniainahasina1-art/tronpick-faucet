@@ -1,5 +1,5 @@
 {
   "success": false,
-  "time": "2026-04-09T12:33:39.306Z",
-  "message": "Échec de connexion : aucun élément de session détecté et URL inchangée"
+  "time": "2026-04-09T13:22:40.736Z",
+  "message": "Requesting main frame too early!"
 }
