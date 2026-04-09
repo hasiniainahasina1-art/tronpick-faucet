@@ -2,32 +2,35 @@ name: Claim Tronpick Faucet
 
 on:
   schedule:
-    - cron: '0 */6 * * *'   # toutes les 6 heures
-  workflow_dispatch:         # permet de lancer manuellement
+    # Exécution toutes les 6 heures (modifiez selon vos besoins)
+    - cron: '0 */6 * * *'
+  workflow_dispatch:   # Permet de lancer manuellement depuis l'interface GitHub
 
 jobs:
   claim:
     runs-on: ubuntu-latest
     steps:
-      - name: Récupérer le code
+      - name: 📥 Récupérer le code source
         uses: actions/checkout@v4
 
-      - name: Installer Node.js
+      - name: 🟢 Installer Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Installer les dépendances
+      - name: 📦 Installer les dépendances
         run: npm install
 
-      - name: Exécuter le script
+      - name: 🤖 Exécuter le script de claim
         env:
           TRONPICK_EMAIL: ${{ secrets.TRONPICK_EMAIL }}
           TRONPICK_PASSWORD: ${{ secrets.TRONPICK_PASSWORD }}
+          PROXY_USERNAME: ${{ secrets.PROXY_USERNAME }}
+          PROXY_PASSWORD: ${{ secrets.PROXY_PASSWORD }}
           BROWSERLESS_TOKEN: ${{ secrets.BROWSERLESS_TOKEN }}
         run: node script.js
 
-      - name: Enregistrer le nouveau statut
+      - name: 📝 Commiter et pousser le nouveau statut
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
