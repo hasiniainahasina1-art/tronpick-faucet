@@ -37,16 +37,37 @@ if (!EMAIL || !PASSWORD || !BROWSERLESS_TOKEN) {
         await page.type('input[type="password"]', PASSWORD, { delay: 50 });
 
         console.log('🔐 Clic sur Login...');
-        await Promise.all([
-            page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }),
-            page.click('button:has-text("Login"), input[type="submit"]')
-        ]);
+
+        // === CORRECTION DU SÉLECTEUR (compatible Puppeteer) ===
+        // On cherche un bouton qui contient le texte "Login"
+        const buttons = await page.$$('button, input[type="submit"]');
+        let clicked = false;
+        for (const btn of buttons) {
+            const text = await page.evaluate(el => el.textContent || el.value, btn);
+            if (text && text.toLowerCase().includes('login')) {
+                await Promise.all([
+                    page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }),
+                    btn.click()
+                ]);
+                clicked = true;
+                break;
+            }
+        }
+
+        if (!clicked) {
+            // Fallback : cliquer sur le premier input submit
+            await Promise.all([
+                page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }),
+                page.click('input[type="submit"]')
+            ]);
+        }
 
         console.log('🚰 Accès à la page faucet...');
         await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
 
-        // Si vous voulez cliquer sur un bouton Claim, décommentez et adaptez le sélecteur :
-        // await page.click('button:has-text("Claim")');
+        // Si vous voulez cliquer sur un bouton Claim, décommentez et adaptez :
+        // const claimButton = await page.$('button:contains("Claim")');
+        // if (claimButton) await claimButton.click();
 
         status.success = true;
         status.message = 'Faucet visité avec succès';
