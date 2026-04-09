@@ -11,18 +11,22 @@ const MAX_RETRIES = 3;
 
 const delay = (ms) => new Promise(res => setTimeout(res, ms));
 
-const humanDelay = async (min = 800, max = 3000) => {
+const humanDelay = async (min = 1000, max = 4000) => {
     await delay(Math.floor(Math.random() * (max - min) + min));
 };
 
+// 🧠 Simulation humaine simple
 async function simulateHuman(page) {
-    await page.mouse.move(200 + Math.random()*300, 200 + Math.random()*300);
+    await page.mouse.move(300 + Math.random()*200, 300 + Math.random()*200);
     await humanDelay();
-    await page.evaluate(() => window.scrollBy(0, 200));
+
+    await page.evaluate(() => window.scrollBy(0, 250));
     await humanDelay();
-    await page.evaluate(() => window.scrollBy(0, -100));
+
+    await page.evaluate(() => window.scrollBy(0, -120));
 }
 
+// 🔍 Détection blocage
 async function detectBlock(page) {
     const content = await page.content();
 
@@ -37,6 +41,7 @@ async function detectBlock(page) {
     return null;
 }
 
+// 🛡️ Turnstile (best effort)
 async function handleTurnstile(page) {
     const frame = page.frames().find(f =>
         f.url().includes('challenges.cloudflare.com')
@@ -56,13 +61,15 @@ async function handleTurnstile(page) {
         }
 
         await delay(8000);
-
         return true;
+
     } catch (e) {
+        console.log('⚠️ Erreur Turnstile');
         return false;
     }
 }
 
+// 🔘 Trouver bouton login
 async function findLoginButton(page) {
     return await page.evaluateHandle(() => {
         const btns = [...document.querySelectorAll('button')];
@@ -73,23 +80,31 @@ async function findLoginButton(page) {
     });
 }
 
+// ✅ Vérifier login
 async function isLoggedIn(page) {
     return await page.evaluate(() => {
-        return document.body.innerText.includes('Dashboard') ||
-               document.body.innerText.includes('Logout') ||
-               !window.location.href.includes('login');
+        const txt = document.body.innerText.toLowerCase();
+        return (
+            txt.includes('dashboard') ||
+            txt.includes('logout') ||
+            txt.includes('account') ||
+            !window.location.href.includes('login')
+        );
     });
 }
 
+// 🚀 BOT PRINCIPAL
 async function runBot(attempt = 1) {
     console.log(`\n🚀 Tentative ${attempt}/${MAX_RETRIES}`);
 
     const browser = await puppeteer.launch({
-        headless: false, // 🔥 important
+        headless: 'new', // ✅ compatible serveur
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
-            '--disable-blink-features=AutomationControlled'
+            '--disable-dev-shm-usage',
+            '--disable-blink-features=AutomationControlled',
+            '--window-size=1366,768'
         ]
     });
 
@@ -98,6 +113,12 @@ async function runBot(attempt = 1) {
     try {
         await page.setViewport({ width: 1366, height: 768 });
 
+        await page.setUserAgent(
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+            '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        );
+
+        console.log('🌐 Accès page login...');
         await page.goto('https://tronpick.io/login.php', {
             waitUntil: 'domcontentloaded',
             timeout: 60000
@@ -106,11 +127,9 @@ async function runBot(attempt = 1) {
         await humanDelay(2000, 4000);
         await simulateHuman(page);
 
-        // 🔍 Détection blocage
-        const blockType = await detectBlock(page);
-        if (blockType) {
-            throw new Error(`Blocage détecté: ${blockType}`);
-        }
+        // 🔍 Vérifier blocage
+        const block = await detectBlock(page);
+        if (block) throw new Error(`Blocage détecté: ${block}`);
 
         // 📧 Email
         const emailInput = await page.$('input[type="email"], input[name="email"]');
@@ -124,6 +143,8 @@ async function runBot(attempt = 1) {
 
         // 🔑 Password
         const passInput = await page.$('input[type="password"]');
+        if (!passInput) throw new Error('Champ password introuvable');
+
         await passInput.click();
         await page.keyboard.type(PASSWORD, { delay: 100 });
 
@@ -132,12 +153,11 @@ async function runBot(attempt = 1) {
         // 🛡️ Turnstile avant clic
         await handleTurnstile(page);
 
-        // 🔘 Bouton login
+        // 🔘 Login button
         const loginBtn = await findLoginButton(page);
         if (!loginBtn) throw new Error('Bouton login introuvable');
 
         await loginBtn.click();
-
         console.log('🖱️ Clic login');
 
         await humanDelay(5000, 8000);
@@ -147,7 +167,7 @@ async function runBot(attempt = 1) {
 
         await humanDelay(5000, 8000);
 
-        // ✅ Vérification login
+        // ✅ Vérification
         const success = await isLoggedIn(page);
 
         if (success) {
@@ -163,7 +183,7 @@ async function runBot(attempt = 1) {
         await browser.close();
 
         if (attempt < MAX_RETRIES) {
-            console.log('🔁 Retry...');
+            console.log('🔁 Retry dans 5s...');
             await delay(5000);
             return runBot(attempt + 1);
         } else {
@@ -173,5 +193,5 @@ async function runBot(attempt = 1) {
     }
 }
 
-// 🚀 Lancement
+// 🚀 START
 runBot();
