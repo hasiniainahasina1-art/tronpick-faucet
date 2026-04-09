@@ -11,144 +11,73 @@ if (!EMAIL || !PASSWORD || !BROWSERLESS_TOKEN) {
     process.exit(1);
 }
 
-// Délai aléatoire (ms)
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const humanDelay = async (min = 500, max = 2000) => {
-    const ms = Math.floor(Math.random() * (max - min) + min);
-    await delay(ms);
+    await delay(Math.floor(Math.random() * (max - min) + min));
 };
 
-// Mouvement de souris réaliste dans une frame donnée
-async function humanMouseMove(frame, x, y, steps = 20) {
-    const viewport = await frame.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
-    const startX = Math.floor(viewport.width / 2);
-    const startY = Math.floor(viewport.height / 2);
-    await frame.evaluate((startX, startY, endX, endY, steps) => {
-        const mouse = document.createElement('div');
-        mouse.style.position = 'absolute';
-        mouse.style.width = '10px';
-        mouse.style.height = '10px';
-        mouse.style.borderRadius = '50%';
-        mouse.style.backgroundColor = 'rgba(0,0,0,0.1)';
-        mouse.style.zIndex = '999999';
-        document.body.appendChild(mouse);
-        for (let i = 0; i <= steps; i++) {
-            const cx = startX + (endX - startX) * (i / steps);
-            const cy = startY + (endY - startY) * (i / steps);
-            mouse.style.left = cx + 'px';
-            mouse.style.top = cy + 'px';
-            const event = new MouseEvent('mousemove', { clientX: cx, clientY: cy, bubbles: true });
-            document.elementFromPoint(cx, cy)?.dispatchEvent(event);
-        }
-        mouse.remove();
-    }, startX, startY, x, y, steps);
-    await humanDelay(100, 300);
-}
-
-// Fonction pour trouver l'iframe Turnstile
+// Recherche de l'iframe Turnstile
 async function findTurnstileFrame(page) {
     const frames = page.frames();
     for (const frame of frames) {
-        const url = frame.url();
-        if (url.includes('challenges.cloudflare.com') && url.includes('turnstile')) {
-            console.log(`✅ Iframe Turnstile trouvée : ${url}`);
+        if (frame.url().includes('challenges.cloudflare.com') && frame.url().includes('turnstile')) {
+            console.log(`✅ Iframe Turnstile trouvée`);
             return frame;
         }
     }
     return null;
 }
 
-// Fonction pour attendre que Turnstile soit chargé dans l'iframe
-async function waitForTurnstileWidget(turnstileFrame, timeoutMs = 15000) {
-    const start = Date.now();
-    while (Date.now() - start < timeoutMs) {
-        const widgetPresent = await turnstileFrame.evaluate(() => {
-            return !!document.querySelector('input[type="checkbox"], .challenge-container, #challenge-stage, [data-size="normal"], [data-size="compact"]');
-        });
-        if (widgetPresent) return true;
-        await delay(1000);
-    }
-    return false;
-}
+// Clic sur la case "Vérifier que vous êtes humain" dans l'iframe Turnstile
+async function clickTurnstileCheckbox(frame) {
+    console.log('🔍 Recherche de la case Turnstile dans l\'iframe...');
 
-// Fonction principale pour interagir avec Turnstile
-async function interactWithTurnstile(turnstileFrame) {
-    console.log('🖱️ Simulation d\'interaction humaine dans l\'iframe Turnstile...');
+    // Attendre que le widget soit chargé
+    await frame.waitForSelector('body', { timeout: 10000 });
 
-    // Mouvements de souris aléatoires dans l'iframe
-    for (let i = 0; i < 3; i++) {
-        const x = Math.floor(Math.random() * 400) + 100;
-        const y = Math.floor(Math.random() * 300) + 100;
-        await humanMouseMove(turnstileFrame, x, y, 15);
-        await humanDelay(200, 500);
-    }
-
-    // Essayer de trouver et cliquer sur la case à cocher Turnstile
-    const clickResult = await turnstileFrame.evaluate(() => {
-        // Sélecteurs possibles pour la case à cocher Turnstile
-        const selectors = [
-            'input[type="checkbox"]',
-            '.challenge-container input[type="checkbox"]',
-            '[data-size="normal"] input[type="checkbox"]',
-            '#challenge-stage input[type="checkbox"]',
-            'label[for*="checkbox"]',
-            'div[role="checkbox"]',
-            '.cb-i'
-        ];
-        for (const sel of selectors) {
-            const el = document.querySelector(sel);
-            if (el && el.offsetParent !== null) {
-                // Simuler un survol avant clic
-                el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-                el.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
-                el.click();
-                return { success: true, selector: sel };
-            }
+    // Plusieurs méthodes pour trouver la case
+    const clicked = await frame.evaluate(() => {
+        // 1. Chercher le label contenant le texte exact (via XPath)
+        const xpath = "//label[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'vérifier que vous êtes humain')]";
+        const label = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+        if (label) {
+            label.click();
+            return { success: true, method: 'label XPath' };
         }
-        // Si aucun sélecteur ne marche, cliquer au centre de l'iframe (souvent le widget)
+
+        // 2. Chercher un élément avec le texte (fallback)
+        const elements = Array.from(document.querySelectorAll('label, div, span, button'));
+        const target = elements.find(el => el.textContent.toLowerCase().includes('vérifier que vous êtes humain'));
+        if (target) {
+            target.click();
+            return { success: true, method: 'text search' };
+        }
+
+        // 3. Chercher l'input checkbox associé
+        const checkbox = document.querySelector('input[type="checkbox"]');
+        if (checkbox) {
+            checkbox.click();
+            return { success: true, method: 'checkbox input' };
+        }
+
+        // 4. Cliquer au centre (dernier recours)
         const centerX = window.innerWidth / 2;
         const centerY = window.innerHeight / 2;
         const element = document.elementFromPoint(centerX, centerY);
         if (element) {
-            element.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
             element.click();
-            return { success: true, clicked: 'center' };
+            return { success: true, method: 'center click' };
         }
+
         return { success: false };
     });
 
-    if (clickResult.success) {
-        console.log(`✅ Clic effectué sur Turnstile (${clickResult.selector || clickResult.clicked})`);
+    if (clicked.success) {
+        console.log(`✅ Clic effectué (${clicked.method})`);
     } else {
-        console.log('⚠️ Impossible de trouver un élément cliquable dans Turnstile.');
+        console.log('❌ Impossible de cliquer sur la case Turnstile');
     }
-
-    await humanDelay(2000, 4000);
-
-    // Attendre que le challenge se résolve (max 20s) en surveillant la disparition de l'iframe ou un changement d'état
-    console.log('⏳ Attente de la validation de Turnstile...');
-    const start = Date.now();
-    let resolved = false;
-    while (Date.now() - start < 20000) {
-        const isChecked = await turnstileFrame.evaluate(() => {
-            const cb = document.querySelector('input[type="checkbox"]');
-            return cb ? cb.checked : false;
-        });
-        if (isChecked) {
-            console.log('✅ Case cochée, attente de validation...');
-            resolved = true;
-            break;
-        }
-        // Vérifier aussi si l'iframe a changé d'URL ou disparu
-        await delay(2000);
-    }
-
-    if (resolved) {
-        // Attendre un peu plus pour la redirection
-        await humanDelay(3000, 5000);
-    }
-
-    return resolved;
+    return clicked.success;
 }
 
 (async () => {
@@ -170,31 +99,36 @@ async function interactWithTurnstile(turnstileFrame) {
         await page.setViewport({ width: 1280, height: 720 });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-        console.log('🌐 Accès login...');
+        // --- LOGIN PAGE ---
+        console.log('🌐 Accès à login.php...');
         await page.goto('https://tronpick.io/login.php', { waitUntil: 'networkidle2', timeout: 30000 });
 
+        // Remplir email
         const emailSelector = 'input[type="email"], input[name="email"], input#email';
         await page.waitForSelector(emailSelector, { timeout: 10000 });
-        await page.type(emailSelector, EMAIL, { delay: 50 });
+        await page.type(emailSelector, EMAIL, { delay: 30 });
+        await humanDelay(300, 600);
+
+        // Remplir password
         const passwordSelector = 'input[type="password"], input[name="password"], input#password';
-        await page.type(passwordSelector, PASSWORD, { delay: 50 });
+        await page.type(passwordSelector, PASSWORD, { delay: 30 });
+        await humanDelay(500, 1000);
 
-        // Attendre un peu pour que Turnstile s'injecte
-        console.log('⏳ Attente de l\'apparition de Turnstile...');
-        await delay(5000);
+        console.log('⏳ Attente de l\'injection de Turnstile...');
+        await delay(5000); // Laisser le temps à l'iframe d'apparaître
 
-        // Chercher l'iframe Turnstile
+        // --- RECHERCHE IFRAME TURNSTILE ---
         let turnstileFrame = await findTurnstileFrame(page);
         if (!turnstileFrame) {
-            // Parfois Turnstile n'apparaît qu'après un focus ou un clic ailleurs
-            console.log('🔄 Turnstile non trouvé, tentative de déclenchement par clic sur la page...');
-            await page.click('body', { offset: { x: 500, y: 300 } });
+            // Tenter de déclencher en cliquant ailleurs
+            console.log('🔄 Turnstile non visible, tentative de focus...');
+            await page.click('body', { offset: { x: 400, y: 400 } });
             await delay(3000);
             turnstileFrame = await findTurnstileFrame(page);
         }
 
         if (!turnstileFrame) {
-            console.log('❌ Iframe Turnstile introuvable. Capture pour diagnostic :');
+            console.log('❌ Iframe Turnstile introuvable. Capture d\'écran :');
             const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
             console.log('📸 CAPTURE_BASE64_START');
             console.log(screenshot);
@@ -202,48 +136,63 @@ async function interactWithTurnstile(turnstileFrame) {
             throw new Error('Iframe Turnstile non détectée');
         }
 
-        console.log('🎯 Interaction avec le widget Turnstile...');
-        const turnstileResolved = await interactWithTurnstile(turnstileFrame);
+        // --- CLIQUER SUR LA CASE TURNSTILE ---
+        console.log('🎯 Clic sur "Vérifier que vous êtes humain"...');
+        const checkboxClicked = await clickTurnstileCheckbox(turnstileFrame);
 
-        if (turnstileResolved) {
-            console.log('✅ Turnstile semble validé. Tentative de clic sur "Log in"...');
-            // Revenir à la page principale et cliquer sur Log in
-            const loginButton = await page.evaluateHandle(() => {
-                const buttons = Array.from(document.querySelectorAll('button'));
-                return buttons.find(btn => btn.textContent.trim() === 'Log in');
-            });
-            if (loginButton) {
-                await loginButton.click();
-                console.log('🔐 Clic sur Log in effectué');
-                await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => {});
-                await delay(5000);
-
-                // Vérifier si connecté
-                if (!page.url().includes('login.php')) {
-                    status.success = true;
-                    status.message = 'Connexion réussie après Turnstile';
-                } else {
-                    status.message = 'Échec de connexion malgré Turnstile';
-                }
-            } else {
-                status.message = 'Bouton Log in introuvable';
-            }
-        } else {
-            status.message = 'Turnstile non résolu';
+        if (!checkboxClicked) {
+            throw new Error('Échec du clic sur la case Turnstile');
         }
 
-        // Si toujours pas connecté, tenter une approche alternative : cliquer directement sur Log in et laisser Turnstile se résoudre après ?
-        if (!status.success) {
-            console.log('🔄 Tentative alternative : clic sur Log in et attente...');
-            const loginButton = await page.$('button');
-            if (loginButton) {
-                await loginButton.click();
-                await delay(15000);
-                if (!page.url().includes('login.php')) {
-                    status.success = true;
-                    status.message = 'Connexion réussie après attente post-clic';
-                }
+        // --- ATTENTE DE LA VALIDATION TURNSTILE ---
+        console.log('⏳ Attente de la validation Turnstile (max 25s)...');
+        const startWait = Date.now();
+        let turnstileValidated = false;
+        while (Date.now() - startWait < 25000) {
+            const isChecked = await turnstileFrame.evaluate(() => {
+                const cb = document.querySelector('input[type="checkbox"]');
+                return cb ? cb.checked : false;
+            });
+            if (isChecked) {
+                console.log('✅ Turnstile coché !');
+                turnstileValidated = true;
+                break;
             }
+            await delay(2000);
+        }
+
+        if (!turnstileValidated) {
+            console.log('⚠️ Turnstile non coché après attente, on tente quand même le login.');
+        }
+
+        // --- CLIQUER SUR LOGIN ---
+        console.log('🔐 Recherche du bouton "Log in"...');
+        const loginButton = await page.evaluateHandle(() => {
+            const buttons = Array.from(document.querySelectorAll('button'));
+            return buttons.find(btn => btn.textContent.trim() === 'Log in');
+        });
+
+        if (!loginButton) {
+            throw new Error('Bouton "Log in" introuvable');
+        }
+
+        await loginButton.click();
+        console.log('🖱️ Clic sur "Log in" effectué');
+
+        // Attendre la navigation
+        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(e => {
+            console.log('⚠️ Navigation timeout :', e.message);
+        });
+        await delay(5000);
+
+        // Vérifier si connecté
+        const currentUrl = page.url();
+        console.log('📍 URL après login :', currentUrl);
+        if (!currentUrl.includes('login.php')) {
+            status.success = true;
+            status.message = 'Connexion réussie après validation Turnstile';
+        } else {
+            status.message = 'Échec de connexion malgré Turnstile';
         }
 
     } catch (error) {
