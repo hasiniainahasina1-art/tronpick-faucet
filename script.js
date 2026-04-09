@@ -46,7 +46,8 @@ const randomScroll = async (page) => {
     await page.evaluate((y) => window.scrollBy({ top: -y / 2, behavior: 'smooth' }), scrollY);
 };
 
-async function waitForLoginSuccess(page, timeoutMs = 15000) {
+// Attente d'un signe de connexion réussie (élément ou URL)
+async function waitForLoginSuccess(page, timeoutMs = 20000) {
     const start = Date.now();
     const selectors = [
         'a[href*="dashboard"]',
@@ -70,20 +71,31 @@ async function waitForLoginSuccess(page, timeoutMs = 15000) {
     return false;
 }
 
-async function handleTurnstileIfPresent(page) {
-    const frames = page.frames();
-    const turnstileFrame = frames.find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
-    if (!turnstileFrame) return false;
-
-    console.log('🛡️ Turnstile détecté. Interaction...');
+// Gestion robuste de Turnstile avec attente d'iframe et interaction
+async function handleTurnstile(page, timeoutMs = 30000) {
+    console.log('🛡️ Attente de l\'iframe Turnstile...');
     try {
-        await turnstileFrame.waitForSelector('body', { timeout: 5000 });
-        const frameBox = await turnstileFrame.boundingBox();
+        // Attendre que l'iframe Turnstile apparaisse (max timeoutMs)
+        const frame = await page.waitForFrame(
+            f => f.url().includes('challenges.cloudflare.com/turnstile'),
+            { timeout: timeoutMs }
+        );
+        console.log('✅ Iframe Turnstile trouvée');
+
+        // Attendre que le contenu de l'iframe soit chargé
+        await frame.waitForSelector('body', { timeout: 5000 });
+        
+        // Mouvement de souris vers l'iframe
+        const frameBox = await frame.boundingBox();
         if (frameBox) {
             await humanMouseMove(page, frameBox.x + 150, frameBox.y + 150);
         }
-        await turnstileFrame.click('input[type="checkbox"]');
+
+        // Clic sur la case à cocher
+        await frame.click('input[type="checkbox"]');
         console.log('✅ Clic sur la case Turnstile');
+
+        // Attendre que le challenge se résolve (disparition de l'iframe ou case cochée)
         const start = Date.now();
         while (Date.now() - start < 25000) {
             const stillThere = page.frames().some(f => f.url().includes('challenges.cloudflare.com/turnstile'));
@@ -92,15 +104,20 @@ async function handleTurnstileIfPresent(page) {
                 return true;
             }
             try {
-                const checked = await turnstileFrame.$eval('input[type="checkbox"]', cb => cb.checked);
-                if (checked) console.log('✅ Case cochée');
+                const checked = await frame.$eval('input[type="checkbox"]', cb => cb.checked);
+                if (checked) {
+                    console.log('✅ Case Turnstile cochée');
+                    // Attendre un peu pour la validation silencieuse
+                    await delay(3000);
+                    return true;
+                }
             } catch (e) {}
             await delay(2000);
         }
-        console.log('⚠️ Timeout attente Turnstile');
+        console.log('⚠️ Timeout attente résolution Turnstile');
         return false;
     } catch (e) {
-        console.log('⚠️ Erreur interaction Turnstile:', e.message);
+        console.log('⚠️ Iframe Turnstile non trouvée dans le délai :', e.message);
         return false;
     }
 }
@@ -161,10 +178,10 @@ async function handleTurnstileIfPresent(page) {
         await humanMouseMove(page, 700, 500);
         await randomScroll(page);
 
-        console.log('⏳ Vérification Turnstile avant clic...');
-        await handleTurnstileIfPresent(page);
-        await delay(2000);
+        // Vérifier Turnstile avant clic (rare)
+        await handleTurnstile(page, 5000).catch(() => {});
 
+        // Trouver et cliquer sur "Log in"
         console.log('🔐 Recherche bouton "Log in"...');
         const loginButton = await page.evaluateHandle(() => {
             const buttons = Array.from(document.querySelectorAll('button'));
@@ -176,19 +193,28 @@ async function handleTurnstileIfPresent(page) {
         if (box) await humanMouseMove(page, box.x + box.width / 2, box.y + box.height / 2);
         await humanDelay(200, 500);
 
+        // Clic sur Log in (la requête AJAX va partir)
         console.log('🖱️ Clic sur "Log in"...');
         await loginButton.click();
 
-        console.log('⏳ Attente post-clic...');
-        await delay(3000);
-        const turnstileHandled = await handleTurnstileIfPresent(page);
-        if (turnstileHandled) {
-            console.log('✅ Turnstile post-clic traité');
-            await delay(5000);
+        // Attendre que le réseau soit inactif après le clic (AJAX)
+        console.log('⏳ Attente de la fin des requêtes AJAX...');
+        await page.waitForNetworkIdle({ timeout: 10000 }).catch(() => console.log('⚠️ Network idle timeout, poursuite...'));
+
+        // Gérer Turnstile qui apparaît après le clic
+        console.log('⏳ Gestion Turnstile post-clic...');
+        const turnstileResolved = await handleTurnstile(page, 25000);
+        if (turnstileResolved) {
+            console.log('✅ Turnstile résolu');
+            // Attendre à nouveau la fin des requêtes après validation
+            await page.waitForNetworkIdle({ timeout: 10000 }).catch(() => {});
+        } else {
+            console.log('⚠️ Turnstile non résolu ou non apparu');
         }
 
+        // Attendre la confirmation de connexion
         console.log('🔍 Attente de confirmation de connexion...');
-        const loggedIn = await waitForLoginSuccess(page, 20000);
+        const loggedIn = await waitForLoginSuccess(page, 15000);
         const currentUrl = page.url();
         console.log('📍 URL finale :', currentUrl);
 
