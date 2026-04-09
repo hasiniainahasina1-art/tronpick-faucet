@@ -19,9 +19,96 @@ if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const humanDelay = async (min = 500, max = 2000) => {
-    const ms = Math.floor(Math.random() * (max - min) + min);
+    const ms = Math.floor(Math.random() * (max - min + 1)) + min;
     await delay(ms);
 };
+
+const humanMouseMove = async (page, targetX, targetY) => {
+    const start = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
+    const steps = 25;
+    for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        const cp = {
+            x: start.x + (Math.random() - 0.5) * 200,
+            y: start.y + (Math.random() - 0.5) * 200
+        };
+        const x = Math.pow(1 - t, 2) * start.x + 2 * (1 - t) * t * cp.x + Math.pow(t, 2) * targetX;
+        const y = Math.pow(1 - t, 2) * start.y + 2 * (1 - t) * t * cp.y + Math.pow(t, 2) * targetY;
+        await page.mouse.move(x, y);
+        await delay(Math.floor(Math.random() * 20) + 10);
+    }
+};
+
+const randomScroll = async (page) => {
+    const scrollY = Math.floor(Math.random() * 300) + 100;
+    await page.evaluate((y) => window.scrollBy({ top: y, behavior: 'smooth' }), scrollY);
+    await humanDelay(300, 800);
+    await page.evaluate((y) => window.scrollBy({ top: -y / 2, behavior: 'smooth' }), scrollY);
+};
+
+// Fonction pour attendre un élément de connexion réussie (dashboard, logout, etc.)
+async function waitForLoginSuccess(page, timeoutMs = 15000) {
+    const start = Date.now();
+    const selectors = [
+        'a[href*="dashboard"]',
+        'a[href*="account"]',
+        'a:contains("Logout")',
+        'a:contains("Sign out")',
+        '.user-menu',
+        '.navbar-user',
+        '[data-testid="user-menu"]'
+    ];
+    while (Date.now() - start < timeoutMs) {
+        for (const sel of selectors) {
+            try {
+                const el = await page.$(sel);
+                if (el) return true;
+            } catch (e) {}
+        }
+        // Vérifier aussi le changement d'URL (redirection)
+        if (!page.url().includes('login.php')) return true;
+        await delay(1000);
+    }
+    return false;
+}
+
+// Fonction pour gérer Turnstile s'il apparaît
+async function handleTurnstileIfPresent(page) {
+    const frames = page.frames();
+    const turnstileFrame = frames.find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
+    if (!turnstileFrame) return false;
+
+    console.log('🛡️ Turnstile détecté. Interaction...');
+    try {
+        await turnstileFrame.waitForSelector('body', { timeout: 5000 });
+        const frameBox = await turnstileFrame.boundingBox();
+        if (frameBox) {
+            await humanMouseMove(page, frameBox.x + 150, frameBox.y + 150);
+        }
+        await turnstileFrame.click('input[type="checkbox"]');
+        console.log('✅ Clic sur la case Turnstile');
+        // Attendre que le challenge se résolve (max 25s)
+        const start = Date.now();
+        while (Date.now() - start < 25000) {
+            const stillThere = page.frames().some(f => f.url().includes('challenges.cloudflare.com/turnstile'));
+            if (!stillThere) {
+                console.log('✅ Turnstile disparu, challenge résolu');
+                return true;
+            }
+            // Vérifier si case cochée
+            try {
+                const checked = await turnstileFrame.$eval('input[type="checkbox"]', cb => cb.checked);
+                if (checked) console.log('✅ Case cochée');
+            } catch (e) {}
+            await delay(2000);
+        }
+        console.log('⚠️ Timeout attente Turnstile');
+        return false;
+    } catch (e) {
+        console.log('⚠️ Erreur interaction Turnstile:', e.message);
+        return false;
+    }
+}
 
 (async () => {
     let browser;
@@ -34,7 +121,7 @@ const humanDelay = async (min = 500, max = 2000) => {
     try {
         console.log('🚀 Lancement du navigateur avec proxy résidentiel...');
         browser = await puppeteer.launch({
-            headless: 'new',  // 🔧 Nouveau mode headless (furtif)
+            headless: 'new',
             args: [
                 '--disable-blink-features=AutomationControlled',
                 `--proxy-server=http://${PROXY_HOST}:${PROXY_PORT}`,
@@ -48,89 +135,87 @@ const humanDelay = async (min = 500, max = 2000) => {
         });
 
         const page = await browser.newPage();
-
-        // Authentification proxy
-        await page.authenticate({
-            username: PROXY_USERNAME,
-            password: PROXY_PASSWORD
-        });
+        await page.authenticate({ username: PROXY_USERNAME, password: PROXY_PASSWORD });
         console.log('✅ Proxy authentifié');
 
-        page.on('dialog', async dialog => {
-            console.log('📢 Alerte :', dialog.message());
-            await dialog.accept();
-        });
-
+        page.on('dialog', async dialog => { await dialog.accept(); });
         await page.setViewport({ width: 1280, height: 720 });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-        // --- LOGIN ---
-        console.log('🌐 Accès à la page de login...');
+        // --- LOGIN PAGE ---
+        console.log('🌐 Accès login...');
         await page.goto('https://tronpick.io/login.php', { waitUntil: 'networkidle2', timeout: 30000 });
         await humanDelay(1000, 2000);
+        await randomScroll(page);
 
-        console.log('⌨️ Remplissage des identifiants...');
+        // Remplissage
+        console.log('⌨️ Remplissage identifiants...');
         const emailSelector = 'input[type="email"], input[name="email"], input#email';
         await page.waitForSelector(emailSelector, { timeout: 10000 });
-        await page.type(emailSelector, EMAIL, { delay: 50 });
-        await humanDelay(300, 600);
+        await page.click(emailSelector);
+        await humanDelay(200, 400);
+        await page.type(emailSelector, EMAIL, { delay: () => Math.floor(Math.random() * 80) + 30 });
+        await humanDelay(400, 800);
+        await humanMouseMove(page, 600, 400);
+        await randomScroll(page);
 
         const passwordSelector = 'input[type="password"], input[name="password"], input#password';
-        await page.type(passwordSelector, PASSWORD, { delay: 50 });
+        await page.click(passwordSelector);
+        await humanDelay(200, 400);
+        await page.type(passwordSelector, PASSWORD, { delay: () => Math.floor(Math.random() * 100) + 40 });
         await humanDelay(500, 1000);
+        await humanMouseMove(page, 700, 500);
+        await randomScroll(page);
 
-        // --- TURNSTILE (gestion headless) ---
-        console.log('⏳ Attente de l\'apparition éventuelle de Turnstile...');
-        await delay(5000);
+        // Vérifier Turnstile avant clic
+        console.log('⏳ Vérification Turnstile avant clic...');
+        await handleTurnstileIfPresent(page);
+        await delay(2000);
 
-        const turnstileFrame = page.frames().find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
-        if (turnstileFrame) {
-            console.log('🛡️ Turnstile détecté. Tentative de clic automatique...');
-            try {
-                await turnstileFrame.waitForSelector('body', { timeout: 5000 });
-                await turnstileFrame.click('input[type="checkbox"]');
-                console.log('✅ Clic sur la case Turnstile effectué');
-                await delay(20000);
-            } catch (e) {
-                console.log('⚠️ Interaction Turnstile échouée, on tente la connexion directe.');
-            }
-        } else {
-            console.log('✅ Aucun Turnstile visible pour le moment.');
-        }
-
-        // --- CLIQUER SUR LOGIN ---
-        console.log('🔐 Recherche du bouton "Log in"...');
+        // Trouver et cliquer sur "Log in"
+        console.log('🔐 Recherche bouton "Log in"...');
         const loginButton = await page.evaluateHandle(() => {
             const buttons = Array.from(document.querySelectorAll('button'));
             return buttons.find(btn => btn.textContent.trim() === 'Log in');
         });
+        if (!loginButton) throw new Error('Bouton "Log in" introuvable');
 
-        if (!loginButton) {
-            throw new Error('Bouton "Log in" introuvable');
+        const box = await loginButton.boundingBox();
+        if (box) await humanMouseMove(page, box.x + box.width / 2, box.y + box.height / 2);
+        await humanDelay(200, 500);
+
+        // Clic sur Log in (sans waitForNavigation car AJAX)
+        console.log('🖱️ Clic sur "Log in"...');
+        await loginButton.click();
+
+        // Après le clic, attendre que Turnstile apparaisse éventuellement
+        console.log('⏳ Attente post-clic...');
+        await delay(3000);
+        const turnstileHandled = await handleTurnstileIfPresent(page);
+        if (turnstileHandled) {
+            console.log('✅ Turnstile post-clic traité');
+            // Après résolution, il se peut que le site redirige automatiquement
+            await delay(5000);
         }
 
-        await Promise.all([
-            page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(e => {
-                console.log('⚠️ Navigation timeout :', e.message);
-            }),
-            loginButton.click()
-        ]);
-
-        await delay(5000);
+        // Attendre un signe de connexion réussie
+        console.log('🔍 Attente de confirmation de connexion...');
+        const loggedIn = await waitForLoginSuccess(page, 20000);
         const currentUrl = page.url();
-        console.log('📍 URL après connexion :', currentUrl);
+        console.log('📍 URL finale :', currentUrl);
 
-        if (currentUrl.includes('login.php')) {
+        if (loggedIn || !currentUrl.includes('login.php')) {
+            status.success = true;
+            status.message = 'Connexion réussie !';
+            console.log('✅ Connexion réussie !');
+        } else {
+            // Vérifier message d'erreur
             const errorMsg = await page.evaluate(() => {
                 const err = document.querySelector('.alert-danger, .error, .message-error');
                 return err ? err.textContent.trim() : null;
             });
-            status.message = errorMsg ? `Échec: ${errorMsg}` : 'Échec de connexion (toujours sur login.php)';
+            status.message = errorMsg ? `Échec: ${errorMsg}` : 'Échec de connexion';
             console.log('❌', status.message);
-        } else {
-            status.success = true;
-            status.message = 'Connexion réussie !';
-            console.log('✅ Connexion réussie !');
         }
 
     } catch (error) {
