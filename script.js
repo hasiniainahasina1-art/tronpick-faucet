@@ -26,6 +26,13 @@ if (!EMAIL || !PASSWORD || !BROWSERLESS_TOKEN) {
         });
 
         const page = await browser.newPage();
+
+        // Gérer les boîtes de dialogue (alertes) automatiquement
+        page.on('dialog', async dialog => {
+            console.log('📢 Message du site :', dialog.message());
+            await dialog.accept();
+        });
+
         await page.setViewport({ width: 1280, height: 720 });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
@@ -37,7 +44,6 @@ if (!EMAIL || !PASSWORD || !BROWSERLESS_TOKEN) {
         console.log('✅ Champs email/password détectés');
 
         console.log('⌨️ Saisie des identifiants...');
-        // Remplissage robuste
         const emailField = await page.$('input[type="email"], input[name="email"], input#email');
         await emailField.type(EMAIL, { delay: 50 });
         const passwordField = await page.$('input[type="password"], input[name="password"], input#password');
@@ -45,10 +51,8 @@ if (!EMAIL || !PASSWORD || !BROWSERLESS_TOKEN) {
 
         console.log('🔍 Recherche et clic sur le bouton de connexion...');
 
-        // Stratégie multi‑niveaux pour trouver le bouton
         let loginSuccess = false;
 
-        // 1. Essayer les sélecteurs CSS les plus probables
         const possibleSelectors = [
             'button[type="submit"]',
             'input[type="submit"]',
@@ -73,7 +77,6 @@ if (!EMAIL || !PASSWORD || !BROWSERLESS_TOKEN) {
                         page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {}),
                         element.click()
                     ]);
-                    // Vérifier si l'URL a changé
                     await page.waitForTimeout(3000);
                     const currentUrl = page.url();
                     if (!currentUrl.includes('login.php')) {
@@ -83,11 +86,10 @@ if (!EMAIL || !PASSWORD || !BROWSERLESS_TOKEN) {
                     }
                 }
             } catch (e) {
-                // On passe au sélecteur suivant
+                // continuer
             }
         }
 
-        // 2. Si aucun sélecteur CSS n'a fonctionné, chercher par texte dans tous les éléments cliquables
         if (!loginSuccess) {
             console.log('🔄 Recherche avancée par texte...');
             const clicked = await page.evaluate(() => {
@@ -102,7 +104,6 @@ if (!EMAIL || !PASSWORD || !BROWSERLESS_TOKEN) {
                         return true;
                     }
                 }
-                // Dernier recours : cliquer sur le premier bouton du formulaire
                 const form = document.querySelector('form');
                 if (form) {
                     const firstButton = form.querySelector('button, input[type="submit"]');
@@ -121,7 +122,6 @@ if (!EMAIL || !PASSWORD || !BROWSERLESS_TOKEN) {
             }
         }
 
-        // 3. Si toujours pas connecté, on essaie d'appuyer sur Entrée dans le champ password
         if (!loginSuccess) {
             console.log('⌨️ Tentative avec la touche Entrée...');
             await page.focus('input[type="password"]');
@@ -141,28 +141,62 @@ if (!EMAIL || !PASSWORD || !BROWSERLESS_TOKEN) {
         console.log('🚰 Accès à la page faucet...');
         await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
 
-        // (Optionnel) Cliquer sur le bouton Claim si nécessaire
-        // Décommentez et adaptez si un clic supplémentaire est requis
-        /*
+        // -------------------------------------------------------------------
+        // CLIC SUR LE BOUTON CLAIM
+        // -------------------------------------------------------------------
+        console.log('🎁 Recherche du bouton CLAIM...');
         const claimSelectors = [
+            'button:contains("CLAIM")',
             'button:contains("Claim")',
-            'button:contains("Get")',
+            'button:contains("claim")',
+            'input[value="CLAIM"]',
             'input[value="Claim"]',
+            'button[type="submit"]', // parfois le claim est un submit
             '.claim-button',
-            '#claim-btn'
+            '#claim-btn',
+            'form button' // dernier recours : premier bouton du formulaire
         ];
+
+        let claimClicked = false;
         for (const sel of claimSelectors) {
             const claimBtn = await page.$(sel);
             if (claimBtn) {
                 await claimBtn.click();
-                console.log('🎁 Bouton Claim cliqué');
+                console.log(`✅ Bouton CLAIM cliqué avec le sélecteur : ${sel}`);
+                claimClicked = true;
+                // Attendre une éventuelle réponse (alerte, redirection)
+                await page.waitForTimeout(4000);
                 break;
             }
         }
-        */
+
+        if (!claimClicked) {
+            // Essayer une recherche textuelle avancée pour le claim
+            const foundClaim = await page.evaluate(() => {
+                const items = Array.from(document.querySelectorAll('button, input[type="submit"], a, div[role="button"]'));
+                const claimKw = ['claim', 'get', 'receive', 'roll'];
+                for (const el of items) {
+                    const txt = (el.textContent || el.value || '').toLowerCase();
+                    if (claimKw.some(kw => txt.includes(kw))) {
+                        el.click();
+                        return true;
+                    }
+                }
+                return false;
+            });
+            if (foundClaim) {
+                console.log('✅ Bouton CLAIM trouvé par recherche textuelle');
+                claimClicked = true;
+                await page.waitForTimeout(4000);
+            }
+        }
+
+        if (!claimClicked) {
+            console.log('⚠️ Aucun bouton CLAIM trouvé, on considère que la visite suffit');
+        }
 
         status.success = true;
-        status.message = 'Faucet visité avec succès';
+        status.message = 'Faucet visité' + (claimClicked ? ' et CLAIM cliqué' : '') + ' avec succès';
         console.log('✅ Script terminé avec succès');
 
     } catch (error) {
