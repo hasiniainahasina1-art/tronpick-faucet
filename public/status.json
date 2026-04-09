@@ -1,5 +1,5 @@
 {
   "success": false,
-  "time": "2026-04-09T18:33:54.226Z",
-  "message": "Failed to launch the browser process!\n[2353:2353:0409/183354.328492:FATAL:zygote_host_impl_linux.cc(126)] No usable sandbox! Update your kernel or see https://chromium.googlesource.com/chromium/src/+/main/docs/linux/suid_sandbox_development.md for more information on developing with the SUID sandbox. If you want to live dangerously and need an immediate workaround, you can try using --no-sandbox.\n[0409/183354.335808:ERROR:file_io_posix.cc(145)] open /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq: No such file or directory (2)\n[0409/183354.335856:ERROR:file_io_posix.cc(145)] open /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq: No such file or directory (2)\n\n\nTROUBLESHOOTING: https://pptr.dev/troubleshooting\n"
+  "time": "2026-04-09T18:37:26.152Z",
+  "message": "Failed to launch the browser process! undefined\n[2295:2295:0409/183726.405315:ERROR:ozone_platform_x11.cc(244)] Missing X server or $DISPLAY\n[2295:2295:0409/183726.405355:ERROR:env.cc(258)] The platform failed to initialize.  Exiting.\n\n\nTROUBLESHOOTING: https://pptr.dev/troubleshooting\n"
 }
