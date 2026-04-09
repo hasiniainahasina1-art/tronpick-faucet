@@ -1,5 +1,5 @@
 {
   "success": false,
-  "time": "2026-04-09T12:27:44.913Z",
-  "message": "Échec de connexion : toujours sur login.php"
+  "time": "2026-04-09T12:33:39.306Z",
+  "message": "Échec de connexion : aucun élément de session détecté et URL inchangée"
 }
