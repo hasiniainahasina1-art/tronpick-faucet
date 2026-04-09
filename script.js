@@ -11,7 +11,6 @@ if (!EMAIL || !PASSWORD || !BROWSERLESS_TOKEN) {
     process.exit(1);
 }
 
-// Fonction utilitaire : trouver un élément par son texte
 async function findAndClickByText(page, keywords, tagNames = ['button', 'a', 'input']) {
     const found = await page.evaluate((kw, tags) => {
         const elements = Array.from(document.querySelectorAll(tags.join(',')));
@@ -19,10 +18,10 @@ async function findAndClickByText(page, keywords, tagNames = ['button', 'a', 'in
             const text = (el.textContent || el.value || el.getAttribute('aria-label') || '').toLowerCase();
             if (kw.some(k => text.includes(k.toLowerCase()))) {
                 el.click();
-                return true;
+                return { clicked: true, text: text };
             }
         }
-        return false;
+        return { clicked: false };
     }, keywords, tagNames);
     return found;
 }
@@ -43,141 +42,130 @@ async function findAndClickByText(page, keywords, tagNames = ['button', 'a', 'in
 
         const page = await browser.newPage();
 
-        // Accepter automatiquement les alertes
         page.on('dialog', async dialog => {
-            console.log('📢 Message du site :', dialog.message());
+            console.log('📢 Dialog :', dialog.message());
             await dialog.accept();
         });
 
         await page.setViewport({ width: 1280, height: 720 });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-        console.log('🌐 Accès à la page de login...');
+        // --- LOGIN ---
+        console.log('🌐 Accès login...');
         await page.goto('https://tronpick.io/login.php', { waitUntil: 'networkidle2', timeout: 30000 });
-
-        // Attendre les champs
         await page.waitForSelector('input[type="email"], input[name="email"], input#email', { timeout: 10000 });
-        console.log('✅ Champs email/password détectés');
 
-        console.log('⌨️ Saisie des identifiants...');
         const emailField = await page.$('input[type="email"], input[name="email"], input#email');
         await emailField.type(EMAIL, { delay: 50 });
         const passwordField = await page.$('input[type="password"], input[name="password"], input#password');
         await passwordField.type(PASSWORD, { delay: 50 });
 
-        console.log('🔍 Recherche et clic sur le bouton de connexion...');
-
+        // Clic login (recherche par sélecteurs + texte)
         let loginSuccess = false;
-
-        // 1. Essayer les sélecteurs CSS simples (sans :contains)
-        const simpleSelectors = [
-            'button[type="submit"]',
-            'input[type="submit"]',
-            'form button',
-            'form input[type="submit"]',
-            '.btn-login',
-            '#login-button',
-            '[data-testid="login-button"]'
-        ];
-
+        const simpleSelectors = ['button[type="submit"]', 'input[type="submit"]', 'form button'];
         for (const sel of simpleSelectors) {
-            try {
-                const element = await page.$(sel);
-                if (element) {
-                    console.log(`   Essai du sélecteur : ${sel}`);
-                    await Promise.all([
-                        page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {}),
-                        element.click()
-                    ]);
-                    await page.waitForTimeout(3000);
-                    if (!page.url().includes('login.php')) {
-                        console.log(`✅ Connexion réussie avec : ${sel}`);
-                        loginSuccess = true;
-                        break;
-                    }
-                }
-            } catch (e) {}
-        }
-
-        // 2. Recherche par texte
-        if (!loginSuccess) {
-            console.log('🔄 Recherche par texte du bouton login...');
-            const loginKeywords = ['login', 'sign in', 'connexion', 'se connecter', 'enter', 'go'];
-            const clicked = await findAndClickByText(page, loginKeywords, ['button', 'input', 'a']);
-            if (clicked) {
-                console.log('✅ Bouton login cliqué via recherche textuelle');
-                await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {});
-                loginSuccess = true;
+            const el = await page.$(sel);
+            if (el) {
+                await Promise.all([page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {}), el.click()]);
+                await page.waitForTimeout(3000);
+                if (!page.url().includes('login.php')) { loginSuccess = true; break; }
             }
         }
-
-        // 3. Touche Entrée
         if (!loginSuccess) {
-            console.log('⌨️ Tentative avec la touche Entrée...');
+            const clicked = await findAndClickByText(page, ['login', 'sign in', 'connexion'], ['button', 'input', 'a']);
+            if (clicked.clicked) { await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {}); loginSuccess = true; }
+        }
+        if (!loginSuccess) {
             await page.focus('input[type="password"]');
             await page.keyboard.press('Enter');
             await page.waitForTimeout(3000);
-            if (!page.url().includes('login.php')) {
-                console.log('✅ Connexion réussie avec Entrée');
-                loginSuccess = true;
-            }
+            if (!page.url().includes('login.php')) loginSuccess = true;
         }
+        if (!loginSuccess) throw new Error('Échec connexion');
 
-        if (!loginSuccess) {
-            throw new Error('Impossible de se connecter après plusieurs tentatives');
-        }
-
-        console.log('🚰 Accès à la page faucet...');
+        // --- FAUCET ---
+        console.log('🚰 Accès faucet...');
         await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
 
-        // -------------------------------------------------------------------
-        // CLIC SUR LE BOUTON CLAIM
-        // -------------------------------------------------------------------
-        console.log('🎁 Recherche du bouton CLAIM...');
+        // Lister tous les boutons visibles (pour diagnostic)
+        const buttonsInfo = await page.evaluate(() => {
+            return Array.from(document.querySelectorAll('button, input[type="submit"], a, div[role="button"]'))
+                .map(el => ({
+                    tag: el.tagName,
+                    text: (el.textContent || el.value || '').trim().substring(0, 50),
+                    disabled: el.disabled || false,
+                    className: el.className,
+                    id: el.id
+                }));
+        });
+        console.log('📋 Boutons trouvés sur la page faucet :', JSON.stringify(buttonsInfo, null, 2));
 
-        // Sélecteurs CSS simples (sans :contains)
-        const simpleClaimSelectors = [
-            'button[type="submit"]',
-            'input[type="submit"]',
-            '.claim-button',
-            '#claim-btn',
-            'form button'
-        ];
+        // Capture AVANT clic
+        const screenshotBefore = await page.screenshot({ encoding: 'base64' });
+        console.log('📸 Capture AVANT clic (base64, 100 premiers caractères) :', screenshotBefore.substring(0, 100) + '...');
 
+        // Recherche et clic sur le bouton CLAIM (plus précis)
         let claimClicked = false;
-        for (const sel of simpleClaimSelectors) {
-            const btn = await page.$(sel);
-            if (btn) {
-                // Vérifier que le texte contient "claim" (optionnel mais prudent)
-                const text = await page.evaluate(el => (el.textContent || el.value || '').toLowerCase(), btn);
-                if (text.includes('claim')) {
-                    await btn.click();
-                    console.log(`✅ Bouton CLAIM cliqué avec : ${sel}`);
-                    claimClicked = true;
-                    await page.waitForTimeout(4000);
-                    break;
-                }
-            }
-        }
+        let clickedButtonText = '';
 
-        // Si pas trouvé, recherche textuelle large
-        if (!claimClicked) {
-            const claimKeywords = ['claim', 'get', 'receive', 'roll'];
-            const foundClaim = await findAndClickByText(page, claimKeywords, ['button', 'input', 'a', 'div']);
-            if (foundClaim) {
-                console.log('✅ Bouton CLAIM trouvé par recherche textuelle');
+        // Stratégie 1 : chercher un bouton avec texte exact "CLAIM" (insensible casse)
+        const claimBtn = await page.evaluateHandle(() => {
+            const btns = Array.from(document.querySelectorAll('button, input[type="submit"], a'));
+            return btns.find(el => (el.textContent || el.value || '').trim().toUpperCase() === 'CLAIM');
+        });
+
+        if (claimBtn && (await claimBtn.asElement()) !== null) {
+            const btn = claimBtn.asElement();
+            const isDisabled = await btn.evaluate(el => el.disabled);
+            if (!isDisabled) {
+                await btn.click();
+                clickedButtonText = await btn.evaluate(el => el.textContent || el.value);
+                console.log(`✅ Clic sur bouton exact "CLAIM" (${clickedButtonText})`);
                 claimClicked = true;
-                await page.waitForTimeout(4000);
+            } else {
+                console.log('⚠️ Bouton CLAIM trouvé mais désactivé');
             }
         }
 
+        // Stratégie 2 : recherche par mot-clé si pas trouvé
         if (!claimClicked) {
-            console.log('⚠️ Aucun bouton CLAIM trouvé (la visite simple suffit peut-être)');
+            const result = await findAndClickByText(page, ['claim', 'get', 'receive', 'roll'], ['button', 'input', 'a']);
+            if (result.clicked) {
+                claimClicked = true;
+                clickedButtonText = result.text;
+                console.log(`✅ Clic par mot-clé sur "${clickedButtonText}"`);
+            }
+        }
+
+        if (claimClicked) {
+            // Attendre une éventuelle réponse
+            await page.waitForTimeout(5000);
+
+            // Capture APRÈS clic
+            const screenshotAfter = await page.screenshot({ encoding: 'base64' });
+            console.log('📸 Capture APRÈS clic (base64, 100 premiers caractères) :', screenshotAfter.substring(0, 100) + '...');
+
+            // Vérifier la présence d'un message de succès/erreur
+            const messages = await page.evaluate(() => {
+                const selectors = ['.alert', '.message', '.notice', '.success', '.error', '[class*="toast"]', '[class*="notification"]'];
+                for (const sel of selectors) {
+                    const el = document.querySelector(sel);
+                    if (el) return { text: el.textContent.trim(), selector: sel };
+                }
+                return null;
+            });
+            if (messages) {
+                console.log('💬 Message détecté :', messages.text, '(', messages.selector, ')');
+                status.message = `CLAIM cliqué. Réponse site : ${messages.text.substring(0, 100)}`;
+            } else {
+                status.message = `CLAIM cliqué (bouton "${clickedButtonText}") mais aucun message visible`;
+            }
+        } else {
+            console.log('❌ Aucun bouton CLAIM trouvé');
+            status.message = 'Aucun bouton CLAIM trouvé';
         }
 
         status.success = true;
-        status.message = 'Faucet visité' + (claimClicked ? ' et CLAIM cliqué' : '') + ' avec succès';
-        console.log('✅ Script terminé avec succès');
 
     } catch (error) {
         console.error('❌ Erreur :', error);
@@ -188,5 +176,5 @@ async function findAndClickByText(page, keywords, tagNames = ['button', 'a', 'in
 
     const statusPath = path.join(__dirname, 'public', 'status.json');
     fs.writeFileSync(statusPath, JSON.stringify(status, null, 2));
-    console.log('📝 Statut enregistré dans', statusPath);
+    console.log('📝 Statut enregistré');
 })();
