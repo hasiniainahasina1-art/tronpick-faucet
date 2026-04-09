@@ -1,0 +1,35 @@
+name: Claim Tronpick Faucet
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'   # toutes les 6 heures
+  workflow_dispatch:         # permet de lancer manuellement
+
+jobs:
+  claim:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Installer les dépendances
+        run: npm install
+
+      - name: Exécuter le script
+        env:
+          TRONPICK_EMAIL: ${{ secrets.TRONPICK_EMAIL }}
+          TRONPICK_PASSWORD: ${{ secrets.TRONPICK_PASSWORD }}
+          BROWSERLESS_TOKEN: ${{ secrets.BROWSERLESS_TOKEN }}
+        run: node script.js
+
+      - name: Enregistrer le nouveau statut
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add public/status.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "🔄 Mise à jour du statut faucet [skip ci]" && git push)
