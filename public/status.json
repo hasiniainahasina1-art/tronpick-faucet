@@ -1,5 +1,5 @@
 {
   "success": false,
-  "time": "2026-04-09T13:27:59.578Z",
-  "message": "Protocol error (Input.dispatchMouseEvent): Target closed"
+  "time": "2026-04-09T17:04:35.910Z",
+  "message": "Node is either not clickable or not an Element"
 }
