@@ -8,11 +8,10 @@ if (!EMAIL || !PASSWORD || !BROWSERLESS_TOKEN) {
     process.exit(1);
 }
 
-// Délai aléatoire
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Recherche du texte "Vérifier que vous êtes humain" dans la page et les iframes
-async function findTurnstileText(page) {
+// Recherche du texte et retourne l'élément trouvé (pour pouvoir l'entourer)
+async function findTurnstileElement(page) {
     const keywords = [
         'vérifier que vous êtes humain',
         'verify you are human',
@@ -22,32 +21,48 @@ async function findTurnstileText(page) {
     ];
 
     // Recherche dans la page principale
-    const bodyText = await page.evaluate(() => document.body.innerText.toLowerCase());
-    for (const kw of keywords) {
-        if (bodyText.includes(kw)) {
-            console.log(`✅ Texte trouvé dans la page principale : "${kw}"`);
-            return true;
+    const elementHandle = await page.evaluateHandle((kw) => {
+        const bodyText = document.body.innerText.toLowerCase();
+        for (const k of kw) {
+            if (bodyText.includes(k)) {
+                // Trouver l'élément contenant exactement ce texte
+                const xpath = `//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${k}')]`;
+                const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                return result.singleNodeValue;
+            }
         }
+        return null;
+    }, keywords);
+
+    const element = await elementHandle.asElement();
+    if (element) {
+        console.log('✅ Texte trouvé dans la page principale.');
+        return element;
     }
 
     // Recherche dans les iframes
     const frames = page.frames();
-    console.log(`🔍 Vérification de ${frames.length} frame(s)...`);
-    for (let i = 0; i < frames.length; i++) {
-        const frame = frames[i];
+    for (const frame of frames) {
         try {
-            const frameText = await frame.evaluate(() => document.body.innerText.toLowerCase());
-            for (const kw of keywords) {
-                if (frameText.includes(kw)) {
-                    console.log(`✅ Texte trouvé dans l'iframe ${i} : "${kw}"`);
-                    return true;
+            const frameElement = await frame.evaluateHandle((kw) => {
+                const bodyText = document.body.innerText.toLowerCase();
+                for (const k of kw) {
+                    if (bodyText.includes(k)) {
+                        const xpath = `//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${k}')]`;
+                        const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                        return result.singleNodeValue;
+                    }
                 }
+                return null;
+            }, keywords);
+            const el = await frameElement.asElement();
+            if (el) {
+                console.log('✅ Texte trouvé dans une iframe.');
+                return el;
             }
-        } catch (e) {
-            // Frame inaccessible (cross-origin)
-        }
+        } catch (e) {}
     }
-    return false;
+    return null;
 }
 
 (async () => {
@@ -65,29 +80,43 @@ async function findTurnstileText(page) {
         console.log('🌐 Accès à la page de login...');
         await page.goto('https://tronpick.io/login.php', { waitUntil: 'networkidle2', timeout: 30000 });
 
-        // Remplir les champs
         const emailSelector = 'input[type="email"], input[name="email"], input#email';
         await page.waitForSelector(emailSelector, { timeout: 10000 });
         await page.type(emailSelector, EMAIL, { delay: 30 });
         const passwordSelector = 'input[type="password"], input[name="password"], input#password';
         await page.type(passwordSelector, PASSWORD, { delay: 30 });
 
-        console.log('⏳ Attente de 8 secondes pour chargement des scripts...');
+        console.log('⏳ Attente de 8 secondes pour le chargement du captcha...');
         await delay(8000);
 
-        // Détection du texte Turnstile
-        const found = await findTurnstileText(page);
-        if (found) {
-            console.log('🎯 Le message "Vérifier que vous êtes humain" est présent sur la page.');
+        // Recherche de l'élément contenant le texte
+        const turnstileElement = await findTurnstileElement(page);
+
+        if (turnstileElement) {
+            console.log('🎯 LE MESSAGE "VÉRIFIER QUE VOUS ÊTES HUMAIN" EST PRÉSENT !');
+            // Entourer l'élément d'un rectangle rouge sur la capture
+            await page.evaluate((el) => {
+                el.style.border = '5px solid red';
+                el.style.backgroundColor = 'rgba(255, 0, 0, 0.2)';
+            }, turnstileElement);
         } else {
-            console.log('❌ Le message "Vérifier que vous êtes humain" n\'a PAS été trouvé.');
+            console.log('❌ LE MESSAGE "VÉRIFIER QUE VOUS ÊTES HUMAIN" N\'A PAS ÉTÉ TROUVÉ.');
         }
 
-        // Optionnel : capture d'écran pour analyse
+        // Capture d'écran avec annotation éventuelle
         const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
         console.log('📸 CAPTURE_BASE64_START');
         console.log(screenshot);
         console.log('📸 CAPTURE_BASE64_END');
+
+        // Message final très visible
+        console.log('\n========================================');
+        if (turnstileElement) {
+            console.log('✅ RÉSULTAT : TEXTE TROUVÉ');
+        } else {
+            console.log('❌ RÉSULTAT : TEXTE NON TROUVÉ');
+        }
+        console.log('========================================\n');
 
     } catch (error) {
         console.error('❌ Erreur :', error);
