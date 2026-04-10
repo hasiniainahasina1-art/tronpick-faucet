@@ -16,7 +16,37 @@ if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Surveillance de Turnstile (disparition ou case cochée)
+// Remplissage robuste d'un champ input
+async function robustType(page, selector, value) {
+    // Attendre que l'élément soit présent
+    await page.waitForSelector(selector, { timeout: 10000 });
+    // Cliquer plusieurs fois pour focus et sélection
+    await page.click(selector, { clickCount: 3 });
+    await delay(200);
+    // Effacer le contenu existant
+    await page.evaluate((sel) => {
+        document.querySelector(sel).value = '';
+    }, selector);
+    // Définir la valeur via evaluate et déclencher les événements
+    await page.evaluate((sel, val) => {
+        const el = document.querySelector(sel);
+        el.value = val;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+    }, selector, value);
+    // Vérifier que la valeur a été prise
+    const actualValue = await page.$eval(selector, el => el.value);
+    if (actualValue !== value) {
+        console.log(`⚠️ La valeur saisie pour ${selector} est "${actualValue}" au lieu de "${value}"`);
+        // Tentative de secours : saisie lettre par lettre
+        await page.click(selector, { clickCount: 3 });
+        await page.type(selector, value, { delay: 50 });
+    } else {
+        console.log(`✅ Champ ${selector} rempli avec succès`);
+    }
+}
+
+// Surveillance de Turnstile
 async function waitForTurnstileGone(page, maxWaitMs = 60000) {
     console.log('🔎 Surveillance de Turnstile...');
     const start = Date.now();
@@ -29,10 +59,7 @@ async function waitForTurnstileGone(page, maxWaitMs = 60000) {
         }
         try {
             const checked = await turnstileFrame.$eval('input[type="checkbox"]', cb => cb.checked);
-            if (checked) {
-                console.log('✅ Case Turnstile cochée – attente disparition...');
-                // Continuer à attendre que l'iframe disparaisse
-            }
+            if (checked) console.log('   Case Turnstile cochée');
         } catch (e) {}
         await delay(2000);
     }
@@ -40,26 +67,16 @@ async function waitForTurnstileGone(page, maxWaitMs = 60000) {
     return false;
 }
 
-// Vérifier si on est connecté (URL ou élément)
 async function isLoggedIn(page) {
     const url = page.url();
     if (!url.includes('login.php')) return true;
-
-    const selectors = [
-        'a[href*="dashboard"]', 'a[href*="account"]',
-        'a:contains("Logout")', 'a:contains("Sign out")',
-        '.user-menu', '.navbar-user'
-    ];
+    const selectors = ['a[href*="dashboard"]', 'a[href*="account"]', 'a:contains("Logout")', '.user-menu'];
     for (const sel of selectors) {
-        try {
-            const el = await page.$(sel);
-            if (el) return true;
-        } catch (e) {}
+        try { if (await page.$(sel)) return true; } catch (e) {}
     }
     return false;
 }
 
-// Obtenir les messages d'erreur visibles
 async function getErrorMessages(page) {
     return await page.evaluate(() => {
         const selectors = ['.alert-danger', '.error', '.message-error', '[class*="error"]', '.text-danger'];
@@ -97,11 +114,17 @@ async function getErrorMessages(page) {
         console.log('🌐 Accès login...');
         await page.goto('https://tronpick.io/login.php', { waitUntil: 'networkidle2', timeout: 60000 });
 
-        console.log('⌨️ Remplissage identifiants...');
-        await page.waitForSelector('input[type="email"]', { timeout: 10000 });
-        await page.type('input[type="email"]', EMAIL, { delay: 50 });
-        await page.type('input[type="password"]', PASSWORD, { delay: 50 });
+        // Remplissage robuste
+        console.log('⌨️ Remplissage identifiants (robuste)...');
+        await robustType(page, 'input[type="email"]', EMAIL);
+        await delay(500);
+        await robustType(page, 'input[type="password"]', PASSWORD);
         await delay(2000);
+
+        // Vérifier que les champs ne sont pas vides (double vérification)
+        const emailValue = await page.$eval('input[type="email"]', el => el.value);
+        const passwordValue = await page.$eval('input[type="password"]', el => el.value);
+        console.log(`📝 Valeurs actuelles – email: "${emailValue}", password: "${passwordValue.replace(/./g, '*')}"`);
 
         console.log('🔐 Clic sur "Log in"...');
         const loginButton = await page.evaluateHandle(() => {
@@ -109,22 +132,20 @@ async function getErrorMessages(page) {
             return buttons.find(btn => btn.textContent.trim() === 'Log in');
         });
         if (!loginButton) throw new Error('Bouton "Log in" introuvable');
-
         await loginButton.click();
         console.log('✅ Clic effectué');
 
-        // Attendre que Turnstile disparaisse
+        // Attendre Turnstile
         const turnstileGone = await waitForTurnstileGone(page, 60000);
         if (!turnstileGone) throw new Error('Turnstile non résolu');
 
-        // Après disparition, attendre confirmation de connexion
+        // Attendre confirmation connexion
         console.log('⏳ Attente de la connexion...');
         const startWait = Date.now();
         let loggedIn = false;
         while (Date.now() - startWait < 20000) {
             loggedIn = await isLoggedIn(page);
             if (loggedIn) break;
-            // Vérifier message d'erreur
             const err = await getErrorMessages(page);
             if (err) {
                 console.log('❌ Message d\'erreur :', err);
@@ -140,9 +161,8 @@ async function getErrorMessages(page) {
                 status.message = 'Connexion réussie !';
                 console.log('✅ Connexion réussie !');
             } else {
-                // Pas d'erreur explicite, mais toujours sur login
                 const pageText = await page.evaluate(() => document.body.innerText.substring(0, 500));
-                console.log('📄 Contenu de la page (extrait) :', pageText);
+                console.log('📄 Extrait de la page :', pageText);
                 status.message = 'Échec de connexion (toujours sur login.php)';
                 console.log('❌', status.message);
             }
