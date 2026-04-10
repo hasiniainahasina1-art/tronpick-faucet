@@ -1,5 +1,5 @@
 {
   "success": false,
-  "time": "2026-04-10T07:32:09.849Z",
-  "message": "Protocol error (Input.dispatchMouseEvent): Invalid parameters Failed to deserialize params.x - BINDINGS: double value expected at position 58"
+  "time": "2026-04-10T07:39:46.695Z",
+  "message": "Protocol error (Runtime.callFunctionOn): Argument should belong to the same JavaScript world as target object"
 }
