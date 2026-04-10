@@ -16,7 +16,7 @@ if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Saisie robuste (inchangée)
+// Saisie robuste
 async function fillField(page, selector, value, fieldName) {
     console.log(`⌨️ Remplissage ${fieldName}...`);
     await page.waitForSelector(selector, { timeout: 10000 });
@@ -42,7 +42,7 @@ async function fillField(page, selector, value, fieldName) {
     console.log(`✅ ${fieldName} rempli`);
 }
 
-// Turnstile (inchangé)
+// Turnstile
 async function waitForTurnstileGone(page, maxWaitMs = 60000) {
     console.log('🔎 Surveillance Turnstile...');
     const start = Date.now();
@@ -70,7 +70,7 @@ async function isLoggedIn(page) {
     return false;
 }
 
-// Nouvelle fonction de clic ultra‑robuste
+// Clic sur CLAIM – version finale
 async function clickClaimButton(page) {
     console.log('🎯 Recherche et clic sur CLAIM...');
     await page.waitForNetworkIdle({ timeout: 15000 }).catch(() => {});
@@ -82,22 +82,8 @@ async function clickClaimButton(page) {
     console.log('⏳ Pause de 10 secondes avant le clic...');
     await delay(10000);
 
-    // 1. Lister tous les boutons visibles pour diagnostic
-    const buttons = await page.evaluate(() => {
-        return Array.from(document.querySelectorAll('button, input[type="submit"], a, [role="button"]'))
-            .filter(el => el.offsetParent !== null)
-            .map(el => ({
-                tag: el.tagName,
-                text: (el.textContent || el.value || '').trim().substring(0, 30),
-                disabled: el.disabled || false
-            }));
-    });
-    console.log(`📋 ${buttons.length} boutons visibles :`);
-    buttons.forEach((b, i) => console.log(`   ${i+1}. [${b.tag}] "${b.text}" ${b.disabled ? '(DÉSACTIVÉ)' : ''}`));
-
-    // 2. Clic via JavaScript pur (le plus fiable)
+    // Clic via JavaScript pur
     const clickResult = await page.evaluate(() => {
-        // Recherche insensible à la casse du texte exact "CLAIM"
         const claimBtn = [...document.querySelectorAll('button, input[type="submit"], a')].find(el => {
             const text = (el.textContent || el.value || '').trim().toUpperCase();
             return text === 'CLAIM' && !el.disabled && el.offsetParent !== null;
@@ -112,23 +98,19 @@ async function clickClaimButton(page) {
 
     if (!clickResult.success) {
         console.log('❌ Bouton CLAIM non trouvé ou désactivé');
-        // Capture pour diagnostic
-        const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
-        console.log('📸 CAPTURE_ERREUR_BASE64_START');
-        console.log(screenshot);
-        console.log('📸 CAPTURE_ERREUR_BASE64_END');
         return { success: false, message: 'Bouton CLAIM introuvable ou désactivé' };
     }
 
     console.log(`✅ Clic effectué sur "${clickResult.text}"`);
 
-    // Attendre la réponse
-    console.log('⏳ Attente de feedback...');
+    // Attendre la réponse (réseau + délai supplémentaire)
+    console.log('⏳ Attente de la réponse du site...');
     await page.waitForNetworkIdle({ timeout: 15000 }).catch(() => {});
     await delay(5000);
 
-    // Détecter les messages
+    // Détecter les messages et l'état du bouton
     const feedback = await page.evaluate(() => {
+        // Messages visibles
         const msgSels = ['.alert', '.message', '.toast', '.notification', '.swal2-popup', '.modal', '[class*="success"]', '[class*="error"]'];
         for (const s of msgSels) {
             const el = document.querySelector(s);
@@ -136,21 +118,41 @@ async function clickClaimButton(page) {
                 return el.textContent.trim();
             }
         }
+        // Vérifier si le bouton CLAIM est devenu désactivé
         const btn = [...document.querySelectorAll('button, input[type="submit"]')].find(el => (el.textContent || el.value || '').trim().toUpperCase() === 'CLAIM');
         if (btn && btn.disabled) return 'Bouton désactivé après clic';
         return null;
     });
 
+    // Texte de la page pour capture timer
+    const pageText = await page.evaluate(() => document.body.innerText);
+    const timerMatch = pageText.match(/next claim.*?(\d+)\s*(hour|minute|second)/i);
+    const timerInfo = timerMatch ? timerMatch[0] : null;
+
     if (feedback) {
         console.log(`💬 Feedback : "${feedback}"`);
-        const msg = feedback.toLowerCase();
-        if (msg.includes('success') || msg.includes('claimed') || msg.includes('reward') || feedback.includes('désactivé')) {
-            return { success: true, message: feedback };
+        if (timerInfo) console.log(`⏱️ Timer détecté : ${timerInfo}`);
+        // Succès si bouton désactivé ou message de succès
+        const isSuccess = feedback.includes('désactivé') || feedback.toLowerCase().includes('success') || feedback.toLowerCase().includes('claimed') || feedback.toLowerCase().includes('reward');
+        if (isSuccess) {
+            return { success: true, message: feedback + (timerInfo ? ` (${timerInfo})` : '') };
+        } else {
+            return { success: false, message: feedback };
         }
-        return { success: false, message: feedback };
     }
 
-    return { success: false, message: 'Aucun retour' };
+    // Si aucun message mais bouton désactivé (vérification supplémentaire)
+    const isDisabledNow = await page.evaluate(() => {
+        const btn = [...document.querySelectorAll('button, input[type="submit"]')].find(el => (el.textContent || el.value || '').trim().toUpperCase() === 'CLAIM');
+        return btn ? btn.disabled : false;
+    });
+
+    if (isDisabledNow) {
+        console.log('✅ Bouton désactivé (succès implicite)');
+        return { success: true, message: 'Bouton désactivé après clic' + (timerInfo ? ` (${timerInfo})` : '') };
+    }
+
+    return { success: false, message: 'Aucun retour détecté' };
 }
 
 (async () => {
@@ -217,13 +219,10 @@ async function clickClaimButton(page) {
             // --- CLAIM ---
             const claimResult = await clickClaimButton(page);
 
-            if (claimResult.success) {
-                status.success = true;
-                status.message = `Connexion OK, CLAIM: ${claimResult.message}`;
-            } else {
-                status.success = true; // Connexion OK
-                status.message = `Connexion OK, CLAIM échec: ${claimResult.message}`;
-            }
+            status.success = claimResult.success;
+            status.message = claimResult.success
+                ? `✅ CLAIM réussi : ${claimResult.message}`
+                : `❌ CLAIM échoué : ${claimResult.message}`;
         }
 
     } catch (error) {
