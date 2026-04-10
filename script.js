@@ -70,66 +70,79 @@ async function isLoggedIn(page) {
     return false;
 }
 
-// Clic sur CLAIM/Withdraw avec diagnostic
+// Clic sur CLAIM/WITHDRAW sans ElementHandle persistant
 async function clickClaimButton(page) {
     console.log('🎯 Recherche du bouton CLAIM/WITHDRAW...');
-
-    // Mots-clés élargis
     const keywords = ['claim', 'roll', 'get', 'receive', 'collect', 'free', 'withdraw', 'get reward', 'claim now'];
 
-    // Fonction pour trouver dans une frame
-    const findButtonInFrame = async (frame) => {
+    await page.waitForNetworkIdle({ timeout: 10000 }).catch(() => {});
+    await delay(2000);
+
+    // Fonction pour cliquer dans une frame donnée (tout dans evaluate)
+    const clickInFrame = async (frame) => {
         try {
-            return await frame.evaluateHandle((kw) => {
+            return await frame.evaluate((kw) => {
                 const elements = Array.from(document.querySelectorAll('button, input[type="submit"], a, div[role="button"], span[role="button"]'));
-                return elements.find(el => {
+                const btn = elements.find(el => {
                     const text = (el.textContent || el.value || '').toLowerCase();
                     return kw.some(k => text.includes(k)) && !el.disabled && el.offsetParent !== null;
                 });
+                if (btn) {
+                    const beforeText = btn.textContent.trim();
+                    const beforeDisabled = btn.disabled;
+                    btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    btn.click();
+                    return { success: true, beforeText, beforeDisabled };
+                }
+                return { success: false };
             }, keywords);
-        } catch (e) { return null; }
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
     };
 
-    let buttonHandle = await findButtonInFrame(page.mainFrame());
-    let targetFrame = page.mainFrame();
-    if (!buttonHandle) {
+    // Essayer page principale
+    let result = await clickInFrame(page.mainFrame());
+    if (!result.success) {
         const frames = page.frames();
         for (let i = 1; i < frames.length; i++) {
-            buttonHandle = await findButtonInFrame(frames[i]);
-            if (buttonHandle) {
-                targetFrame = frames[i];
-                break;
-            }
+            result = await clickInFrame(frames[i]);
+            if (result.success) break;
         }
     }
 
-    if (!buttonHandle) {
+    if (!result || !result.success) {
         console.log('❌ Bouton introuvable');
         return { success: false, message: 'Bouton introuvable' };
     }
 
-    // Informations avant clic
-    const beforeText = await targetFrame.evaluate(el => el.textContent.trim(), buttonHandle);
-    const beforeDisabled = await targetFrame.evaluate(el => el.disabled, buttonHandle);
-    console.log(`📌 Bouton avant clic : "${beforeText}", disabled=${beforeDisabled}`);
+    console.log(`📌 Clic sur "${result.beforeText}" effectué`);
 
-    // Scroll vers le bouton pour s'assurer qu'il est visible
-    await targetFrame.evaluate(el => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), buttonHandle);
-    await delay(500);
+    // Attendre la réponse réseau
+    await page.waitForNetworkIdle({ timeout: 15000 }).catch(() => console.log('⚠️ Network idle timeout'));
+    await delay(3000);
 
-    // Clic direct (sans coordonnées)
-    console.log('🖱️ Clic sur le bouton...');
-    await buttonHandle.click();
+    // Vérifier l'état après clic (en recherchant à nouveau)
+    const afterInfo = await page.evaluate((kw) => {
+        const elements = Array.from(document.querySelectorAll('button, input[type="submit"], a, div[role="button"], span[role="button"]'));
+        const btn = elements.find(el => {
+            const text = (el.textContent || el.value || '').toLowerCase();
+            return kw.some(k => text.includes(k));
+        });
+        if (btn) {
+            return { text: btn.textContent.trim(), disabled: btn.disabled };
+        }
+        return null;
+    }, keywords);
 
-    // Attendre les requêtes réseau
-    await page.waitForNetworkIdle({ timeout: 10000 }).catch(() => console.log('⚠️ Network idle timeout'));
+    if (afterInfo) {
+        console.log(`📌 État après clic : "${afterInfo.text}", disabled=${afterInfo.disabled}`);
+        if (afterInfo.disabled || afterInfo.text !== result.beforeText) {
+            return { success: true, message: 'Bouton changé/désactivé (succès présumé)' };
+        }
+    }
 
-    // Vérifier l'état après clic
-    const afterText = await targetFrame.evaluate(el => el.textContent.trim(), buttonHandle);
-    const afterDisabled = await targetFrame.evaluate(el => el.disabled, buttonHandle);
-    console.log(`📌 Bouton après clic : "${afterText}", disabled=${afterDisabled}`);
-
-    // Rechercher un message de succès/erreur
+    // Vérifier messages DOM
     const message = await page.evaluate(() => {
         const sels = ['.alert', '.message', '.toast', '[class*="success"]', '[class*="error"]'];
         for (const s of sels) {
@@ -138,20 +151,17 @@ async function clickClaimButton(page) {
         }
         return null;
     });
-    if (message) console.log(`💬 Message DOM : ${message}`);
-
-    // Déterminer le succès
-    const changed = (beforeText !== afterText) || (beforeDisabled !== afterDisabled);
-    if (changed || message) {
-        return { success: true, message: message || 'Action détectée (changement bouton)' };
-    } else {
-        // Capture d'écran si aucun changement
-        const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
-        console.log('📸 CAPTURE_BASE64_START');
-        console.log(screenshot);
-        console.log('📸 CAPTURE_BASE64_END');
-        return { success: false, message: 'Aucune réaction visible' };
+    if (message) {
+        console.log(`💬 Message DOM : ${message}`);
+        return { success: true, message };
     }
+
+    // Aucun changement détecté → capture d'écran
+    const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
+    console.log('📸 CAPTURE_BASE64_START');
+    console.log(screenshot);
+    console.log('📸 CAPTURE_BASE64_END');
+    return { success: false, message: 'Aucune réaction visible' };
 }
 
 (async () => {
