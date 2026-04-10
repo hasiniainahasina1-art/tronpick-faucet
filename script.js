@@ -2,7 +2,7 @@ const { connect } = require('puppeteer-real-browser');
 const fs = require('fs');
 const path = require('path');
 
-const EMAIL = process.env.TRONPICK_EMAIL;
+const EMAIL = process.env.TRONPICK_EMAIL.trim().toLowerCase(); // nettoyage
 const PASSWORD = process.env.TRONPICK_PASSWORD;
 const PROXY_USERNAME = process.env.PROXY_USERNAME;
 const PROXY_PASSWORD = process.env.PROXY_PASSWORD;
@@ -16,33 +16,50 @@ if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Saisie ultra‑réaliste : simule chaque touche avec événements keydown/keyup/input
-async function humanType(page, selector, text) {
-    console.log(`⌨️ Saisie humaine dans ${selector}...`);
+// Saisie robuste d'un champ avec double vérification
+async function fillField(page, selector, value, fieldName) {
+    console.log(`⌨️ Remplissage du champ ${fieldName}...`);
     await page.waitForSelector(selector, { timeout: 10000 });
-    await page.click(selector, { clickCount: 3 }); // focus et sélection
-    await delay(200);
-    // Effacer
+
+    // Effacer complètement le champ
+    await page.click(selector, { clickCount: 3 });
     await page.keyboard.press('Backspace');
     await delay(100);
-    // Taper chaque caractère avec délai aléatoire
-    for (const char of text) {
-        await page.keyboard.type(char, { delay: Math.floor(Math.random() * 80) + 30 });
-        await delay(Math.floor(Math.random() * 50) + 20);
-    }
-    // Vérifier que la valeur a été prise
-    const actualValue = await page.$eval(selector, el => el.value);
-    if (actualValue !== text) {
-        console.log(`⚠️ La valeur saisie est "${actualValue}" au lieu de "${text}", nouvelle tentative...`);
+
+    // Méthode 1 : Définition directe via evaluate + événements
+    await page.evaluate((sel, val) => {
+        const el = document.querySelector(sel);
+        el.value = val;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new Event('blur', { bubbles: true }));
+    }, selector, value);
+    await delay(300);
+
+    let actualValue = await page.$eval(selector, el => el.value);
+    console.log(`   Valeur après evaluate : "${actualValue}"`);
+
+    // Si la valeur n'est pas correcte, on utilise la saisie lettre par lettre
+    if (actualValue !== value) {
+        console.log(`   ⚠️ Valeur incorrecte, tentative par saisie lettre par lettre...`);
         await page.click(selector, { clickCount: 3 });
         await page.keyboard.press('Backspace');
-        await page.type(selector, text, { delay: 50 });
-    } else {
-        console.log(`✅ Champ ${selector} rempli`);
+        await delay(100);
+        for (const char of value) {
+            await page.keyboard.type(char, { delay: 30 });
+            await delay(10);
+        }
+        actualValue = await page.$eval(selector, el => el.value);
+        console.log(`   Valeur après saisie lettre par lettre : "${actualValue}"`);
     }
+
+    if (actualValue !== value) {
+        throw new Error(`Impossible de remplir correctement le champ ${fieldName}`);
+    }
+    console.log(`✅ Champ ${fieldName} rempli avec succès`);
 }
 
-// Surveillance de Turnstile (inchangée)
+// Surveillance de Turnstile
 async function waitForTurnstileGone(page, maxWaitMs = 60000) {
     console.log('🔎 Surveillance de Turnstile...');
     const start = Date.now();
@@ -79,22 +96,6 @@ async function getErrorMessages(page) {
     });
 }
 
-// Lister tous les inputs pour diagnostic
-async function listInputs(page) {
-    const inputs = await page.evaluate(() => {
-        return Array.from(document.querySelectorAll('input')).map(el => ({
-            tag: el.tagName,
-            type: el.type,
-            name: el.name,
-            id: el.id,
-            className: el.className,
-            placeholder: el.placeholder
-        }));
-    });
-    console.log('📋 Champs input trouvés :', JSON.stringify(inputs, null, 2));
-}
-
-// Clic sur le bouton CLAIM
 async function clickClaimButton(page) {
     console.log('🎯 Recherche du bouton CLAIM...');
     const clicked = await page.evaluate(() => {
@@ -144,32 +145,20 @@ async function clickClaimButton(page) {
         console.log('🌐 Accès login...');
         await page.goto('https://tronpick.io/login.php', { waitUntil: 'networkidle2', timeout: 60000 });
 
-        // Lister les inputs pour diagnostic
-        await listInputs(page);
-
-        // Déterminer les sélecteurs exacts (après avoir vu la liste)
+        // Déterminer les sélecteurs
         const emailSelector = 'input[type="email"], input[name="email"], input#email';
         const passwordSelector = 'input[type="password"], input[name="password"], input#password';
 
-        // Saisie humaine
-        await humanType(page, emailSelector, EMAIL);
-        await delay(800);
-        await humanType(page, passwordSelector, PASSWORD);
+        // Remplissage
+        await fillField(page, emailSelector, EMAIL, 'email');
+        await delay(500);
+        await fillField(page, passwordSelector, PASSWORD, 'password');
         await delay(2000);
 
-        // Vérification juste avant clic
-        let emailValue = await page.$eval(emailSelector, el => el.value);
-        let passwordValue = await page.$eval(passwordSelector, el => el.value);
+        // Vérification finale avant clic
+        const emailValue = await page.$eval(emailSelector, el => el.value);
+        const passwordValue = await page.$eval(passwordSelector, el => el.value);
         console.log(`📝 Valeurs avant clic – email: "${emailValue}", password: "${passwordValue.replace(/./g, '*')}"`);
-        if (!emailValue || !passwordValue) {
-            console.log('⚠️ Champs vides détectés, resaisie...');
-            if (!emailValue) await humanType(page, emailSelector, EMAIL);
-            if (!passwordValue) await humanType(page, passwordSelector, PASSWORD);
-            await delay(1000);
-            emailValue = await page.$eval(emailSelector, el => el.value);
-            passwordValue = await page.$eval(passwordSelector, el => el.value);
-            console.log(`📝 Après resaisie – email: "${emailValue}", password: "${passwordValue.replace(/./g, '*')}"`);
-        }
 
         console.log('🔐 Clic sur "Log in"...');
         const loginButton = await page.evaluateHandle(() => {
