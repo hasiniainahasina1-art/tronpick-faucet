@@ -42,7 +42,7 @@ async function fillField(page, selector, value, fieldName) {
     console.log(`✅ ${fieldName} rempli`);
 }
 
-// Attendre que Turnstile disparaisse (utilisable partout)
+// Attendre Turnstile
 async function waitForTurnstileGone(page, maxWaitMs = 60000) {
     console.log('🔎 Surveillance Turnstile...');
     const start = Date.now();
@@ -52,7 +52,7 @@ async function waitForTurnstileGone(page, maxWaitMs = 60000) {
             const tf = frames.find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
             if (!tf) { console.log('✅ Iframe Turnstile disparue'); return true; }
             const checked = await tf.$eval('input[type="checkbox"]', cb => cb.checked);
-            if (checked) console.log('   Case Turnstile cochée');
+            if (checked) console.log('   Case cochée');
         } catch (e) {}
         await delay(2000);
     }
@@ -70,27 +70,32 @@ async function isLoggedIn(page) {
     return false;
 }
 
-// Clic sur CLAIM (spécifiquement)
+// Clic sur CLAIM avec capture réseau et diagnostic avancé
 async function clickClaimButton(page) {
     console.log('🎯 Recherche du bouton "CLAIM"...');
-
-    // Attendre que la page faucet soit stable
     await page.waitForNetworkIdle({ timeout: 15000 }).catch(() => {});
     await delay(3000);
 
-    // Gérer Turnstile s'il apparaît sur la page faucet
-    console.log('🛡️ Vérification Turnstile sur la page faucet...');
+    console.log('🛡️ Vérification Turnstile faucet...');
     await waitForTurnstileGone(page, 30000);
 
-    // Fonction pour cliquer sur CLAIM dans une frame
+    // Collecte des requêtes réseau
+    const requests = [];
+    const requestListener = (req) => {
+        if (['xhr', 'fetch'].includes(req.resourceType())) {
+            requests.push({ url: req.url(), method: req.method(), postData: req.postData() });
+        }
+    };
+    page.on('request', requestListener);
+
+    // Fonction pour cliquer dans une frame
     const clickInFrame = async (frame) => {
         try {
             return await frame.evaluate(() => {
                 const elements = Array.from(document.querySelectorAll('button, input[type="submit"], a, div[role="button"], span[role="button"]'));
-                // Recherche stricte du texte "CLAIM" (insensible à la casse)
                 const btn = elements.find(el => {
-                    const text = (el.textContent || el.value || '').trim();
-                    return text.toUpperCase() === 'CLAIM' && !el.disabled && el.offsetParent !== null;
+                    const text = (el.textContent || el.value || '').trim().toUpperCase();
+                    return text === 'CLAIM' && !el.disabled && el.offsetParent !== null;
                 });
                 if (btn) {
                     btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -100,11 +105,10 @@ async function clickClaimButton(page) {
                 return { success: false };
             });
         } catch (e) {
-            return { success: false, error: e.message };
+            return { success: false };
         }
     };
 
-    // Essayer page principale
     let result = await clickInFrame(page.mainFrame());
     if (!result.success) {
         const frames = page.frames();
@@ -115,55 +119,71 @@ async function clickClaimButton(page) {
     }
 
     if (!result || !result.success) {
+        page.off('request', requestListener);
         console.log('❌ Bouton CLAIM introuvable');
-        return { success: false, message: 'Bouton CLAIM introuvable' };
+        return { success: false, message: 'Bouton introuvable' };
     }
 
     console.log(`✅ Clic sur "${result.text}" effectué`);
 
-    // Attendre la réponse réseau
-    await page.waitForNetworkIdle({ timeout: 15000 }).catch(() => console.log('⚠️ Network idle timeout'));
-    await delay(4000);
+    // Attendre les requêtes réseau (max 20s)
+    await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => console.log('⚠️ Network idle timeout'));
 
-    // Vérifier l'état après clic (bouton désactivé ou message)
-    const afterInfo = await page.evaluate(() => {
-        const elements = Array.from(document.querySelectorAll('button, input[type="submit"], a, div[role="button"], span[role="button"]'));
-        const btn = elements.find(el => (el.textContent || el.value || '').trim().toUpperCase() === 'CLAIM');
-        if (btn) {
-            return { text: btn.textContent.trim(), disabled: btn.disabled };
-        }
-        return null;
-    });
-
-    if (afterInfo) {
-        console.log(`📌 État après clic : "${afterInfo.text}", disabled=${afterInfo.disabled}`);
-        if (afterInfo.disabled) {
-            return { success: true, message: 'Bouton CLAIM désactivé (succès présumé)' };
-        }
+    // Attendre l'apparition d'éventuels messages/modales
+    console.log('⏳ Attente de feedback (messages, modales)...');
+    const startWait = Date.now();
+    let feedback = null;
+    while (Date.now() - startWait < 15000) {
+        feedback = await page.evaluate(() => {
+            // Messages
+            const msgSels = ['.alert', '.message', '.toast', '[class*="success"]', '[class*="error"]', '.swal2-popup', '.modal'];
+            for (const s of msgSels) {
+                const el = document.querySelector(s);
+                if (el && el.offsetParent !== null) return { type: 'message', text: el.textContent.trim() };
+            }
+            // Bouton CLAIM désactivé ?
+            const btn = [...document.querySelectorAll('button, input[type="submit"]')].find(el => (el.textContent || el.value || '').trim().toUpperCase() === 'CLAIM');
+            if (btn && btn.disabled) return { type: 'button_disabled', text: btn.textContent.trim() };
+            return null;
+        });
+        if (feedback) break;
+        await delay(1000);
     }
 
-    // Vérifier messages DOM (succès/erreur)
-    const message = await page.evaluate(() => {
-        const sels = ['.alert', '.message', '.toast', '[class*="success"]', '[class*="error"]'];
-        for (const s of sels) {
-            const el = document.querySelector(s);
-            if (el && el.offsetParent !== null) return el.textContent.trim();
-        }
-        return null;
-    });
-    if (message) {
-        console.log(`💬 Message DOM : ${message}`);
-        if (message.toLowerCase().includes('success') || message.toLowerCase().includes('claim')) {
-            return { success: true, message };
-        }
-    }
+    page.off('request', requestListener);
 
-    // Aucun changement → capture d'écran
+    // Logs des requêtes capturées
+    console.log(`🌐 Requêtes AJAX/Fetch : ${requests.length}`);
+    requests.forEach((r, i) => console.log(`   ${i+1}. ${r.method} ${r.url}`));
+
+    // Capture d'écran post-clic
     const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
     console.log('📸 CAPTURE_BASE64_START');
     console.log(screenshot);
     console.log('📸 CAPTURE_BASE64_END');
-    return { success: false, message: 'Aucune réaction après clic' };
+
+    if (feedback) {
+        console.log(`💬 Feedback détecté : ${feedback.type} - "${feedback.text}"`);
+        if (feedback.type === 'button_disabled' || feedback.text.toLowerCase().includes('success')) {
+            return { success: true, message: feedback.text };
+        } else {
+            return { success: false, message: feedback.text };
+        }
+    }
+
+    // Vérifier si le bouton a changé d'état (dernière chance)
+    const afterInfo = await page.evaluate(() => {
+        const btn = [...document.querySelectorAll('button, input[type="submit"]')].find(el => (el.textContent || el.value || '').trim().toUpperCase() === 'CLAIM');
+        return btn ? { text: btn.textContent.trim(), disabled: btn.disabled } : null;
+    });
+    if (afterInfo) {
+        console.log(`📌 État final bouton : "${afterInfo.text}", disabled=${afterInfo.disabled}`);
+        if (afterInfo.disabled) {
+            return { success: true, message: 'Bouton désactivé (succès présumé)' };
+        }
+    }
+
+    return { success: false, message: 'Aucune réaction détectée' };
 }
 
 (async () => {
@@ -227,14 +247,14 @@ async function clickClaimButton(page) {
             await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
             await delay(10000);
 
-            // --- CLAIM (avec gestion Turnstile spécifique) ---
+            // --- CLAIM ---
             const claimResult = await clickClaimButton(page);
 
             if (claimResult.success) {
                 status.success = true;
                 status.message = `Connexion OK, CLAIM: ${claimResult.message}`;
             } else {
-                status.success = true; // Connexion OK
+                status.success = true;
                 status.message = `Connexion OK, CLAIM échec: ${claimResult.message}`;
             }
         }
