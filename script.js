@@ -6,7 +6,7 @@ const EMAIL = process.env.TRONPICK_EMAIL;
 const PASSWORD = process.env.TRONPICK_PASSWORD;
 const PROXY_USERNAME = process.env.PROXY_USERNAME;
 const PROXY_PASSWORD = process.env.PROXY_PASSWORD;
-const PROXY_HOST = '31.59.20.176';   // ← votre proxy fonctionnel
+const PROXY_HOST = '31.59.20.176';
 const PROXY_PORT = '6754';
 
 if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
@@ -16,28 +16,33 @@ if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Remplissage robuste d'un champ input
-async function robustType(page, selector, value) {
+// Saisie ultra‑réaliste : simule chaque touche avec événements keydown/keyup/input
+async function humanType(page, selector, text) {
+    console.log(`⌨️ Saisie humaine dans ${selector}...`);
     await page.waitForSelector(selector, { timeout: 10000 });
-    await page.click(selector, { clickCount: 3 });
+    await page.click(selector, { clickCount: 3 }); // focus et sélection
     await delay(200);
-    await page.evaluate((sel) => {
-        document.querySelector(sel).value = '';
-    }, selector);
-    await page.evaluate((sel, val) => {
-        const el = document.querySelector(sel);
-        el.value = val;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-    }, selector, value);
+    // Effacer
+    await page.keyboard.press('Backspace');
+    await delay(100);
+    // Taper chaque caractère avec délai aléatoire
+    for (const char of text) {
+        await page.keyboard.type(char, { delay: Math.floor(Math.random() * 80) + 30 });
+        await delay(Math.floor(Math.random() * 50) + 20);
+    }
+    // Vérifier que la valeur a été prise
     const actualValue = await page.$eval(selector, el => el.value);
-    if (actualValue !== value) {
+    if (actualValue !== text) {
+        console.log(`⚠️ La valeur saisie est "${actualValue}" au lieu de "${text}", nouvelle tentative...`);
         await page.click(selector, { clickCount: 3 });
-        await page.type(selector, value, { delay: 50 });
+        await page.keyboard.press('Backspace');
+        await page.type(selector, text, { delay: 50 });
+    } else {
+        console.log(`✅ Champ ${selector} rempli`);
     }
 }
 
-// Surveillance de Turnstile
+// Surveillance de Turnstile (inchangée)
 async function waitForTurnstileGone(page, maxWaitMs = 60000) {
     console.log('🔎 Surveillance de Turnstile...');
     const start = Date.now();
@@ -74,33 +79,24 @@ async function getErrorMessages(page) {
     });
 }
 
-// Clic sur le bouton CLAIM dans la page faucet
+// Lister tous les inputs pour diagnostic
+async function listInputs(page) {
+    const inputs = await page.evaluate(() => {
+        return Array.from(document.querySelectorAll('input')).map(el => ({
+            tag: el.tagName,
+            type: el.type,
+            name: el.name,
+            id: el.id,
+            className: el.className,
+            placeholder: el.placeholder
+        }));
+    });
+    console.log('📋 Champs input trouvés :', JSON.stringify(inputs, null, 2));
+}
+
+// Clic sur le bouton CLAIM
 async function clickClaimButton(page) {
     console.log('🎯 Recherche du bouton CLAIM...');
-    const claimSelectors = [
-        'button:contains("CLAIM")',
-        'button:contains("Claim")',
-        'button:contains("claim")',
-        'input[value="CLAIM"]',
-        'input[value="Claim"]',
-        '.claim-button',
-        '#claim-btn',
-        'form button'
-    ];
-
-    for (const sel of claimSelectors) {
-        try {
-            const btn = await page.$(sel);
-            if (btn) {
-                await btn.click();
-                console.log(`✅ Clic sur bouton CLAIM (${sel})`);
-                await delay(5000);
-                return true;
-            }
-        } catch (e) {}
-    }
-
-    // Recherche par texte
     const clicked = await page.evaluate(() => {
         const keywords = ['claim', 'get', 'receive', 'roll', 'collect', 'free'];
         const elements = Array.from(document.querySelectorAll('button, input[type="submit"], a, div[role="button"]'));
@@ -113,13 +109,11 @@ async function clickClaimButton(page) {
         }
         return false;
     });
-
     if (clicked) {
-        console.log('✅ CLAIM cliqué (recherche textuelle)');
+        console.log('✅ CLAIM cliqué');
         await delay(5000);
         return true;
     }
-
     console.log('⚠️ Bouton CLAIM non trouvé');
     return false;
 }
@@ -150,11 +144,32 @@ async function clickClaimButton(page) {
         console.log('🌐 Accès login...');
         await page.goto('https://tronpick.io/login.php', { waitUntil: 'networkidle2', timeout: 60000 });
 
-        console.log('⌨️ Remplissage identifiants...');
-        await robustType(page, 'input[type="email"]', EMAIL);
-        await delay(500);
-        await robustType(page, 'input[type="password"]', PASSWORD);
+        // Lister les inputs pour diagnostic
+        await listInputs(page);
+
+        // Déterminer les sélecteurs exacts (après avoir vu la liste)
+        const emailSelector = 'input[type="email"], input[name="email"], input#email';
+        const passwordSelector = 'input[type="password"], input[name="password"], input#password';
+
+        // Saisie humaine
+        await humanType(page, emailSelector, EMAIL);
+        await delay(800);
+        await humanType(page, passwordSelector, PASSWORD);
         await delay(2000);
+
+        // Vérification juste avant clic
+        let emailValue = await page.$eval(emailSelector, el => el.value);
+        let passwordValue = await page.$eval(passwordSelector, el => el.value);
+        console.log(`📝 Valeurs avant clic – email: "${emailValue}", password: "${passwordValue.replace(/./g, '*')}"`);
+        if (!emailValue || !passwordValue) {
+            console.log('⚠️ Champs vides détectés, resaisie...');
+            if (!emailValue) await humanType(page, emailSelector, EMAIL);
+            if (!passwordValue) await humanType(page, passwordSelector, PASSWORD);
+            await delay(1000);
+            emailValue = await page.$eval(emailSelector, el => el.value);
+            passwordValue = await page.$eval(passwordSelector, el => el.value);
+            console.log(`📝 Après resaisie – email: "${emailValue}", password: "${passwordValue.replace(/./g, '*')}"`);
+        }
 
         console.log('🔐 Clic sur "Log in"...');
         const loginButton = await page.evaluateHandle(() => {
@@ -195,7 +210,7 @@ async function clickClaimButton(page) {
             // --- FAUCET ---
             console.log('🚰 Accès à la page faucet...');
             await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
-            await delay(10000); // Attendre le chargement complet
+            await delay(10000);
 
             // --- CLAIM ---
             const claimClicked = await clickClaimButton(page);
@@ -203,7 +218,7 @@ async function clickClaimButton(page) {
                 status.success = true;
                 status.message = 'Connexion réussie et CLAIM effectué';
             } else {
-                status.success = true; // Connexion OK même si claim échoue
+                status.success = true;
                 status.message = 'Connexion réussie, mais CLAIM non trouvé';
             }
         }
