@@ -16,57 +16,59 @@ if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Fonction pour capturer l'état de Turnstile avec logs détaillés
-async function monitorTurnstile(page, maxWaitMs = 60000) {
+// Surveillance de Turnstile (disparition ou case cochée)
+async function waitForTurnstileGone(page, maxWaitMs = 60000) {
     console.log('🔎 Surveillance de Turnstile...');
     const start = Date.now();
-    let lastLog = 0;
-
     while (Date.now() - start < maxWaitMs) {
         const frames = page.frames();
         const turnstileFrame = frames.find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
-
         if (!turnstileFrame) {
             console.log('✅ Iframe Turnstile disparue');
             return true;
         }
-
-        // Essayer d'obtenir des informations sur l'état du widget
         try {
-            const info = await turnstileFrame.evaluate(() => {
-                const checkbox = document.querySelector('input[type="checkbox"]');
-                const label = document.querySelector('label');
-                const messages = Array.from(document.querySelectorAll('[class*="message"], [class*="status"], .ctp-message, .turnstile-status'))
-                                     .map(el => el.textContent.trim());
-                return {
-                    checkboxExists: !!checkbox,
-                    checkboxChecked: checkbox ? checkbox.checked : false,
-                    labelText: label ? label.textContent.trim() : null,
-                    messages: messages.length ? messages : null
-                };
-            });
-
-            const elapsed = Math.round((Date.now() - start) / 1000);
-            if (elapsed - lastLog >= 5) {
-                console.log(`   [${elapsed}s] Checkbox: ${info.checkboxExists ? (info.checkboxChecked ? 'cochée ✅' : 'non cochée') : 'absente'}`);
-                if (info.messages) console.log(`   Messages: ${info.messages.join(' | ')}`);
-                lastLog = elapsed;
+            const checked = await turnstileFrame.$eval('input[type="checkbox"]', cb => cb.checked);
+            if (checked) {
+                console.log('✅ Case Turnstile cochée – attente disparition...');
+                // Continuer à attendre que l'iframe disparaisse
             }
-
-            if (info.checkboxChecked) {
-                console.log('✅ Case Turnstile cochée !');
-                await delay(5000);
-                return true;
-            }
-        } catch (e) {
-            // L'iframe peut être inaccessible temporairement
-        }
-
+        } catch (e) {}
         await delay(2000);
     }
-
-    console.log('❌ Timeout – Turnstile non résolu');
+    console.log('⚠️ Turnstile toujours présent après timeout');
     return false;
+}
+
+// Vérifier si on est connecté (URL ou élément)
+async function isLoggedIn(page) {
+    const url = page.url();
+    if (!url.includes('login.php')) return true;
+
+    const selectors = [
+        'a[href*="dashboard"]', 'a[href*="account"]',
+        'a:contains("Logout")', 'a:contains("Sign out")',
+        '.user-menu', '.navbar-user'
+    ];
+    for (const sel of selectors) {
+        try {
+            const el = await page.$(sel);
+            if (el) return true;
+        } catch (e) {}
+    }
+    return false;
+}
+
+// Obtenir les messages d'erreur visibles
+async function getErrorMessages(page) {
+    return await page.evaluate(() => {
+        const selectors = ['.alert-danger', '.error', '.message-error', '[class*="error"]', '.text-danger'];
+        for (const sel of selectors) {
+            const el = document.querySelector(sel);
+            if (el && el.offsetParent !== null) return el.textContent.trim();
+        }
+        return null;
+    });
 }
 
 (async () => {
@@ -111,37 +113,42 @@ async function monitorTurnstile(page, maxWaitMs = 60000) {
         await loginButton.click();
         console.log('✅ Clic effectué');
 
-        // Surveillance de Turnstile
-        const resolved = await monitorTurnstile(page, 60000);
+        // Attendre que Turnstile disparaisse
+        const turnstileGone = await waitForTurnstileGone(page, 60000);
+        if (!turnstileGone) throw new Error('Turnstile non résolu');
 
-        if (!resolved) {
-            // Capture pour diagnostic
-            const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
-            console.log('📸 CAPTURE_BASE64_START');
-            console.log(screenshot);
-            console.log('📸 CAPTURE_BASE64_END');
-            throw new Error('Turnstile non résolu après 60s');
+        // Après disparition, attendre confirmation de connexion
+        console.log('⏳ Attente de la connexion...');
+        const startWait = Date.now();
+        let loggedIn = false;
+        while (Date.now() - startWait < 20000) {
+            loggedIn = await isLoggedIn(page);
+            if (loggedIn) break;
+            // Vérifier message d'erreur
+            const err = await getErrorMessages(page);
+            if (err) {
+                console.log('❌ Message d\'erreur :', err);
+                status.message = `Échec: ${err}`;
+                break;
+            }
+            await delay(2000);
         }
 
-        // Attendre que le réseau se stabilise un peu (facultatif)
-        await page.waitForNetworkIdle({ timeout: 10000 }).catch(() => console.log('⚠️ Network idle timeout ignoré'));
-        await delay(5000);
-
-        const currentUrl = page.url();
-        console.log('📍 URL après connexion :', currentUrl);
-
-        if (currentUrl.includes('login.php')) {
-            const errorMsg = await page.evaluate(() => {
-                const err = document.querySelector('.alert-danger, .error, .message-error');
-                return err ? err.textContent.trim() : null;
-            });
-            status.message = errorMsg ? `Échec: ${errorMsg}` : 'Échec de connexion';
-            console.log('❌', status.message);
-        } else {
-            status.success = true;
-            status.message = 'Connexion réussie !';
-            console.log('✅ Connexion réussie !');
+        if (!status.message) {
+            if (loggedIn) {
+                status.success = true;
+                status.message = 'Connexion réussie !';
+                console.log('✅ Connexion réussie !');
+            } else {
+                // Pas d'erreur explicite, mais toujours sur login
+                const pageText = await page.evaluate(() => document.body.innerText.substring(0, 500));
+                console.log('📄 Contenu de la page (extrait) :', pageText);
+                status.message = 'Échec de connexion (toujours sur login.php)';
+                console.log('❌', status.message);
+            }
         }
+
+        console.log('📍 URL finale :', page.url());
 
     } catch (error) {
         console.error('❌ Erreur fatale :', error);
