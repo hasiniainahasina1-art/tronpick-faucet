@@ -9,7 +9,7 @@ const EMAIL = process.env.TRONPICK_EMAIL;
 const PASSWORD = process.env.TRONPICK_PASSWORD;
 const PROXY_USERNAME = process.env.PROXY_USERNAME;
 const PROXY_PASSWORD = process.env.PROXY_PASSWORD;
-const PROXY_HOST = '31.59.20.176'; // un proxy fonctionnel de votre liste
+const PROXY_HOST = '31.59.20.176';   // ← un proxy fonctionnel de votre liste
 const PROXY_PORT = '6754';
 
 if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
@@ -22,6 +22,52 @@ const humanDelay = async (min = 500, max = 2000) => {
     const ms = Math.floor(Math.random() * (max - min + 1)) + min;
     await delay(ms);
 };
+
+// Attendre que le réseau soit calme (AJAX terminé)
+async function waitForNetworkIdle(page, timeout = 10000) {
+    try {
+        await page.waitForNetworkIdle({ idleTime: 500, timeout });
+        console.log('✅ Réseau inactif – requêtes AJAX terminées');
+    } catch (e) {
+        console.log('⚠️ Timeout attente réseau (poursuite quand même)');
+    }
+}
+
+// Vérifier les messages d'erreur dans la page
+async function getErrorMessage(page) {
+    return await page.evaluate(() => {
+        const selectors = [
+            '.alert-danger', '.error', '.message-error', '[class*="error"]',
+            '.text-danger', '.invalid-feedback', '.alert', '[role="alert"]'
+        ];
+        for (const sel of selectors) {
+            const el = document.querySelector(sel);
+            if (el && el.offsetParent !== null) {
+                return el.textContent.trim();
+            }
+        }
+        return null;
+    });
+}
+
+// Vérifier si on est connecté (changement d'URL ou élément spécifique)
+async function isLoggedIn(page) {
+    const url = page.url();
+    if (!url.includes('login.php')) return true;
+
+    const successSelectors = [
+        'a[href*="dashboard"]', 'a[href*="account"]',
+        'a:contains("Logout")', 'a:contains("Sign out")',
+        '.user-menu', '.navbar-user'
+    ];
+    for (const sel of successSelectors) {
+        try {
+            const el = await page.$(sel);
+            if (el) return true;
+        } catch (e) {}
+    }
+    return false;
+}
 
 (async () => {
     let browser;
@@ -65,8 +111,8 @@ const humanDelay = async (min = 500, max = 2000) => {
         await page.type(passwordSelector, PASSWORD, { delay: 50 });
         await humanDelay(500, 1000);
 
-        // ⏳ ATTENTE DE 10 SECONDES AVANT DE CLIQUER (sans interagir avec Turnstile)
-        console.log('⏳ Pause de 10 secondes pour la validation silencieuse de Turnstile...');
+        // ⏳ Attente de 10 secondes AVANT clic (validation silencieuse de Turnstile)
+        console.log('⏳ Pause de 10 secondes pour validation Turnstile...');
         await delay(10000);
 
         // --- CLIQUER SUR LOGIN ---
@@ -80,25 +126,31 @@ const humanDelay = async (min = 500, max = 2000) => {
         console.log('🖱️ Clic sur "Log in"...');
         await loginButton.click();
 
-        // Attendre navigation ou confirmation
-        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
-        await delay(5000);
+        // --- ATTENTE AJAX ET VÉRIFICATION ERREUR ---
+        console.log('⏳ Attente de la fin des requêtes AJAX...');
+        await waitForNetworkIdle(page, 15000);
+        await delay(3000); // petit délai supplémentaire pour le rendu DOM
 
-        const currentUrl = page.url();
-        console.log('📍 URL après connexion :', currentUrl);
-
-        if (currentUrl.includes('login.php')) {
-            const errorMsg = await page.evaluate(() => {
-                const err = document.querySelector('.alert-danger, .error, .message-error');
-                return err ? err.textContent.trim() : null;
-            });
-            status.message = errorMsg ? `Échec: ${errorMsg}` : 'Échec de connexion';
-            console.log('❌', status.message);
+        // Vérifier si un message d'erreur est apparu
+        const errorMsg = await getErrorMessage(page);
+        if (errorMsg) {
+            console.log('❌ Message d\'erreur détecté :', errorMsg);
+            status.message = `Échec: ${errorMsg}`;
         } else {
-            status.success = true;
-            status.message = 'Connexion réussie !';
-            console.log('✅ Connexion réussie !');
+            // Vérifier si la connexion a réussi
+            const loggedIn = await isLoggedIn(page);
+            if (loggedIn) {
+                status.success = true;
+                status.message = 'Connexion réussie !';
+                console.log('✅ Connexion réussie !');
+            } else {
+                // Pas d'erreur explicite, mais toujours sur login → échec silencieux
+                status.message = 'Échec de connexion (pas de message d\'erreur visible)';
+                console.log('❌', status.message);
+            }
         }
+
+        console.log('📍 URL finale :', page.url());
 
     } catch (error) {
         console.error('❌ Erreur fatale :', error);
