@@ -70,134 +70,139 @@ async function isLoggedIn(page) {
     return false;
 }
 
-async function getErrorMessages(page) {
-    try {
-        return await page.evaluate(() => {
-            const sels = ['.alert-danger', '.error', '.message-error', '[class*="error"]', '.text-danger'];
-            for (const s of sels) {
-                const el = document.querySelector(s);
-                if (el && el.offsetParent !== null) return el.textContent.trim();
-            }
-            return null;
-        });
-    } catch (e) { return null; }
-}
-
-async function getSuccessMessages(page) {
-    try {
-        return await page.evaluate(() => {
-            const sels = ['.alert-success', '.success', '.message-success', '[class*="success"]'];
-            for (const s of sels) {
-                const el = document.querySelector(s);
-                if (el && el.offsetParent !== null) return el.textContent.trim();
-            }
-            return null;
-        });
-    } catch (e) { return null; }
-}
-
-// Recherche et clic sur CLAIM avec feedback
-async function clickClaimButton(page) {
+// Analyse du clic CLAIM
+async function clickClaimWithDiagnostics(page) {
     console.log('🎯 Recherche du bouton CLAIM...');
 
-    // Fonction pour trouver dans une frame
-    const findInFrame = async (frame) => {
+    // Collecte des requêtes réseau
+    const requests = [];
+    const onRequest = (req) => {
+        if (['xhr', 'fetch'].includes(req.resourceType())) {
+            requests.push({ url: req.url(), method: req.method(), postData: req.postData() });
+        }
+    };
+    page.on('request', onRequest);
+
+    // Collecte des messages console
+    const consoleMessages = [];
+    const onConsole = msg => consoleMessages.push({ type: msg.type(), text: msg.text() });
+    page.on('console', onConsole);
+
+    // Trouver le bouton dans la page principale ou iframes
+    const findButtonInFrame = async (frame) => {
         try {
-            return await frame.evaluate(() => {
-                const keywords = ['claim', 'roll', 'get', 'receive', 'collect', 'free', 'withdraw', 'claim now', 'get reward'];
+            return await frame.evaluateHandle(() => {
+                const keywords = ['claim', 'roll', 'get', 'receive', 'collect', 'free', 'withdraw'];
                 const elements = Array.from(document.querySelectorAll('button, input[type="submit"], a, div[role="button"], span[role="button"]'));
-                for (const el of elements) {
+                return elements.find(el => {
                     const text = (el.textContent || el.value || '').toLowerCase();
-                    if (keywords.some(kw => text.includes(kw)) && !el.disabled && el.offsetParent !== null) {
-                        return { selector: el.tagName, text: text };
-                    }
-                }
-                return null;
+                    return keywords.some(kw => text.includes(kw)) && !el.disabled && el.offsetParent !== null;
+                });
             });
         } catch (e) { return null; }
     };
 
-    // Trouver le bouton
-    let buttonInfo = await findInFrame(page.mainFrame());
+    let buttonHandle = await findButtonInFrame(page.mainFrame());
     let targetFrame = page.mainFrame();
-    if (!buttonInfo) {
+    if (!buttonHandle) {
         const frames = page.frames();
         for (let i = 1; i < frames.length; i++) {
-            buttonInfo = await findInFrame(frames[i]);
-            if (buttonInfo) {
+            buttonHandle = await findButtonInFrame(frames[i]);
+            if (buttonHandle) {
                 targetFrame = frames[i];
                 break;
             }
         }
     }
 
-    if (!buttonInfo) {
-        console.log('⚠️ Bouton CLAIM non trouvé');
-        return false;
+    if (!buttonHandle) {
+        console.log('❌ Bouton CLAIM introuvable');
+        return { success: false, message: 'Bouton introuvable' };
     }
 
-    console.log(`✅ Bouton trouvé : "${buttonInfo.text}" dans ${targetFrame === page.mainFrame() ? 'page principale' : 'iframe'}`);
+    // Informations avant clic
+    const beforeInfo = await targetFrame.evaluate(el => ({
+        text: el.textContent.trim(),
+        disabled: el.disabled,
+        className: el.className,
+        boundingBox: el.getBoundingClientRect()
+    }), buttonHandle);
+    console.log(`📌 Bouton avant clic : "${beforeInfo.text}", disabled=${beforeInfo.disabled}`);
 
-    // Sauvegarder l'état avant clic
-    const beforeState = await targetFrame.evaluate(() => {
-        const btn = [...document.querySelectorAll('button, input[type="submit"], a')].find(el => {
-            const t = (el.textContent || el.value || '').toLowerCase();
-            return ['claim','roll','get','receive','collect','free','withdraw'].some(k => t.includes(k));
-        });
-        return btn ? { text: btn.textContent.trim(), disabled: btn.disabled } : null;
+    // S'assurer que le bouton est visible et cliquable
+    await targetFrame.evaluate(el => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), buttonHandle);
+    await delay(500);
+
+    // Simuler un clic réaliste (mouvement de souris + clic)
+    const box = beforeInfo.boundingBox;
+    if (box) {
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 10 });
+        await delay(100);
+        await page.mouse.down();
+        await delay(50);
+        await page.mouse.up();
+    } else {
+        await buttonHandle.click();
+    }
+    console.log('🖱️ Clic émulé');
+
+    // Attendre les requêtes réseau
+    await page.waitForNetworkIdle({ timeout: 10000 }).catch(() => console.log('⚠️ Network idle timeout'));
+
+    // Informations après clic
+    const afterInfo = await targetFrame.evaluate(el => ({
+        text: el.textContent.trim(),
+        disabled: el.disabled,
+        className: el.className
+    }), buttonHandle);
+    console.log(`📌 Bouton après clic : "${afterInfo.text}", disabled=${afterInfo.disabled}`);
+
+    // Nettoyer les écouteurs
+    page.off('request', onRequest);
+    page.off('console', onConsole);
+
+    // Analyser les requêtes
+    console.log(`🌐 Requêtes AJAX/Fetch capturées : ${requests.length}`);
+    requests.forEach((r, i) => {
+        console.log(`   ${i+1}. ${r.method} ${r.url}`);
+        if (r.postData) console.log(`      Body: ${r.postData}`);
     });
 
-    // Cliquer
-    await targetFrame.evaluate((textHint) => {
-        const keywords = ['claim', 'roll', 'get', 'receive', 'collect', 'free', 'withdraw', 'claim now', 'get reward'];
-        const elements = Array.from(document.querySelectorAll('button, input[type="submit"], a, div[role="button"], span[role="button"]'));
-        const btn = elements.find(el => {
-            const t = (el.textContent || el.value || '').toLowerCase();
-            return keywords.some(kw => t.includes(kw)) && !el.disabled && el.offsetParent !== null;
-        });
-        if (btn) btn.click();
-    }, buttonInfo.text);
-
-    console.log('🖱️ Clic effectué, attente de la réponse...');
-    await page.waitForNetworkIdle({ timeout: 15000 }).catch(() => console.log('⚠️ Network idle timeout'));
-    await delay(3000);
-
-    // Vérifier les messages
-    const errorMsg = await getErrorMessages(page);
-    if (errorMsg) {
-        console.log('❌ Message d\'erreur :', errorMsg);
-        return { success: false, message: errorMsg };
+    // Analyser les messages console
+    const relevantConsole = consoleMessages.filter(m => m.type === 'log' || m.type === 'info' || m.type === 'error');
+    if (relevantConsole.length) {
+        console.log(`📟 Messages console :`);
+        relevantConsole.forEach(m => console.log(`   [${m.type}] ${m.text}`));
     }
 
-    const successMsg = await getSuccessMessages(page);
-    if (successMsg) {
-        console.log('✅ Message de succès :', successMsg);
-        return { success: true, message: successMsg };
-    }
-
-    // Vérifier le changement d'état du bouton
-    const afterState = await targetFrame.evaluate(() => {
-        const btn = [...document.querySelectorAll('button, input[type="submit"], a')].find(el => {
-            const t = (el.textContent || el.value || '').toLowerCase();
-            return ['claim','roll','get','receive','collect','free','withdraw'].some(k => t.includes(k));
-        });
-        return btn ? { text: btn.textContent.trim(), disabled: btn.disabled } : null;
+    // Vérifier les messages d'erreur/succès dans le DOM
+    const domMessage = await page.evaluate(() => {
+        const sels = ['.alert', '.message', '.toast', '[class*="success"]', '[class*="error"]'];
+        for (const s of sels) {
+            const el = document.querySelector(s);
+            if (el && el.offsetParent !== null) return el.textContent.trim();
+        }
+        return null;
     });
+    if (domMessage) console.log(`💬 Message DOM : ${domMessage}`);
 
-    if (afterState) {
-        if (afterState.disabled) {
-            console.log('✅ Bouton désactivé après clic – probablement réussi');
-            return { success: true, message: 'Bouton CLAIM désactivé (succès présumé)' };
-        }
-        if (beforeState && beforeState.text !== afterState.text) {
-            console.log(`✅ Texte du bouton changé : "${beforeState.text}" → "${afterState.text}"`);
-            return { success: true, message: 'Bouton CLAIM changé (succès présumé)' };
-        }
+    // Déterminer le succès
+    const changed = (beforeInfo.text !== afterInfo.text) || (beforeInfo.disabled !== afterInfo.disabled);
+    const hasRequest = requests.length > 0;
+    const hasMessage = domMessage !== null;
+
+    if (changed || hasRequest || hasMessage) {
+        return { success: true, message: 'Action détectée (changement bouton / requête / message)' };
+    } else {
+        // Capture d'écran et HTML pour diagnostic
+        const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
+        console.log('📸 CAPTURE_BASE64_START');
+        console.log(screenshot);
+        console.log('📸 CAPTURE_BASE64_END');
+        const html = await page.content();
+        console.log('📄 HTML (extrait) :', html.substring(0, 500));
+        return { success: false, message: 'Aucune réaction détectée' };
     }
-
-    // Aucun feedback évident
-    console.log('⚠️ Aucun feedback détecté après clic');
-    return { success: false, message: 'Aucune réaction visible' };
 }
 
 (async () => {
@@ -247,7 +252,10 @@ async function clickClaimButton(page) {
         const loggedIn = await isLoggedIn(page);
         console.log('📍 URL après login :', page.url());
         if (!loggedIn) {
-            const err = await getErrorMessages(page);
+            const err = await page.evaluate(() => {
+                const el = document.querySelector('.alert-danger, .error');
+                return el ? el.textContent.trim() : null;
+            });
             status.message = err ? `Échec login: ${err}` : 'Échec de connexion';
             console.log('❌', status.message);
         } else {
@@ -258,21 +266,13 @@ async function clickClaimButton(page) {
             await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
             await delay(10000);
 
-            // --- CLAIM avec feedback ---
-            const claimResult = await clickClaimButton(page);
+            // --- CLAIM avec diagnostics ---
+            const claimResult = await clickClaimWithDiagnostics(page);
 
-            if (claimResult.success) {
-                status.success = true;
-                status.message = `Connexion OK, CLAIM: ${claimResult.message}`;
-            } else {
-                // Capture d'écran
-                const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
-                console.log('📸 CAPTURE_BASE64_START');
-                console.log(screenshot);
-                console.log('📸 CAPTURE_BASE64_END');
-                status.success = true; // Connexion OK
-                status.message = `Connexion OK, CLAIM échec: ${claimResult.message}`;
-            }
+            status.success = claimResult.success;
+            status.message = claimResult.success
+                ? `Connexion OK, CLAIM: ${claimResult.message}`
+                : `Connexion OK, CLAIM échec: ${claimResult.message}`;
         }
 
     } catch (error) {
