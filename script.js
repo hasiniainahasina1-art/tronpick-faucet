@@ -10,93 +10,38 @@ const PROXY_PASSWORD = process.env.PROXY_PASSWORD;
 
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
-/* ================= SAFE NAV ================= */
+/* ================= NAV ================= */
 async function safeGoto(page, url) {
-    console.log('🌐 Navigation:', url);
-
     await page.goto(url, {
         waitUntil: 'domcontentloaded',
         timeout: 60000
-    }).catch(() => console.log('⚠️ timeout ignoré'));
+    }).catch(() => {});
 
     await delay(5000);
 }
 
-/* ================= HUMAN ================= */
-async function human(page) {
-    for (let i = 0; i < 4; i++) {
-        await page.mouse.move(
-            Math.random() * 900,
-            Math.random() * 700,
-            { steps: 20 }
-        );
-        await delay(300);
-    }
-}
-
-/* ================= LOGIN ROBUSTE ================= */
+/* ================= LOGIN SIMPLE & STABLE ================= */
 async function login(page) {
+    console.log('🌐 LOGIN...');
+
     await safeGoto(page, 'https://tronpick.io/login.php');
-
-    console.log('⏳ Attente page login...');
-
-    await page.waitForFunction(() => document.body.innerText.length > 50, {
-        timeout: 60000
-    }).catch(() => {});
 
     await delay(4000);
 
-    const emailSelectors = [
-        'input[type="email"]',
-        'input[name="email"]',
-        'input[type="text"]',
-        'input'
-    ];
+    const email = await page.$('input[type="email"], input[name="email"], input[type="text"]');
+    const pass = await page.$('input[type="password"], input[name="password"]');
 
-    const passSelectors = [
-        'input[type="password"]',
-        'input[name="password"]'
-    ];
-
-    let emailSel = null;
-    let passSel = null;
-
-    for (let i = 0; i < 10; i++) {
-        for (const s of emailSelectors) {
-            if (await page.$(s)) {
-                emailSel = s;
-                break;
-            }
-        }
-
-        for (const s of passSelectors) {
-            if (await page.$(s)) {
-                passSel = s;
-                break;
-            }
-        }
-
-        if (emailSel && passSel) break;
-
-        console.log('⏳ recherche inputs...');
-        await delay(2000);
-    }
-
-    if (!emailSel || !passSel) {
+    if (!email || !pass) {
         throw new Error('❌ Inputs login introuvables');
     }
 
-    console.log('⌨️ remplissage...');
-
-    await page.click(emailSel);
-    await page.keyboard.type(EMAIL, { delay: 70 });
+    await email.click({ clickCount: 3 });
+    await page.keyboard.type(EMAIL, { delay: 60 });
 
     await delay(500);
 
-    await page.click(passSel);
-    await page.keyboard.type(PASSWORD, { delay: 70 });
-
-    await human(page);
+    await pass.click({ clickCount: 3 });
+    await page.keyboard.type(PASSWORD, { delay: 60 });
 
     const loginBtn = await page.evaluateHandle(() => {
         return [...document.querySelectorAll('button, input')]
@@ -105,7 +50,7 @@ async function login(page) {
 
     if (!loginBtn) throw new Error('❌ bouton login introuvable');
 
-    await loginBtn.click().catch(() => console.log('⚠️ fallback click'));
+    await loginBtn.click().catch(() => {});
 
     await delay(8000);
 
@@ -113,10 +58,8 @@ async function login(page) {
 }
 
 /* ================= DEBUG BOUTONS ================= */
-async function debugButtons(page) {
-    console.log('🔍 BOUTONS ACTIFS :');
-
-    const buttons = await page.evaluate(() => {
+async function getButtons(page) {
+    return await page.evaluate(() => {
         return [...document.querySelectorAll('button, a, div, input')]
             .map(el => {
                 const text = (el.textContent || el.value || '').trim();
@@ -124,12 +67,11 @@ async function debugButtons(page) {
 
                 return {
                     text,
-                    tag: el.tagName,
-                    visible: el.offsetParent !== null,
+                    x: r.x,
+                    y: r.y,
                     w: r.width,
                     h: r.height,
-                    x: r.x,
-                    y: r.y
+                    visible: el.offsetParent !== null
                 };
             })
             .filter(b =>
@@ -139,34 +81,28 @@ async function debugButtons(page) {
                 b.h > 20
             );
     });
-
-    buttons.forEach((b, i) => {
-        console.log(`👉 ${i + 1}. [${b.tag}] "${b.text}"`);
-    });
-
-    return buttons;
 }
 
 /* ================= FIND BUTTON ================= */
-async function findButton(page) {
+async function findActionButton(page) {
     return await page.evaluate(() => {
-        const keywords = ['claim', 'reward', 'roll', 'collect', 'get'];
+        const keywords = ['claim', 'reward', 'roll', 'collect', 'get', 'spin'];
 
         const els = [...document.querySelectorAll('button, a, div')];
 
         for (const el of els) {
-            const txt = (el.textContent || '').toLowerCase();
+            const text = (el.textContent || '').toLowerCase();
             const r = el.getBoundingClientRect();
 
-            if (!txt) continue;
+            if (!text) continue;
             if (r.width < 50 || r.height < 20) continue;
             if (el.offsetParent === null) continue;
 
-            if (keywords.some(k => txt.includes(k))) {
+            if (keywords.some(k => text.includes(k))) {
                 return {
                     x: r.x + r.width / 2,
                     y: r.y + r.height / 2,
-                    text: txt
+                    text
                 };
             }
         }
@@ -176,10 +112,10 @@ async function findButton(page) {
 }
 
 /* ================= CLICK SAFE ================= */
-async function safeClick(page, pos) {
+async function click(page, pos) {
     try {
-        await page.mouse.move(pos.x, pos.y, { steps: 25 });
-        await delay(300);
+        await page.mouse.move(pos.x, pos.y, { steps: 20 });
+        await delay(200);
 
         await page.mouse.click(pos.x, pos.y, {
             delay: 100
@@ -188,7 +124,7 @@ async function safeClick(page, pos) {
         console.log('🔥 CLICK:', pos.text);
 
     } catch (e) {
-        console.log('⚠️ fallback JS click');
+        console.log('⚠️ fallback click');
 
         await page.evaluate(({ x, y }) => {
             const el = document.elementFromPoint(x, y);
@@ -199,18 +135,21 @@ async function safeClick(page, pos) {
 
 /* ================= CLAIM ================= */
 async function claim(page) {
+    console.log('🚰 FAUCET...');
+
     await safeGoto(page, 'https://tronpick.io/faucet.php');
 
     await delay(6000);
 
-    await debugButtons(page);
+    const buttons = await getButtons(page);
+    console.log('📋 BOUTONS:', buttons.map(b => b.text));
 
-    console.log('🔍 recherche CLAIM...');
+    console.log('🔍 SEARCH ACTION BUTTON...');
 
     let pos = null;
 
-    for (let i = 0; i < 6; i++) {
-        pos = await findButton(page);
+    for (let i = 0; i < 5; i++) {
+        pos = await findActionButton(page);
 
         if (pos) break;
 
@@ -219,10 +158,8 @@ async function claim(page) {
     }
 
     if (!pos) {
-        return { success: false, message: 'CLAIM introuvable' };
+        return { success: false, message: '❌ bouton introuvable' };
     }
-
-    console.log('📍 trouvé:', pos);
 
     let success = false;
 
@@ -233,13 +170,11 @@ async function claim(page) {
         }
     });
 
-    await safeClick(page, pos);
+    await click(page, pos);
 
     await delay(10000);
 
-    const text = await page.evaluate(() =>
-        document.body.innerText.toLowerCase()
-    );
+    const text = await page.evaluate(() => document.body.innerText.toLowerCase());
 
     if (success || text.includes('claimed')) {
         return { success: true, message: 'SUCCESS' };
@@ -249,7 +184,7 @@ async function claim(page) {
         return { success: false, message: 'COOLDOWN' };
     }
 
-    return { success: false, message: 'FAIL' };
+    return { success: false, message: 'FAILED' };
 }
 
 /* ================= MAIN ================= */
