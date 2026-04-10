@@ -128,6 +128,10 @@ async function clickClaimButton(page) {
     console.log('🛡️ Vérification Turnstile faucet...');
     await waitForTurnstileGone(page, 30000);
 
+    // ✅ AJOUT : Attendre 10 secondes avant de cliquer
+    console.log('⏳ Pause de 10 secondes avant le clic...');
+    await delay(10000);
+
     // Trouver le bouton et cliquer de manière réaliste
     const clickResult = await page.evaluate(() => {
         const btn = [...document.querySelectorAll('button, input[type="submit"], a, [role="button"]')]
@@ -136,12 +140,10 @@ async function clickClaimButton(page) {
 
         btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-        // Simuler un vrai clic humain
         const rect = btn.getBoundingClientRect();
         const x = rect.x + rect.width / 2;
         const y = rect.y + rect.height / 2;
 
-        // Envoyer les événements souris (simulés via JS, mais mieux que rien)
         ['mousedown', 'mouseup', 'click'].forEach(eventType => {
             btn.dispatchEvent(new MouseEvent(eventType, { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y }));
         });
@@ -156,7 +158,7 @@ async function clickClaimButton(page) {
 
     console.log(`✅ Clic simulé sur "${clickResult.text}"`);
 
-    // Attendre longtemps un feedback
+    // Attendre un feedback
     console.log('⏳ Attente de feedback (max 30s)...');
     const startWait = Date.now();
     let feedback = null;
@@ -170,13 +172,11 @@ async function clickClaimButton(page) {
 
     while (Date.now() - startWait < 30000) {
         feedback = await page.evaluate(() => {
-            // Messages
             const msgSels = ['.alert', '.message', '.toast', '[class*="success"]', '[class*="error"]', '.swal2-popup', '.modal'];
             for (const s of msgSels) {
                 const el = document.querySelector(s);
                 if (el && el.offsetParent !== null) return { type: 'message', text: el.textContent.trim() };
             }
-            // Bouton désactivé ?
             const btn = [...document.querySelectorAll('button, input[type="submit"]')].find(el => (el.textContent || el.value || '').trim().toUpperCase() === 'CLAIM');
             if (btn && btn.disabled) return { type: 'button_disabled', text: btn.textContent.trim() };
             return null;
@@ -201,7 +201,6 @@ async function clickClaimButton(page) {
         return { success: feedback.type === 'button_disabled' || feedback.text.toLowerCase().includes('success'), message: feedback.text };
     }
 
-    // Vérifier à nouveau l'état du bouton
     const finalState = await page.evaluate(() => {
         const btn = [...document.querySelectorAll('button, input[type="submit"]')].find(el => (el.textContent || el.value || '').trim().toUpperCase() === 'CLAIM');
         return btn ? { text: btn.textContent.trim(), disabled: btn.disabled } : null;
@@ -282,7 +281,7 @@ async function clickClaimButton(page) {
                 status.success = true;
                 status.message = `Connexion OK, CLAIM: ${claimResult.message}`;
             } else {
-                status.success = true; // Connexion OK
+                status.success = true;
                 status.message = `Connexion OK, CLAIM échec: ${claimResult.message}`;
             }
         }
