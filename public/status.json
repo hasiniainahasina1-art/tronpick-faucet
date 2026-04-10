@@ -1,5 +1,5 @@
 {
-  "success": false,
-  "time": "2026-04-10T07:39:46.695Z",
-  "message": "Protocol error (Runtime.callFunctionOn): Argument should belong to the same JavaScript world as target object"
+  "success": true,
+  "time": "2026-04-10T07:49:37.038Z",
+  "message": "Connexion OK, CLAIM échec: Aucune réaction visible"
 }
