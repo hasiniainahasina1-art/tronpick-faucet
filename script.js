@@ -16,41 +16,56 @@ if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Attendre que Turnstile soit résolu (case cochée ou iframe disparue)
-async function waitForTurnstileResolution(page, maxWaitMs = 60000) {
-    console.log('⏳ Attente de la résolution de Turnstile...');
+// Fonction pour capturer l'état de Turnstile avec logs détaillés
+async function monitorTurnstile(page, maxWaitMs = 60000) {
+    console.log('🔎 Surveillance de Turnstile...');
     const start = Date.now();
-    let lastLog = '';
+    let lastLog = 0;
+
     while (Date.now() - start < maxWaitMs) {
         const frames = page.frames();
         const turnstileFrame = frames.find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
 
         if (!turnstileFrame) {
-            console.log('✅ Iframe Turnstile disparue – défi probablement résolu');
+            console.log('✅ Iframe Turnstile disparue');
             return true;
         }
 
+        // Essayer d'obtenir des informations sur l'état du widget
         try {
-            const isChecked = await turnstileFrame.$eval('input[type="checkbox"]', cb => cb.checked);
-            if (isChecked) {
+            const info = await turnstileFrame.evaluate(() => {
+                const checkbox = document.querySelector('input[type="checkbox"]');
+                const label = document.querySelector('label');
+                const messages = Array.from(document.querySelectorAll('[class*="message"], [class*="status"], .ctp-message, .turnstile-status'))
+                                     .map(el => el.textContent.trim());
+                return {
+                    checkboxExists: !!checkbox,
+                    checkboxChecked: checkbox ? checkbox.checked : false,
+                    labelText: label ? label.textContent.trim() : null,
+                    messages: messages.length ? messages : null
+                };
+            });
+
+            const elapsed = Math.round((Date.now() - start) / 1000);
+            if (elapsed - lastLog >= 5) {
+                console.log(`   [${elapsed}s] Checkbox: ${info.checkboxExists ? (info.checkboxChecked ? 'cochée ✅' : 'non cochée') : 'absente'}`);
+                if (info.messages) console.log(`   Messages: ${info.messages.join(' | ')}`);
+                lastLog = elapsed;
+            }
+
+            if (info.checkboxChecked) {
                 console.log('✅ Case Turnstile cochée !');
-                // Laisser le temps au serveur de valider
                 await delay(5000);
                 return true;
             }
         } catch (e) {
-            // L'iframe peut être en cours de rechargement
+            // L'iframe peut être inaccessible temporairement
         }
 
-        // Log d'attente toutes les 10 secondes
-        const elapsed = Math.round((Date.now() - start) / 1000);
-        if (elapsed % 10 === 0 && elapsed !== lastLog) {
-            console.log(`   ...toujours en attente (${elapsed}s)`);
-            lastLog = elapsed;
-        }
         await delay(2000);
     }
-    console.log('⚠️ Timeout – Turnstile non résolu dans le temps imparti');
+
+    console.log('❌ Timeout – Turnstile non résolu');
     return false;
 }
 
@@ -96,20 +111,20 @@ async function waitForTurnstileResolution(page, maxWaitMs = 60000) {
         await loginButton.click();
         console.log('✅ Clic effectué');
 
-        // Attendre que Turnstile se résolve (max 60 secondes)
-        const resolved = await waitForTurnstileResolution(page, 60000);
+        // Surveillance de Turnstile
+        const resolved = await monitorTurnstile(page, 60000);
 
         if (!resolved) {
-            // Capture d'écran pour diagnostic
+            // Capture pour diagnostic
             const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
             console.log('📸 CAPTURE_BASE64_START');
             console.log(screenshot);
             console.log('📸 CAPTURE_BASE64_END');
-            throw new Error('Turnstile non résolu après 60 secondes');
+            throw new Error('Turnstile non résolu après 60s');
         }
 
-        // Attendre que la page se stabilise
-        await page.waitForNetworkIdle({ timeout: 15000 }).catch(() => console.log('⚠️ Network idle timeout, poursuite...'));
+        // Attendre que le réseau se stabilise un peu (facultatif)
+        await page.waitForNetworkIdle({ timeout: 10000 }).catch(() => console.log('⚠️ Network idle timeout ignoré'));
         await delay(5000);
 
         const currentUrl = page.url();
@@ -120,7 +135,7 @@ async function waitForTurnstileResolution(page, maxWaitMs = 60000) {
                 const err = document.querySelector('.alert-danger, .error, .message-error');
                 return err ? err.textContent.trim() : null;
             });
-            status.message = errorMsg ? `Échec: ${errorMsg}` : 'Échec de connexion (toujours sur login.php)';
+            status.message = errorMsg ? `Échec: ${errorMsg}` : 'Échec de connexion';
             console.log('❌', status.message);
         } else {
             status.success = true;
