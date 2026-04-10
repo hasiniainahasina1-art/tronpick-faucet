@@ -70,156 +70,112 @@ async function isLoggedIn(page) {
     return false;
 }
 
-// Diagnostic avant clic
-async function diagnoseFaucet(page) {
-    console.log('🔬 DIAGNOSTIC FAUCET AVANT CLIC :');
-    const buttons = await page.evaluate(() => {
-        return Array.from(document.querySelectorAll('button, input[type="submit"], a, [role="button"]'))
-            .filter(el => el.offsetParent !== null)
-            .map(el => ({
-                tag: el.tagName,
-                text: (el.textContent || el.value || '').trim(),
-                disabled: el.disabled || false,
-                className: el.className,
-                id: el.id
-            }));
-    });
-    console.log(`📋 ${buttons.length} boutons visibles :`);
-    buttons.forEach((b, i) => {
-        console.log(`   ${i+1}. [${b.tag}] "${b.text}" ${b.disabled ? '(DÉSACTIVÉ)' : ''}`);
-    });
-    const pageText = await page.evaluate(() => document.body.innerText);
-    console.log('📄 Extrait du texte de la page (premières lignes) :');
-    pageText.split('\n').filter(l => l.trim()).slice(0, 15).forEach(l => console.log(`   ${l}`));
-    return buttons;
-}
-
-// Clic sur CLAIM avec détection avancée des messages/timer
+// Clic natif sur CLAIM
 async function clickClaimButton(page) {
     console.log('🎯 Recherche du bouton "CLAIM"...');
     await page.waitForNetworkIdle({ timeout: 15000 }).catch(() => {});
     await delay(3000);
 
-    const buttons = await diagnoseFaucet(page);
-    const claimBtnInfo = buttons.find(b => b.text.toUpperCase() === 'CLAIM');
-    if (!claimBtnInfo) {
-        console.log('❌ Bouton CLAIM non trouvé');
-        return { success: false, message: 'Bouton CLAIM introuvable' };
-    }
-    if (claimBtnInfo.disabled) {
-        console.log('⚠️ Bouton CLAIM désactivé (probablement déjà claimé ou timer)');
-        return { success: false, message: 'Bouton CLAIM désactivé' };
-    }
-
     console.log('🛡️ Vérification Turnstile faucet...');
     await waitForTurnstileGone(page, 30000);
 
-    // ✅ Attente supplémentaire de 10 secondes
     console.log('⏳ Pause de 10 secondes avant le clic...');
     await delay(10000);
 
-    // Clic via evaluate
-    const clickResult = await page.evaluate(() => {
-        const btn = [...document.querySelectorAll('button, input[type="submit"], a, [role="button"]')]
-            .find(el => (el.textContent || el.value || '').trim().toUpperCase() === 'CLAIM' && !el.disabled && el.offsetParent !== null);
-        if (!btn) return { success: false, reason: 'Bouton non trouvé' };
-        btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        const rect = btn.getBoundingClientRect();
-        const x = rect.x + rect.width / 2;
-        const y = rect.y + rect.height / 2;
-        ['mousedown', 'mouseup', 'click'].forEach(ev => {
-            btn.dispatchEvent(new MouseEvent(ev, { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y }));
-        });
-        return { success: true, text: btn.textContent.trim() };
-    });
+    // Sélecteur exact pour le bouton CLAIM
+    const claimSelectors = [
+        'button:has-text("CLAIM")',
+        'button:contains("CLAIM")',
+        'button:has-text("Claim")',
+        'input[value="CLAIM"]',
+        'a:has-text("CLAIM")'
+    ];
 
-    if (!clickResult.success) {
-        console.log(`❌ Échec clic : ${clickResult.reason}`);
-        return { success: false, message: clickResult.reason };
-    }
-    console.log(`✅ Clic simulé sur "${clickResult.text}"`);
-
-    // Attendre et collecter les messages
-    console.log('⏳ Attente de feedback (messages, timer)...');
-    const startWait = Date.now();
-    let detectedMessage = null;
-    const requests = [];
-    const reqListener = (req) => {
-        if (['xhr', 'fetch'].includes(req.resourceType())) requests.push({ url: req.url(), method: req.method() });
-    };
-    page.on('request', reqListener);
-
-    while (Date.now() - startWait < 20000) {
-        detectedMessage = await page.evaluate(() => {
-            // Sélecteurs élargis pour les notifications
-            const msgSels = [
-                '.alert', '.message', '.toast', '.notification', '.swal2-popup', '.modal',
-                '[class*="success"]', '[class*="error"]', '[class*="info"]', '[class*="warning"]',
-                '.sweet-alert', '.bootbox-body', '.noty_message', '.gritter-item',
-                'div[role="alert"]', 'div[role="status"]'
-            ];
-            for (const s of msgSels) {
-                const el = document.querySelector(s);
-                if (el && el.offsetParent !== null && el.textContent.trim()) {
-                    return { type: 'message', text: el.textContent.trim() };
+    let clicked = false;
+    for (const sel of claimSelectors) {
+        try {
+            const btn = await page.$(sel);
+            if (btn) {
+                // Vérifier s'il est activé et visible
+                const isEnabled = await btn.evaluate(el => !el.disabled && el.offsetParent !== null);
+                if (isEnabled) {
+                    console.log(`✅ Bouton trouvé avec sélecteur : ${sel}`);
+                    // Faire défiler jusqu'au bouton
+                    await btn.evaluate(el => el.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+                    await delay(500);
+                    // Clic natif Puppeteer
+                    await btn.click();
+                    console.log('🖱️ Clic natif effectué');
+                    clicked = true;
+                    break;
                 }
             }
-            // Recherche d'un compte à rebours visible
-            const timerEls = [...document.querySelectorAll('*')].filter(el => /next claim|wait|cooldown|timer|time remaining|hours|minutes|seconds/i.test(el.textContent));
-            if (timerEls.length) {
-                return { type: 'timer', text: timerEls[0].textContent.trim() };
-            }
-            // Vérifier si le bouton CLAIM est devenu désactivé
-            const btn = [...document.querySelectorAll('button, input[type="submit"]')].find(el => (el.textContent || el.value || '').trim().toUpperCase() === 'CLAIM');
-            if (btn && btn.disabled) {
-                return { type: 'button_disabled', text: 'Bouton CLAIM désactivé' };
-            }
-            return null;
-        });
-        if (detectedMessage) break;
-        await delay(1000);
+        } catch (e) {}
     }
 
-    page.off('request', reqListener);
+    if (!clicked) {
+        // Dernière chance : rechercher par texte dans tous les boutons
+        const found = await page.evaluate(() => {
+            const btns = [...document.querySelectorAll('button, input[type="submit"], a')];
+            const claim = btns.find(el => (el.textContent || el.value || '').trim().toUpperCase() === 'CLAIM');
+            if (claim && !claim.disabled && claim.offsetParent !== null) {
+                claim.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                claim.click();
+                return true;
+            }
+            return false;
+        });
+        if (found) {
+            console.log('✅ Clic via recherche textuelle');
+            clicked = true;
+        }
+    }
 
-    // Capture après clic
-    const screenshotAfter = await page.screenshot({ encoding: 'base64', fullPage: true });
+    if (!clicked) {
+        console.log('❌ Impossible de cliquer sur CLAIM');
+        return { success: false, message: 'Clic impossible' };
+    }
+
+    // Attendre la réponse
+    console.log('⏳ Attente de feedback après clic...');
+    await page.waitForNetworkIdle({ timeout: 15000 }).catch(() => {});
+    await delay(5000);
+
+    // Analyser les messages
+    const feedback = await page.evaluate(() => {
+        const msgSels = ['.alert', '.message', '.toast', '.notification', '.swal2-popup', '.modal', '[class*="success"]', '[class*="error"]'];
+        for (const s of msgSels) {
+            const el = document.querySelector(s);
+            if (el && el.offsetParent !== null && el.textContent.trim()) {
+                return { type: 'message', text: el.textContent.trim() };
+            }
+        }
+        const btn = [...document.querySelectorAll('button, input[type="submit"]')].find(el => (el.textContent || el.value || '').trim().toUpperCase() === 'CLAIM');
+        if (btn && btn.disabled) return { type: 'button_disabled', text: 'Bouton désactivé' };
+        return null;
+    });
+
+    // Capture écran
+    const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
     console.log('📸 CAPTURE_APRES_BASE64_START');
-    console.log(screenshotAfter);
+    console.log(screenshot);
     console.log('📸 CAPTURE_APRES_BASE64_END');
 
-    console.log(`🌐 Requêtes réseau : ${requests.length}`);
-    requests.forEach((r, i) => console.log(`   ${i+1}. ${r.method} ${r.url}`));
+    // Texte de la page
+    const pageText = await page.evaluate(() => document.body.innerText);
+    console.log('📄 Extrait texte page :');
+    pageText.split('\n').filter(l => l.trim()).slice(0, 20).forEach(l => console.log(`   ${l}`));
 
-    // Log du texte complet de la page (extrait) pour analyse
-    const fullText = await page.evaluate(() => document.body.innerText);
-    console.log('📄 Texte complet de la page après clic (extrait) :');
-    fullText.split('\n').filter(l => l.trim()).slice(0, 25).forEach(l => console.log(`   ${l}`));
-
-    if (detectedMessage) {
-        console.log(`💬 Message détecté : [${detectedMessage.type}] "${detectedMessage.text}"`);
-        const msg = detectedMessage.text.toLowerCase();
-        if (msg.includes('success') || msg.includes('claimed') || msg.includes('sent') || msg.includes('reward')) {
-            return { success: true, message: detectedMessage.text };
+    if (feedback) {
+        console.log(`💬 Feedback : ${feedback.type} - "${feedback.text}"`);
+        const msg = feedback.text.toLowerCase();
+        if (msg.includes('success') || msg.includes('claimed') || msg.includes('reward') || feedback.type === 'button_disabled') {
+            return { success: true, message: feedback.text };
         }
-        if (msg.includes('wait') || msg.includes('cooldown') || msg.includes('already claimed') || msg.includes('try again') || msg.includes('hours') || msg.includes('minutes')) {
-            return { success: false, message: `Timer/Cooldown: ${detectedMessage.text}` };
-        }
-        // Par défaut, on considère qu'un message d'erreur est un échec
-        return { success: false, message: detectedMessage.text };
+        return { success: false, message: feedback.text };
     }
 
-    // Vérification finale du bouton
-    const finalState = await page.evaluate(() => {
-        const btn = [...document.querySelectorAll('button, input[type="submit"]')].find(el => (el.textContent || el.value || '').trim().toUpperCase() === 'CLAIM');
-        return btn ? { text: btn.textContent.trim(), disabled: btn.disabled } : null;
-    });
-    if (finalState) {
-        console.log(`📌 État final bouton : "${finalState.text}", disabled=${finalState.disabled}`);
-        if (finalState.disabled) return { success: true, message: 'Bouton désactivé (succès présumé)' };
-    }
-
-    return { success: false, message: 'Aucun message ni changement détecté' };
+    return { success: false, message: 'Aucun retour' };
 }
 
 (async () => {
@@ -290,7 +246,7 @@ async function clickClaimButton(page) {
                 status.success = true;
                 status.message = `Connexion OK, CLAIM: ${claimResult.message}`;
             } else {
-                status.success = true; // Connexion OK même si claim échoue (timer)
+                status.success = true; // Connexion OK
                 status.message = `Connexion OK, CLAIM échec: ${claimResult.message}`;
             }
         }
