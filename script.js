@@ -16,9 +16,9 @@ if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Saisie robuste d'un champ
+// Saisie robuste
 async function fillField(page, selector, value, fieldName) {
-    console.log(`⌨️ Remplissage du champ ${fieldName}...`);
+    console.log(`⌨️ Remplissage ${fieldName}...`);
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
     await page.keyboard.press('Backspace');
@@ -31,18 +31,18 @@ async function fillField(page, selector, value, fieldName) {
         el.dispatchEvent(new Event('blur', { bubbles: true }));
     }, selector, value);
     await delay(300);
-    let actualValue = await page.$eval(selector, el => el.value);
-    if (actualValue !== value) {
+    let actual = await page.$eval(selector, el => el.value);
+    if (actual !== value) {
         await page.click(selector, { clickCount: 3 });
         await page.keyboard.press('Backspace');
         for (const char of value) await page.keyboard.type(char, { delay: 30 });
-        actualValue = await page.$eval(selector, el => el.value);
+        actual = await page.$eval(selector, el => el.value);
     }
-    if (actualValue !== value) throw new Error(`Impossible de remplir ${fieldName}`);
-    console.log(`✅ Champ ${fieldName} rempli`);
+    if (actual !== value) throw new Error(`Impossible de remplir ${fieldName}`);
+    console.log(`✅ ${fieldName} rempli`);
 }
 
-// Surveillance Turnstile
+// Turnstile
 async function waitForTurnstileGone(page, maxWaitMs = 60000) {
     console.log('🔎 Surveillance Turnstile...');
     const start = Date.now();
@@ -83,29 +83,25 @@ async function getErrorMessages(page) {
     } catch (e) { return null; }
 }
 
-// Lister les éléments cliquables visibles (diagnostic)
-async function listClickableElements(page) {
-    const elements = await page.evaluate(() => {
-        const sels = 'button, a, input[type="submit"], input[type="button"], [role="button"], [onclick]';
-        return Array.from(document.querySelectorAll(sels))
-            .filter(el => el.offsetParent !== null)
-            .map(el => ({
-                tag: el.tagName,
-                text: (el.textContent || el.value || '').trim().substring(0, 40),
-                disabled: el.disabled || false
-            }));
-    });
-    console.log('📋 Éléments cliquables visibles :');
-    elements.forEach((el, i) => console.log(`   ${i+1}. [${el.tag}] "${el.text}" ${el.disabled ? '(désactivé)' : ''}`));
-    return elements;
+async function getSuccessMessages(page) {
+    try {
+        return await page.evaluate(() => {
+            const sels = ['.alert-success', '.success', '.message-success', '[class*="success"]'];
+            for (const s of sels) {
+                const el = document.querySelector(s);
+                if (el && el.offsetParent !== null) return el.textContent.trim();
+            }
+            return null;
+        });
+    } catch (e) { return null; }
 }
 
-// Recherche et clic sur CLAIM (dans la page principale et iframes)
+// Recherche et clic sur CLAIM avec feedback
 async function clickClaimButton(page) {
     console.log('🎯 Recherche du bouton CLAIM...');
 
-    // Fonction pour chercher dans une frame donnée
-    const findAndClickInFrame = async (frame) => {
+    // Fonction pour trouver dans une frame
+    const findInFrame = async (frame) => {
         try {
             return await frame.evaluate(() => {
                 const keywords = ['claim', 'roll', 'get', 'receive', 'collect', 'free', 'withdraw', 'claim now', 'get reward'];
@@ -113,38 +109,95 @@ async function clickClaimButton(page) {
                 for (const el of elements) {
                     const text = (el.textContent || el.value || '').toLowerCase();
                     if (keywords.some(kw => text.includes(kw)) && !el.disabled && el.offsetParent !== null) {
-                        el.click();
-                        return { clicked: true, text: text };
+                        return { selector: el.tagName, text: text };
                     }
                 }
-                return { clicked: false };
+                return null;
             });
-        } catch (e) {
-            return { clicked: false };
-        }
+        } catch (e) { return null; }
     };
 
-    // Essayer la page principale
-    let result = await findAndClickInFrame(page.mainFrame());
-    if (result.clicked) {
-        console.log(`✅ CLAIM cliqué (page principale) : "${result.text}"`);
-        await delay(5000);
-        return true;
-    }
-
-    // Essayer toutes les iframes
-    const frames = page.frames();
-    for (let i = 1; i < frames.length; i++) {
-        result = await findAndClickInFrame(frames[i]);
-        if (result.clicked) {
-            console.log(`✅ CLAIM cliqué (iframe ${i}) : "${result.text}"`);
-            await delay(5000);
-            return true;
+    // Trouver le bouton
+    let buttonInfo = await findInFrame(page.mainFrame());
+    let targetFrame = page.mainFrame();
+    if (!buttonInfo) {
+        const frames = page.frames();
+        for (let i = 1; i < frames.length; i++) {
+            buttonInfo = await findInFrame(frames[i]);
+            if (buttonInfo) {
+                targetFrame = frames[i];
+                break;
+            }
         }
     }
 
-    console.log('⚠️ Aucun bouton CLAIM trouvé');
-    return false;
+    if (!buttonInfo) {
+        console.log('⚠️ Bouton CLAIM non trouvé');
+        return false;
+    }
+
+    console.log(`✅ Bouton trouvé : "${buttonInfo.text}" dans ${targetFrame === page.mainFrame() ? 'page principale' : 'iframe'}`);
+
+    // Sauvegarder l'état avant clic
+    const beforeState = await targetFrame.evaluate(() => {
+        const btn = [...document.querySelectorAll('button, input[type="submit"], a')].find(el => {
+            const t = (el.textContent || el.value || '').toLowerCase();
+            return ['claim','roll','get','receive','collect','free','withdraw'].some(k => t.includes(k));
+        });
+        return btn ? { text: btn.textContent.trim(), disabled: btn.disabled } : null;
+    });
+
+    // Cliquer
+    await targetFrame.evaluate((textHint) => {
+        const keywords = ['claim', 'roll', 'get', 'receive', 'collect', 'free', 'withdraw', 'claim now', 'get reward'];
+        const elements = Array.from(document.querySelectorAll('button, input[type="submit"], a, div[role="button"], span[role="button"]'));
+        const btn = elements.find(el => {
+            const t = (el.textContent || el.value || '').toLowerCase();
+            return keywords.some(kw => t.includes(kw)) && !el.disabled && el.offsetParent !== null;
+        });
+        if (btn) btn.click();
+    }, buttonInfo.text);
+
+    console.log('🖱️ Clic effectué, attente de la réponse...');
+    await page.waitForNetworkIdle({ timeout: 15000 }).catch(() => console.log('⚠️ Network idle timeout'));
+    await delay(3000);
+
+    // Vérifier les messages
+    const errorMsg = await getErrorMessages(page);
+    if (errorMsg) {
+        console.log('❌ Message d\'erreur :', errorMsg);
+        return { success: false, message: errorMsg };
+    }
+
+    const successMsg = await getSuccessMessages(page);
+    if (successMsg) {
+        console.log('✅ Message de succès :', successMsg);
+        return { success: true, message: successMsg };
+    }
+
+    // Vérifier le changement d'état du bouton
+    const afterState = await targetFrame.evaluate(() => {
+        const btn = [...document.querySelectorAll('button, input[type="submit"], a')].find(el => {
+            const t = (el.textContent || el.value || '').toLowerCase();
+            return ['claim','roll','get','receive','collect','free','withdraw'].some(k => t.includes(k));
+        });
+        return btn ? { text: btn.textContent.trim(), disabled: btn.disabled } : null;
+    });
+
+    if (afterState) {
+        if (afterState.disabled) {
+            console.log('✅ Bouton désactivé après clic – probablement réussi');
+            return { success: true, message: 'Bouton CLAIM désactivé (succès présumé)' };
+        }
+        if (beforeState && beforeState.text !== afterState.text) {
+            console.log(`✅ Texte du bouton changé : "${beforeState.text}" → "${afterState.text}"`);
+            return { success: true, message: 'Bouton CLAIM changé (succès présumé)' };
+        }
+    }
+
+    // Aucun feedback évident
+    console.log('⚠️ Aucun feedback détecté après clic');
+    return { success: false, message: 'Aucune réaction visible' };
 }
 
 (async () => {
@@ -203,26 +256,22 @@ async function clickClaimButton(page) {
             // --- FAUCET ---
             console.log('🚰 Accès faucet...');
             await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
-            await delay(10000); // Attendre chargement complet
+            await delay(10000);
 
-            // Diagnostic : lister les éléments cliquables
-            await listClickableElements(page);
+            // --- CLAIM avec feedback ---
+            const claimResult = await clickClaimButton(page);
 
-            // Tentative de clic sur CLAIM
-            const claimClicked = await clickClaimButton(page);
-
-            if (claimClicked) {
+            if (claimResult.success) {
                 status.success = true;
-                status.message = 'Connexion réussie et CLAIM effectué';
+                status.message = `Connexion OK, CLAIM: ${claimResult.message}`;
             } else {
-                // Échec : capture d'écran pour analyse
-                console.log('📸 Capture d\'écran pour diagnostic :');
+                // Capture d'écran
                 const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
                 console.log('📸 CAPTURE_BASE64_START');
                 console.log(screenshot);
                 console.log('📸 CAPTURE_BASE64_END');
-                status.success = true; // Connexion OK, mais claim échoue
-                status.message = 'Connexion réussie, mais CLAIM non trouvé (voir capture)';
+                status.success = true; // Connexion OK
+                status.message = `Connexion OK, CLAIM échec: ${claimResult.message}`;
             }
         }
 
