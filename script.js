@@ -5,6 +5,7 @@ const PASSWORD = process.env.TRONPICK_PASSWORD;
 
 const PROXY_USERNAME = process.env.PROXY_USERNAME;
 const PROXY_PASSWORD = process.env.PROXY_PASSWORD;
+
 const PROXY_HOST = '31.59.20.176';
 const PROXY_PORT = '6754';
 
@@ -17,20 +18,20 @@ async function safeGoto(page, url) {
     await page.goto(url, {
         waitUntil: 'domcontentloaded',
         timeout: 60000
-    }).catch(() => console.log('⚠️ Timeout ignoré'));
+    }).catch(() => console.log('⚠️ timeout ignoré'));
 
     await delay(6000);
 }
 
 /* ================= HUMAN ================= */
 async function human(page) {
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 5; i++) {
         await page.mouse.move(
             Math.random() * 900,
             Math.random() * 700,
             { steps: 25 }
         );
-        await delay(300 + Math.random() * 600);
+        await delay(300);
     }
 }
 
@@ -38,73 +39,106 @@ async function human(page) {
 async function login(page) {
     await safeGoto(page, 'https://tronpick.io/login.php');
 
-    await page.type('input[type="email"]', EMAIL, { delay: 60 });
-    await page.type('input[type="password"]', PASSWORD, { delay: 60 });
+    const email = await page.waitForSelector('input', { timeout: 30000 });
+    await page.type('input[type="email"], input[name="email"], input[type="text"]', EMAIL, { delay: 60 });
+
+    await delay(500);
+
+    await page.type('input[type="password"], input[name="password"]', PASSWORD, { delay: 60 });
 
     await human(page);
 
-    const btn = await page.evaluateHandle(() => {
+    const loginBtn = await page.evaluateHandle(() => {
         return [...document.querySelectorAll('button')]
-            .find(b => b.textContent.toLowerCase().includes('log in'));
+            .find(b => (b.textContent || '').toLowerCase().includes('log'));
     });
 
-    if (!btn) throw new Error('❌ Bouton login introuvable');
+    if (!loginBtn) throw new Error('Login button introuvable');
 
-    await btn.click().catch(() => console.log('⚠️ click fallback'));
+    await loginBtn.click().catch(() => console.log('⚠️ fallback click login'));
 
     await delay(8000);
 
-    console.log('✅ Login OK:', page.url());
+    console.log('✅ LOGIN OK');
 }
 
-/* ================= FIND BEST BUTTON ================= */
-async function findBestButton(page) {
+/* ================= DEBUG BUTTONS ================= */
+async function debugButtons(page) {
+    console.log('🔍 ANALYSE BOUTONS ACTIFS...');
+
+    const buttons = await page.evaluate(() => {
+        return [...document.querySelectorAll('button, a, div, input')]
+            .map(el => {
+                const text = (el.textContent || el.value || '').trim();
+                const r = el.getBoundingClientRect();
+
+                return {
+                    text,
+                    tag: el.tagName,
+                    visible: el.offsetParent !== null,
+                    w: r.width,
+                    h: r.height,
+                    x: r.x,
+                    y: r.y
+                };
+            })
+            .filter(b =>
+                b.text &&
+                b.visible &&
+                b.w > 40 &&
+                b.h > 20
+            );
+    });
+
+    buttons.forEach((b, i) => {
+        console.log(`👉 ${i + 1}. [${b.tag}] "${b.text}"`);
+    });
+
+    return buttons;
+}
+
+/* ================= FIND CLAIM ================= */
+async function findClaim(page) {
     return await page.evaluate(() => {
-        const keywords = ['claim', 'reward', 'roll', 'collect', 'spin', 'get'];
+        const keywords = ['claim', 'reward', 'roll', 'collect', 'get'];
 
-        const elements = [...document.querySelectorAll('button, a, div, input')];
+        const els = [...document.querySelectorAll('button, a, div')];
 
-        let best = null;
+        for (const el of els) {
+            const txt = (el.textContent || '').toLowerCase();
+            const r = el.getBoundingClientRect();
 
-        for (const el of elements) {
-            const text = (el.textContent || el.value || '').toLowerCase().trim();
-            const rect = el.getBoundingClientRect();
-
-            if (!text) continue;
-            if (rect.width < 50 || rect.height < 20) continue;
+            if (!txt) continue;
+            if (r.width < 50 || r.height < 20) continue;
             if (el.offsetParent === null) continue;
 
-            const score = keywords.reduce((acc, k) => acc + (text.includes(k) ? 1 : 0), 0);
-
-            if (score > 0) {
-                best = {
-                    x: rect.x + rect.width / 2,
-                    y: rect.y + rect.height / 2,
-                    text,
-                    score
+            if (keywords.some(k => txt.includes(k))) {
+                return {
+                    x: r.x + r.width / 2,
+                    y: r.y + r.height / 2,
+                    text: txt
                 };
-                break;
             }
         }
 
-        return best;
+        return null;
     });
 }
 
-/* ================= CLICK ================= */
-async function realClick(page, pos) {
+/* ================= CLICK SAFE ================= */
+async function safeClick(page, pos) {
     try {
-        await page.mouse.move(pos.x, pos.y, { steps: 30 });
-        await delay(400);
+        await page.mouse.move(pos.x, pos.y, { steps: 20 });
+        await delay(300);
 
         await page.mouse.click(pos.x, pos.y, {
-            delay: 120 + Math.random() * 200
+            delay: 100 + Math.random() * 150
         });
 
-        console.log('✅ Clic sur:', pos.text);
+        console.log('🔥 CLICK OK:', pos.text);
 
     } catch (e) {
-        console.log('⚠️ Fallback JS');
+        console.log('⚠️ fallback JS click');
 
         await page.evaluate(({ x, y }) => {
             const el = document.elementFromPoint(x, y);
@@ -117,58 +151,59 @@ async function realClick(page, pos) {
 async function claim(page) {
     await safeGoto(page, 'https://tronpick.io/faucet.php');
 
+    await delay(8000);
     await human(page);
 
-    console.log('🔍 Recherche bouton actif...');
+    await debugButtons(page);
 
-    let button = null;
+    console.log('🔍 Recherche CLAIM...');
+
+    let pos = null;
 
     for (let i = 0; i < 6; i++) {
-        button = await findBestButton(page);
+        pos = await findClaim(page);
 
-        if (button) break;
+        if (pos) break;
 
-        console.log('⏳ Aucun bouton trouvé, retry...');
-        await delay(4000);
+        console.log('⏳ retry...');
+        await delay(3000);
     }
 
-    if (!button) {
-        return { success: false, message: '❌ Aucun bouton actif trouvé' };
+    if (!pos) {
+        return { success: false, message: 'CLAIM introuvable' };
     }
 
-    console.log('📍 Bouton détecté:', button);
+    console.log('📍 trouvé:', pos);
 
-    // écoute API
-    let apiSuccess = false;
+    let success = false;
 
     const listener = async res => {
         const url = res.url().toLowerCase();
-        if (url.includes('claim') || url.includes('reward')) {
+        if (url.includes('claim')) {
             const txt = await res.text().catch(() => '');
-            if (txt.includes('success')) apiSuccess = true;
+            if (txt.includes('success')) success = true;
         }
     };
 
     page.on('response', listener);
 
-    console.log('🔥 CLIC...');
-    await realClick(page, button);
+    await safeClick(page, pos);
 
-    await delay(12000);
+    await delay(10000);
 
     page.off('response', listener);
 
-    const txt = await page.evaluate(() => document.body.innerText.toLowerCase());
+    const text = await page.evaluate(() => document.body.innerText.toLowerCase());
 
-    if (apiSuccess || txt.includes('claimed') || txt.includes('success')) {
-        return { success: true, message: '✅ SUCCESS' };
+    if (success || text.includes('claimed')) {
+        return { success: true, message: 'SUCCESS' };
     }
 
-    if (txt.includes('wait') || txt.includes('cooldown')) {
-        return { success: false, message: '⏳ COOLDOWN' };
+    if (text.includes('wait') || text.includes('cooldown')) {
+        return { success: false, message: 'COOLDOWN' };
     }
 
-    return { success: false, message: '❌ Action non validée' };
+    return { success: false, message: 'Échec CLAIM' };
 }
 
 /* ================= MAIN ================= */
@@ -176,8 +211,6 @@ async function claim(page) {
     let browser;
 
     try {
-        console.log('🚀 START');
-
         const { browser: br, page } = await connect({
             headless: false,
             turnstile: true,
@@ -203,7 +236,7 @@ async function claim(page) {
 
         const result = await claim(page);
 
-        console.log('🏁 RESULT FINAL:', result);
+        console.log('🏁 RESULT:', result);
 
     } catch (e) {
         console.log('❌ ERREUR:', e.message);
