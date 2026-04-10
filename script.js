@@ -57,7 +57,7 @@ async function login(page) {
     console.log('✅ Login OK:', page.url());
 }
 
-/* ================= FIND CLAIM MAIN ================= */
+/* ================= FIND CLAIM ================= */
 async function findClaim(page) {
     return await page.evaluate(() => {
         const keywords = ['claim', 'reward', 'roll', 'collect', 'get'];
@@ -119,14 +119,31 @@ async function findClaimFrame(page) {
     return null;
 }
 
-/* ================= CLICK ================= */
+/* ================= CLICK ULTRA STABLE ================= */
 async function realClick(page, pos) {
-    await page.mouse.move(pos.x, pos.y, { steps: 30 });
-    await delay(500);
+    try {
+        // micro mouvement anti bug
+        await page.mouse.move(pos.x + 1, pos.y + 1);
+        await delay(100);
 
-    await page.mouse.down();
-    await delay(120);
-    await page.mouse.up();
+        await page.mouse.move(pos.x, pos.y, { steps: 30 });
+        await delay(400);
+
+        // clic stable (fix erreur "left is not pressed")
+        await page.mouse.click(pos.x, pos.y, {
+            delay: 120 + Math.random() * 200
+        });
+
+        console.log('✅ Clic effectué');
+
+    } catch (e) {
+        console.log('⚠️ Fallback JS click');
+
+        await page.evaluate(({ x, y }) => {
+            const el = document.elementFromPoint(x, y);
+            if (el) el.click();
+        }, pos);
+    }
 }
 
 /* ================= CLAIM ================= */
@@ -139,7 +156,6 @@ async function claim(page) {
 
     let pos = null;
 
-    // 🔁 retry intelligent
     for (let i = 0; i < 6; i++) {
         pos = await findClaim(page);
 
@@ -150,7 +166,7 @@ async function claim(page) {
 
         if (pos) break;
 
-        console.log('⏳ Toujours rien, retry...');
+        console.log('⏳ Retry...');
         await delay(4000);
     }
 
@@ -160,17 +176,7 @@ async function claim(page) {
 
     console.log('📍 Bouton trouvé:', pos);
 
-    // 🔴 debug visuel
-    await page.evaluate(() => {
-        document.querySelectorAll('*').forEach(el => {
-            const t = (el.textContent || '').toLowerCase();
-            if (t.includes('claim') || t.includes('reward')) {
-                el.style.border = '2px solid red';
-            }
-        });
-    });
-
-    // 📡 écoute API
+    // écoute API
     let apiSuccess = false;
 
     const listener = async res => {
