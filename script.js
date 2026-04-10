@@ -3,15 +3,14 @@ const { connect } = require('puppeteer-real-browser');
 const EMAIL = process.env.TRONPICK_EMAIL?.trim().toLowerCase();
 const PASSWORD = process.env.TRONPICK_PASSWORD;
 
+const PROXY_HOST = '31.59.20.176';
+const PROXY_PORT = '6754';
 const PROXY_USERNAME = process.env.PROXY_USERNAME;
 const PROXY_PASSWORD = process.env.PROXY_PASSWORD;
 
-const PROXY_HOST = '31.59.20.176';
-const PROXY_PORT = '6754';
-
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
-/* ================= SAFE GOTO ================= */
+/* ================= SAFE NAV ================= */
 async function safeGoto(page, url) {
     console.log('🌐 Navigation:', url);
 
@@ -20,51 +19,102 @@ async function safeGoto(page, url) {
         timeout: 60000
     }).catch(() => console.log('⚠️ timeout ignoré'));
 
-    await delay(6000);
+    await delay(5000);
 }
 
 /* ================= HUMAN ================= */
 async function human(page) {
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 4; i++) {
         await page.mouse.move(
             Math.random() * 900,
             Math.random() * 700,
-            { steps: 25 }
+            { steps: 20 }
         );
         await delay(300);
     }
 }
 
-/* ================= LOGIN ================= */
+/* ================= LOGIN ROBUSTE ================= */
 async function login(page) {
     await safeGoto(page, 'https://tronpick.io/login.php');
 
-    const email = await page.waitForSelector('input', { timeout: 30000 });
-    await page.type('input[type="email"], input[name="email"], input[type="text"]', EMAIL, { delay: 60 });
+    console.log('⏳ Attente page login...');
+
+    await page.waitForFunction(() => document.body.innerText.length > 50, {
+        timeout: 60000
+    }).catch(() => {});
+
+    await delay(4000);
+
+    const emailSelectors = [
+        'input[type="email"]',
+        'input[name="email"]',
+        'input[type="text"]',
+        'input'
+    ];
+
+    const passSelectors = [
+        'input[type="password"]',
+        'input[name="password"]'
+    ];
+
+    let emailSel = null;
+    let passSel = null;
+
+    for (let i = 0; i < 10; i++) {
+        for (const s of emailSelectors) {
+            if (await page.$(s)) {
+                emailSel = s;
+                break;
+            }
+        }
+
+        for (const s of passSelectors) {
+            if (await page.$(s)) {
+                passSel = s;
+                break;
+            }
+        }
+
+        if (emailSel && passSel) break;
+
+        console.log('⏳ recherche inputs...');
+        await delay(2000);
+    }
+
+    if (!emailSel || !passSel) {
+        throw new Error('❌ Inputs login introuvables');
+    }
+
+    console.log('⌨️ remplissage...');
+
+    await page.click(emailSel);
+    await page.keyboard.type(EMAIL, { delay: 70 });
 
     await delay(500);
 
-    await page.type('input[type="password"], input[name="password"]', PASSWORD, { delay: 60 });
+    await page.click(passSel);
+    await page.keyboard.type(PASSWORD, { delay: 70 });
 
     await human(page);
 
     const loginBtn = await page.evaluateHandle(() => {
-        return [...document.querySelectorAll('button')]
-            .find(b => (b.textContent || '').toLowerCase().includes('log'));
+        return [...document.querySelectorAll('button, input')]
+            .find(b => (b.textContent || b.value || '').toLowerCase().includes('log'));
     });
 
-    if (!loginBtn) throw new Error('Login button introuvable');
+    if (!loginBtn) throw new Error('❌ bouton login introuvable');
 
-    await loginBtn.click().catch(() => console.log('⚠️ fallback click login'));
+    await loginBtn.click().catch(() => console.log('⚠️ fallback click'));
 
     await delay(8000);
 
     console.log('✅ LOGIN OK');
 }
 
-/* ================= DEBUG BUTTONS ================= */
+/* ================= DEBUG BOUTONS ================= */
 async function debugButtons(page) {
-    console.log('🔍 ANALYSE BOUTONS ACTIFS...');
+    console.log('🔍 BOUTONS ACTIFS :');
 
     const buttons = await page.evaluate(() => {
         return [...document.querySelectorAll('button, a, div, input')]
@@ -97,8 +147,8 @@ async function debugButtons(page) {
     return buttons;
 }
 
-/* ================= FIND CLAIM ================= */
-async function findClaim(page) {
+/* ================= FIND BUTTON ================= */
+async function findButton(page) {
     return await page.evaluate(() => {
         const keywords = ['claim', 'reward', 'roll', 'collect', 'get'];
 
@@ -128,14 +178,14 @@ async function findClaim(page) {
 /* ================= CLICK SAFE ================= */
 async function safeClick(page, pos) {
     try {
-        await page.mouse.move(pos.x, pos.y, { steps: 20 });
+        await page.mouse.move(pos.x, pos.y, { steps: 25 });
         await delay(300);
 
         await page.mouse.click(pos.x, pos.y, {
-            delay: 100 + Math.random() * 150
+            delay: 100
         });
 
-        console.log('🔥 CLICK OK:', pos.text);
+        console.log('🔥 CLICK:', pos.text);
 
     } catch (e) {
         console.log('⚠️ fallback JS click');
@@ -151,17 +201,16 @@ async function safeClick(page, pos) {
 async function claim(page) {
     await safeGoto(page, 'https://tronpick.io/faucet.php');
 
-    await delay(8000);
-    await human(page);
+    await delay(6000);
 
     await debugButtons(page);
 
-    console.log('🔍 Recherche CLAIM...');
+    console.log('🔍 recherche CLAIM...');
 
     let pos = null;
 
     for (let i = 0; i < 6; i++) {
-        pos = await findClaim(page);
+        pos = await findButton(page);
 
         if (pos) break;
 
@@ -177,23 +226,20 @@ async function claim(page) {
 
     let success = false;
 
-    const listener = async res => {
-        const url = res.url().toLowerCase();
-        if (url.includes('claim')) {
+    page.on('response', async res => {
+        if (res.url().includes('claim')) {
             const txt = await res.text().catch(() => '');
             if (txt.includes('success')) success = true;
         }
-    };
-
-    page.on('response', listener);
+    });
 
     await safeClick(page, pos);
 
     await delay(10000);
 
-    page.off('response', listener);
-
-    const text = await page.evaluate(() => document.body.innerText.toLowerCase());
+    const text = await page.evaluate(() =>
+        document.body.innerText.toLowerCase()
+    );
 
     if (success || text.includes('claimed')) {
         return { success: true, message: 'SUCCESS' };
@@ -203,7 +249,7 @@ async function claim(page) {
         return { success: false, message: 'COOLDOWN' };
     }
 
-    return { success: false, message: 'Échec CLAIM' };
+    return { success: false, message: 'FAIL' };
 }
 
 /* ================= MAIN ================= */
@@ -239,7 +285,7 @@ async function claim(page) {
         console.log('🏁 RESULT:', result);
 
     } catch (e) {
-        console.log('❌ ERREUR:', e.message);
+        console.log('❌ ERROR:', e.message);
     } finally {
         if (browser) await browser.close();
     }
