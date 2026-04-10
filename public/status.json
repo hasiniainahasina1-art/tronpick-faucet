@@ -1,5 +1,5 @@
 {
   "success": false,
-  "time": "2026-04-10T04:10:01.716Z",
-  "message": "Échec login: All fields cannot be empty!"
+  "time": "2026-04-10T04:13:25.068Z",
+  "message": "Échec login: Email must be a valid email!"
 }
