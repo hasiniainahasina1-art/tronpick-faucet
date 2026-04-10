@@ -1,6 +1,4 @@
 const { connect } = require('puppeteer-real-browser');
-const fs = require('fs');
-const path = require('path');
 
 const EMAIL = process.env.TRONPICK_EMAIL?.trim().toLowerCase();
 const PASSWORD = process.env.TRONPICK_PASSWORD;
@@ -12,6 +10,18 @@ const PROXY_PORT = '6754';
 
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
+/* ================= SAFE GOTO ================= */
+async function safeGoto(page, url) {
+    console.log('🌐 Navigation:', url);
+
+    await page.goto(url, {
+        waitUntil: 'domcontentloaded',
+        timeout: 60000
+    }).catch(() => console.log('⚠️ Timeout ignoré'));
+
+    await delay(5000);
+}
+
 /* ================= HUMAN ================= */
 async function human(page) {
     for (let i = 0; i < 5; i++) {
@@ -20,17 +30,13 @@ async function human(page) {
             Math.random() * 600,
             { steps: 20 }
         );
-        await delay(300 + Math.random() * 400);
+        await delay(300 + Math.random() * 500);
     }
 }
 
 /* ================= LOGIN ================= */
 async function login(page) {
-    await page.goto('https://tronpick.io/login.php', {
-        waitUntil: 'networkidle2'
-    });
-
-    await delay(3000);
+    await safeGoto(page, 'https://tronpick.io/login.php');
 
     await page.type('input[type="email"]', EMAIL, { delay: 50 });
     await page.type('input[type="password"]', PASSWORD, { delay: 50 });
@@ -42,20 +48,17 @@ async function login(page) {
             .find(b => b.textContent.toLowerCase().includes('log in'));
     });
 
-    if (!loginBtn) throw new Error('Login bouton introuvable');
+    if (!loginBtn) throw new Error('Bouton login introuvable');
 
-    await Promise.all([
-        page.waitForNavigation({ waitUntil: 'networkidle2' }),
-        loginBtn.click()
-    ]);
+    await loginBtn.click().catch(() => console.log('⚠️ click fallback'));
 
-    await delay(5000);
+    await delay(8000);
 
     console.log('✅ Login OK:', page.url());
 }
 
 /* ================= FIND CLAIM ================= */
-async function findClaimButton(page) {
+async function findClaim(page) {
     return await page.evaluate(() => {
         const els = [...document.querySelectorAll('*')];
 
@@ -63,10 +66,10 @@ async function findClaimButton(page) {
             const txt = (el.textContent || '').trim().toUpperCase();
 
             if (txt === 'CLAIM' && el.offsetParent !== null) {
-                const rect = el.getBoundingClientRect();
+                const r = el.getBoundingClientRect();
                 return {
-                    x: rect.x + rect.width / 2,
-                    y: rect.y + rect.height / 2
+                    x: r.x + r.width / 2,
+                    y: r.y + r.height / 2
                 };
             }
         }
@@ -81,44 +84,49 @@ async function realClick(page, pos) {
     await delay(500);
 
     await page.mouse.down();
-    await delay(100 + Math.random() * 200);
+    await delay(120);
     await page.mouse.up();
 }
 
 /* ================= CLAIM ================= */
 async function claim(page) {
-    await page.goto('https://tronpick.io/faucet.php', {
-        waitUntil: 'networkidle2'
-    });
+    await safeGoto(page, 'https://tronpick.io/faucet.php');
 
-    await delay(8000);
     await human(page);
 
     console.log('🔍 Recherche CLAIM...');
 
-    const pos = await findClaimButton(page);
+    let pos = null;
+
+    // retry find bouton
+    for (let i = 0; i < 5; i++) {
+        pos = await findClaim(page);
+        if (pos) break;
+
+        console.log('⏳ Bouton non trouvé, retry...');
+        await delay(3000);
+    }
 
     if (!pos) {
         return { success: false, message: 'CLAIM introuvable' };
     }
 
-    console.log('📍 Position CLAIM:', pos);
+    console.log('📍 Position:', pos);
 
-    // écoute réseau
-    let success = false;
+    // écoute API
+    let apiSuccess = false;
 
-    const listener = async (res) => {
+    const listener = async res => {
         const url = res.url().toLowerCase();
-
         if (url.includes('claim')) {
             const txt = await res.text().catch(() => '');
-            if (txt.includes('success')) success = true;
+            if (txt.includes('success')) apiSuccess = true;
         }
     };
 
     page.on('response', listener);
 
-    console.log('🔥 CLIC HUMAIN...');
+    console.log('🔥 CLIC...');
     await realClick(page, pos);
 
     await delay(10000);
@@ -127,8 +135,8 @@ async function claim(page) {
 
     const text = await page.evaluate(() => document.body.innerText.toLowerCase());
 
-    if (success || text.includes('claimed')) {
-        return { success: true, message: 'CLAIM SUCCESS' };
+    if (apiSuccess || text.includes('claimed')) {
+        return { success: true, message: 'SUCCESS' };
     }
 
     if (text.includes('wait') || text.includes('cooldown')) {
@@ -138,11 +146,32 @@ async function claim(page) {
     return { success: false, message: 'Échec CLAIM' };
 }
 
+/* ================= RETRY ================= */
+async function claimRetry(page) {
+    for (let i = 1; i <= 3; i++) {
+        console.log(`🔁 Tentative ${i}`);
+
+        const res = await claim(page);
+
+        console.log('📊', res);
+
+        if (res.success) return res;
+
+        if (res.message === 'COOLDOWN') return res;
+
+        await delay(8000);
+    }
+
+    return { success: false, message: 'Échec total' };
+}
+
 /* ================= MAIN ================= */
 (async () => {
     let browser;
 
     try {
+        console.log('🚀 Lancement');
+
         const { browser: br, page } = await connect({
             headless: false,
             turnstile: true,
@@ -158,11 +187,18 @@ async function claim(page) {
 
         await page.setViewport({ width: 1280, height: 720 });
 
+        // anti detection
+        await page.evaluateOnNewDocument(() => {
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => false
+            });
+        });
+
         await login(page);
 
-        const result = await claim(page);
+        const result = await claimRetry(page);
 
-        console.log('📊 RESULT:', result);
+        console.log('🏁 RESULT FINAL:', result);
 
     } catch (e) {
         console.log('❌ ERREUR:', e.message);
