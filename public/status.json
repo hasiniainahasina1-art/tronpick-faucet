@@ -1,5 +1,5 @@
 {
   "success": false,
-  "time": "2026-04-10T02:42:09.226Z",
-  "message": "Échec: Invalid captcha code. Please try again!"
+  "time": "2026-04-10T02:57:23.584Z",
+  "message": "Timed out after waiting 45000ms"
 }
