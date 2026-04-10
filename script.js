@@ -10,50 +10,22 @@ const PROXY_PASSWORD = process.env.PROXY_PASSWORD;
 const PROXY_HOST = '31.59.20.176';
 const PROXY_PORT = '6754';
 
-if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
-    console.error('❌ Variables manquantes');
-    process.exit(1);
-}
+const delay = ms => new Promise(r => setTimeout(r, ms));
 
-const delay = ms => new Promise(res => setTimeout(res, ms));
-
-/* ================= HUMAN SIMULATION ================= */
-async function humanBehavior(page) {
+/* ================= HUMAN ================= */
+async function human(page) {
     for (let i = 0; i < 5; i++) {
         await page.mouse.move(
             Math.random() * 800,
             Math.random() * 600,
             { steps: 20 }
         );
-        await delay(300 + Math.random() * 500);
+        await delay(300 + Math.random() * 400);
     }
-}
-
-/* ================= TURNSTILE ================= */
-async function waitTurnstile(page, timeout = 60000) {
-    console.log('🔎 Attente Turnstile...');
-    const start = Date.now();
-
-    while (Date.now() - start < timeout) {
-        const frame = page.frames().find(f =>
-            f.url().includes('challenges.cloudflare.com')
-        );
-
-        if (!frame) {
-            console.log('✅ Turnstile OK');
-            return true;
-        }
-
-        await delay(2000);
-    }
-
-    console.log('⚠️ Turnstile timeout');
-    return false;
 }
 
 /* ================= LOGIN ================= */
 async function login(page) {
-    console.log('🌐 Ouverture login...');
     await page.goto('https://tronpick.io/login.php', {
         waitUntil: 'networkidle2'
     });
@@ -61,146 +33,116 @@ async function login(page) {
     await delay(3000);
 
     await page.type('input[type="email"]', EMAIL, { delay: 50 });
-    await delay(500);
     await page.type('input[type="password"]', PASSWORD, { delay: 50 });
 
-    await humanBehavior(page);
+    await human(page);
 
-    console.log('🔐 Click login...');
+    const loginBtn = await page.evaluateHandle(() => {
+        return [...document.querySelectorAll('button')]
+            .find(b => b.textContent.toLowerCase().includes('log in'));
+    });
+
+    if (!loginBtn) throw new Error('Login bouton introuvable');
+
     await Promise.all([
         page.waitForNavigation({ waitUntil: 'networkidle2' }),
-        page.click('button')
+        loginBtn.click()
     ]);
 
     await delay(5000);
-    await waitTurnstile(page);
 
-    console.log('📍 URL:', page.url());
+    console.log('✅ Login OK:', page.url());
 }
 
-/* ================= CLAIM ULTRA ================= */
-async function ultraClaim(page) {
-    console.log('🚀 CLAIM ULTRA');
+/* ================= FIND CLAIM ================= */
+async function findClaimButton(page) {
+    return await page.evaluate(() => {
+        const els = [...document.querySelectorAll('*')];
 
+        for (const el of els) {
+            const txt = (el.textContent || '').trim().toUpperCase();
+
+            if (txt === 'CLAIM' && el.offsetParent !== null) {
+                const rect = el.getBoundingClientRect();
+                return {
+                    x: rect.x + rect.width / 2,
+                    y: rect.y + rect.height / 2
+                };
+            }
+        }
+
+        return null;
+    });
+}
+
+/* ================= CLICK REAL ================= */
+async function realClick(page, pos) {
+    await page.mouse.move(pos.x, pos.y, { steps: 25 });
+    await delay(500);
+
+    await page.mouse.down();
+    await delay(100 + Math.random() * 200);
+    await page.mouse.up();
+}
+
+/* ================= CLAIM ================= */
+async function claim(page) {
     await page.goto('https://tronpick.io/faucet.php', {
         waitUntil: 'networkidle2'
     });
 
     await delay(8000);
-    await humanBehavior(page);
+    await human(page);
 
-    // attendre bouton
-    await page.waitForFunction(() => {
-        return [...document.querySelectorAll('button, input, a')]
-            .some(el =>
-                (el.textContent || el.value || '')
-                .toUpperCase().includes('CLAIM')
-            );
-    }, { timeout: 20000 });
+    console.log('🔍 Recherche CLAIM...');
 
-    const handle = await page.evaluateHandle(() => {
-        return [...document.querySelectorAll('button, input, a, div')]
-            .find(el =>
-                (el.textContent || el.value || '')
-                .toUpperCase().includes('CLAIM') &&
-                el.offsetParent !== null
-            );
-    });
+    const pos = await findClaimButton(page);
 
-    if (!handle) {
+    if (!pos) {
         return { success: false, message: 'CLAIM introuvable' };
     }
 
-    const el = handle.asElement();
+    console.log('📍 Position CLAIM:', pos);
 
-    await el.evaluate(e => e.scrollIntoView({ block: 'center' }));
-    await delay(2000);
+    // écoute réseau
+    let success = false;
 
-    const box = await el.boundingBox();
-    if (!box) return { success: false, message: 'Pas de position' };
-
-    const x = box.x + box.width / 2;
-    const y = box.y + box.height / 2;
-
-    await page.mouse.move(x, y, { steps: 30 });
-    await delay(1000);
-
-    console.log('🔥 CLICK RÉEL');
-    await page.mouse.down();
-    await delay(150);
-    await page.mouse.up();
-
-    // 🔥 écoute API
-    let apiDetected = false;
-    let apiResponse = '';
-
-    page.on('response', async res => {
+    const listener = async (res) => {
         const url = res.url().toLowerCase();
 
-        if (url.includes('claim') || url.includes('faucet')) {
-            apiDetected = true;
-            try {
-                apiResponse = await res.text();
-            } catch {}
+        if (url.includes('claim')) {
+            const txt = await res.text().catch(() => '');
+            if (txt.includes('success')) success = true;
         }
-    });
+    };
+
+    page.on('response', listener);
+
+    console.log('🔥 CLIC HUMAIN...');
+    await realClick(page, pos);
 
     await delay(10000);
 
-    const pageResult = await page.evaluate(() => {
-        const txt = document.body.innerText.toLowerCase();
+    page.off('response', listener);
 
-        if (txt.includes('success') || txt.includes('claimed'))
-            return { success: true, message: 'SUCCESS PAGE' };
+    const text = await page.evaluate(() => document.body.innerText.toLowerCase());
 
-        if (txt.includes('wait') || txt.includes('cooldown'))
-            return { success: false, message: 'COOLDOWN' };
-
-        return null;
-    });
-
-    if (apiDetected) {
-        if (apiResponse.includes('success'))
-            return { success: true, message: 'SUCCESS API' };
-
-        return { success: false, message: 'REFUS API' };
+    if (success || text.includes('claimed')) {
+        return { success: true, message: 'CLAIM SUCCESS' };
     }
 
-    if (pageResult) return pageResult;
-
-    return { success: false, message: 'Aucune réponse' };
-}
-
-/* ================= RETRY ================= */
-async function claimWithRetry(page, attempts = 3) {
-    for (let i = 1; i <= attempts; i++) {
-        console.log(`🔁 Tentative ${i}/${attempts}`);
-
-        const result = await ultraClaim(page);
-
-        console.log('📊 Résultat:', result);
-
-        if (result.success) return result;
-
-        if (result.message.includes('COOLDOWN')) {
-            return result;
-        }
-
-        console.log('⏳ Retry...');
-        await delay(10000);
+    if (text.includes('wait') || text.includes('cooldown')) {
+        return { success: false, message: 'COOLDOWN' };
     }
 
-    return { success: false, message: 'Échec après retry' };
+    return { success: false, message: 'Échec CLAIM' };
 }
 
 /* ================= MAIN ================= */
 (async () => {
     let browser;
-    const status = { success: false, message: '', time: new Date().toISOString() };
 
     try {
-        console.log('🚀 Lancement navigateur');
-
         const { browser: br, page } = await connect({
             headless: false,
             turnstile: true,
@@ -216,31 +158,15 @@ async function claimWithRetry(page, attempts = 3) {
 
         await page.setViewport({ width: 1280, height: 720 });
 
-        // anti detection
-        await page.evaluateOnNewDocument(() => {
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => false,
-            });
-        });
-
         await login(page);
 
-        const result = await claimWithRetry(page, 3);
+        const result = await claim(page);
 
-        status.success = result.success;
-        status.message = result.message;
+        console.log('📊 RESULT:', result);
 
     } catch (e) {
         console.log('❌ ERREUR:', e.message);
-        status.message = e.message;
     } finally {
         if (browser) await browser.close();
-
-        fs.writeFileSync(
-            path.join(__dirname, 'public', 'status.json'),
-            JSON.stringify(status, null, 2)
-        );
-
-        console.log('📝 FIN:', status);
     }
 })();
