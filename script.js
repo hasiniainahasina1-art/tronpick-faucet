@@ -284,88 +284,24 @@ async function clickClaimButton(page) {
             await delay(10000);
 
             // --- CLAIM ---
-            async function clickClaim(page) {
-    console.log('🔍 SEARCH CLAIM BUTTON...');
+            const claimResult = await clickClaimButton(page);
 
-    await page.waitForTimeout(5000);
-
-    // 🔥 1. DEBUG : voir tous les boutons visibles
-    const buttons = await page.evaluate(() => {
-        return [...document.querySelectorAll('button, a, input')]
-            .map(el => {
-                const text = (el.textContent || el.value || '').trim();
-                const r = el.getBoundingClientRect();
-
-                return {
-                    text,
-                    disabled: el.disabled,
-                    visible: el.offsetParent !== null,
-                    x: r.x,
-                    y: r.y,
-                    w: r.width,
-                    h: r.height
-                };
-            })
-            .filter(b => b.visible && b.text);
-    });
-
-    console.log('📋 BUTTONS FOUND:');
-    buttons.forEach(b => console.log(`👉 "${b.text}"`));
-
-    // 🔥 2. trouver CLAIM (strict + fallback)
-    const claim = await page.evaluate(() => {
-        const els = [...document.querySelectorAll('button, a, input')];
-
-        for (const el of els) {
-            const txt = (el.textContent || el.value || '').trim().toLowerCase();
-
-            if (!txt) continue;
-
-            if (txt.includes('claim')) {
-                const r = el.getBoundingClientRect();
-
-                if (r.width < 20 || r.height < 20) continue;
-                if (el.offsetParent === null) continue;
-
-                return {
-                    x: r.x + r.width / 2,
-                    y: r.y + r.height / 2,
-                    text: txt
-                };
+            if (claimResult.success) {
+                status.success = true;
+                status.message = `Connexion OK, CLAIM: ${claimResult.message}`;
+            } else {
+                status.success = true; // Connexion OK même si claim échoue (timer)
+                status.message = `Connexion OK, CLAIM échec: ${claimResult.message}`;
             }
         }
 
-        return null;
-    });
-
-    if (!claim) {
-        return { success: false, message: 'CLAIM introuvable dans DOM' };
+    } catch (error) {
+        console.error('❌ Erreur fatale :', error);
+        status.message = error.message;
+    } finally {
+        if (browser) await browser.close();
+        const statusPath = path.join(__dirname, 'public', 'status.json');
+        fs.writeFileSync(statusPath, JSON.stringify(status, null, 2));
+        console.log('📝 Statut enregistré :', status.success ? 'SUCCÈS' : 'ÉCHEC');
     }
-
-    console.log('🎯 CLAIM FOUND:', claim.text);
-
-    // 🔥 3. clic humain stable
-    await page.mouse.move(claim.x, claim.y, { steps: 20 });
-    await page.waitForTimeout(300);
-
-    await page.mouse.click(claim.x, claim.y, {
-        delay: 120
-    });
-
-    console.log('🔥 CLAIM CLICKED');
-
-    await page.waitForTimeout(8000);
-
-    // 🔥 4. vérification résultat
-    const result = await page.evaluate(() => document.body.innerText.toLowerCase());
-
-    if (result.includes('claimed') || result.includes('success')) {
-        return { success: true, message: 'CLAIM SUCCESS' };
-    }
-
-    if (result.includes('wait') || result.includes('cooldown')) {
-        return { success: false, message: 'COOLDOWN ACTIVE' };
-    }
-
-    return { success: false, message: 'NO RESPONSE AFTER CLICK' };
-}
+})();
