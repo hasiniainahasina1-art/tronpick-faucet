@@ -70,7 +70,7 @@ async function isLoggedIn(page) {
     return false;
 }
 
-// Clic sur CLAIM avec recherche textuelle exacte
+// Clic sur CLAIM avec gestion d'obsolescence
 async function clickClaimButton(page) {
     console.log('🎯 Recherche du bouton "CLAIM"...');
     await page.waitForNetworkIdle({ timeout: 15000 }).catch(() => {});
@@ -82,69 +82,44 @@ async function clickClaimButton(page) {
     console.log('⏳ Pause de 10 secondes avant le clic...');
     await delay(10000);
 
-    // Récupérer tous les éléments cliquables avec leur texte
-    const clickables = await page.evaluate(() => {
-        const elements = Array.from(document.querySelectorAll('button, input[type="submit"], a, [role="button"], div[class*="btn"], span[class*="btn"]'));
-        return elements
-            .filter(el => el.offsetParent !== null)
-            .map(el => ({
-                tag: el.tagName,
-                text: (el.textContent || el.value || '').trim(),
-                disabled: el.disabled || false,
-                selector: el.id ? `#${el.id}` : el.className ? `.${el.className.split(' ')[0]}` : null
-            }));
-    });
+    // Définir le XPath exact pour un élément avec texte "CLAIM" (insensible à la casse)
+    const claimXPath = `//*[self::button or self::a or self::input][translate(normalize-space(text()), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')='claim']`;
 
-    console.log(`📋 ${clickables.length} éléments cliquables visibles :`);
-    clickables.forEach((c, i) => {
-        console.log(`   ${i+1}. [${c.tag}] "${c.text}" ${c.disabled ? '(DÉSACTIVÉ)' : ''}`);
-    });
+    // Vérifier si le bouton est présent et activé
+    const isEnabled = await page.evaluate((xpath) => {
+        const btn = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+        return btn ? !btn.disabled && btn.offsetParent !== null : false;
+    }, claimXPath);
 
-    // Trouver l'index du bouton CLAIM (insensible à la casse)
-    const claimIndex = clickables.findIndex(c => c.text.toUpperCase() === 'CLAIM');
-    if (claimIndex === -1) {
-        console.log('❌ Bouton CLAIM non trouvé parmi les éléments cliquables');
-        return { success: false, message: 'Bouton CLAIM introuvable' };
+    if (!isEnabled) {
+        console.log('❌ Bouton CLAIM non trouvé ou désactivé');
+        return { success: false, message: 'Bouton CLAIM introuvable ou désactivé' };
     }
 
-    const claimInfo = clickables[claimIndex];
-    console.log(`✅ Bouton CLAIM trouvé à l'index ${claimIndex+1} (${claimInfo.tag}, disabled=${claimInfo.disabled})`);
+    console.log('✅ Bouton CLAIM trouvé et activé');
 
-    if (claimInfo.disabled) {
-        console.log('⚠️ Bouton CLAIM est désactivé. Claim impossible pour le moment.');
-        // Lire le message de timer
-        const timerMsg = await page.evaluate(() => {
-            const txt = document.body.innerText;
-            const match = txt.match(/next claim.*?(\d+)\s*(hour|minute|second)/i);
-            return match ? match[0] : 'Timer actif mais message non trouvé';
-        });
-        return { success: false, message: `Bouton désactivé: ${timerMsg}` };
-    }
-
-    // Construire un sélecteur fiable basé sur le tag et le texte (via XPath)
-    let elementHandle = null;
+    // Clic natif via Puppeteer avec le XPath
     try {
-        // XPath pour trouver un élément dont le texte exact est "CLAIM"
-        const xpath = `//*[self::button or self::a or self::input][translate(normalize-space(text()), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')='claim']`;
-        elementHandle = await page.waitForSelector(`::-p-xpath(${xpath})`, { timeout: 5000 });
+        await page.click(`::-p-xpath(${claimXPath})`);
+        console.log('🖱️ Clic natif réussi');
     } catch (e) {
-        // Fallback : rechercher parmi tous les éléments par texte
-        elementHandle = await page.evaluateHandle((targetText) => {
-            const els = [...document.querySelectorAll('button, a, input[type="submit"]')];
-            return els.find(el => (el.textContent || el.value || '').trim().toUpperCase() === targetText);
-        }, 'CLAIM');
+        console.log('⚠️ Clic natif échoué, tentative de clic forcé...');
+        // Forcer le clic via JavaScript
+        const forced = await page.evaluate((xpath) => {
+            const btn = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+            if (btn) {
+                btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                btn.click();
+                return true;
+            }
+            return false;
+        }, claimXPath);
+        if (!forced) {
+            console.log('❌ Échec du clic forcé');
+            return { success: false, message: 'Impossible de cliquer sur CLAIM' };
+        }
+        console.log('✅ Clic forcé réussi');
     }
-
-    if (!elementHandle || !(await elementHandle.asElement())) {
-        console.log('❌ Impossible de récupérer le handle du bouton');
-        return { success: false, message: 'Handle introuvable' };
-    }
-
-    // Scroll et clic natif
-    await elementHandle.evaluate(el => el.scrollIntoView({ behavior: 'smooth', block: 'center' }));
-    await delay(500);
-    await elementHandle.click();
-    console.log('🖱️ Clic natif effectué');
 
     // Attendre la réponse
     console.log('⏳ Attente de feedback...');
