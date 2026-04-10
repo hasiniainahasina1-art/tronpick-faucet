@@ -6,7 +6,7 @@ const EMAIL = process.env.TRONPICK_EMAIL;
 const PASSWORD = process.env.TRONPICK_PASSWORD;
 const PROXY_USERNAME = process.env.PROXY_USERNAME;
 const PROXY_PASSWORD = process.env.PROXY_PASSWORD;
-const PROXY_HOST = '31.59.20.176';
+const PROXY_HOST = '31.59.20.176';   // ← votre proxy fonctionnel
 const PROXY_PORT = '6754';
 
 if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
@@ -18,31 +18,22 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Remplissage robuste d'un champ input
 async function robustType(page, selector, value) {
-    // Attendre que l'élément soit présent
     await page.waitForSelector(selector, { timeout: 10000 });
-    // Cliquer plusieurs fois pour focus et sélection
     await page.click(selector, { clickCount: 3 });
     await delay(200);
-    // Effacer le contenu existant
     await page.evaluate((sel) => {
         document.querySelector(sel).value = '';
     }, selector);
-    // Définir la valeur via evaluate et déclencher les événements
     await page.evaluate((sel, val) => {
         const el = document.querySelector(sel);
         el.value = val;
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
     }, selector, value);
-    // Vérifier que la valeur a été prise
     const actualValue = await page.$eval(selector, el => el.value);
     if (actualValue !== value) {
-        console.log(`⚠️ La valeur saisie pour ${selector} est "${actualValue}" au lieu de "${value}"`);
-        // Tentative de secours : saisie lettre par lettre
         await page.click(selector, { clickCount: 3 });
         await page.type(selector, value, { delay: 50 });
-    } else {
-        console.log(`✅ Champ ${selector} rempli avec succès`);
     }
 }
 
@@ -69,12 +60,7 @@ async function waitForTurnstileGone(page, maxWaitMs = 60000) {
 
 async function isLoggedIn(page) {
     const url = page.url();
-    if (!url.includes('login.php')) return true;
-    const selectors = ['a[href*="dashboard"]', 'a[href*="account"]', 'a:contains("Logout")', '.user-menu'];
-    for (const sel of selectors) {
-        try { if (await page.$(sel)) return true; } catch (e) {}
-    }
-    return false;
+    return !url.includes('login.php');
 }
 
 async function getErrorMessages(page) {
@@ -86,6 +72,56 @@ async function getErrorMessages(page) {
         }
         return null;
     });
+}
+
+// Clic sur le bouton CLAIM dans la page faucet
+async function clickClaimButton(page) {
+    console.log('🎯 Recherche du bouton CLAIM...');
+    const claimSelectors = [
+        'button:contains("CLAIM")',
+        'button:contains("Claim")',
+        'button:contains("claim")',
+        'input[value="CLAIM"]',
+        'input[value="Claim"]',
+        '.claim-button',
+        '#claim-btn',
+        'form button'
+    ];
+
+    for (const sel of claimSelectors) {
+        try {
+            const btn = await page.$(sel);
+            if (btn) {
+                await btn.click();
+                console.log(`✅ Clic sur bouton CLAIM (${sel})`);
+                await delay(5000);
+                return true;
+            }
+        } catch (e) {}
+    }
+
+    // Recherche par texte
+    const clicked = await page.evaluate(() => {
+        const keywords = ['claim', 'get', 'receive', 'roll', 'collect', 'free'];
+        const elements = Array.from(document.querySelectorAll('button, input[type="submit"], a, div[role="button"]'));
+        for (const el of elements) {
+            const text = (el.textContent || el.value || '').toLowerCase();
+            if (keywords.some(kw => text.includes(kw)) && !el.disabled && el.offsetParent !== null) {
+                el.click();
+                return true;
+            }
+        }
+        return false;
+    });
+
+    if (clicked) {
+        console.log('✅ CLAIM cliqué (recherche textuelle)');
+        await delay(5000);
+        return true;
+    }
+
+    console.log('⚠️ Bouton CLAIM non trouvé');
+    return false;
 }
 
 (async () => {
@@ -114,17 +150,11 @@ async function getErrorMessages(page) {
         console.log('🌐 Accès login...');
         await page.goto('https://tronpick.io/login.php', { waitUntil: 'networkidle2', timeout: 60000 });
 
-        // Remplissage robuste
-        console.log('⌨️ Remplissage identifiants (robuste)...');
+        console.log('⌨️ Remplissage identifiants...');
         await robustType(page, 'input[type="email"]', EMAIL);
         await delay(500);
         await robustType(page, 'input[type="password"]', PASSWORD);
         await delay(2000);
-
-        // Vérifier que les champs ne sont pas vides (double vérification)
-        const emailValue = await page.$eval('input[type="email"]', el => el.value);
-        const passwordValue = await page.$eval('input[type="password"]', el => el.value);
-        console.log(`📝 Valeurs actuelles – email: "${emailValue}", password: "${passwordValue.replace(/./g, '*')}"`);
 
         console.log('🔐 Clic sur "Log in"...');
         const loginButton = await page.evaluateHandle(() => {
@@ -149,26 +179,34 @@ async function getErrorMessages(page) {
             const err = await getErrorMessages(page);
             if (err) {
                 console.log('❌ Message d\'erreur :', err);
-                status.message = `Échec: ${err}`;
+                status.message = `Échec login: ${err}`;
                 break;
             }
             await delay(2000);
         }
 
-        if (!status.message) {
-            if (loggedIn) {
-                status.success = true;
-                status.message = 'Connexion réussie !';
-                console.log('✅ Connexion réussie !');
-            } else {
-                const pageText = await page.evaluate(() => document.body.innerText.substring(0, 500));
-                console.log('📄 Extrait de la page :', pageText);
-                status.message = 'Échec de connexion (toujours sur login.php)';
-                console.log('❌', status.message);
-            }
+        if (!status.message && !loggedIn) {
+            throw new Error('Échec de connexion (toujours sur login.php)');
         }
 
-        console.log('📍 URL finale :', page.url());
+        if (loggedIn) {
+            console.log('✅ Connexion réussie !');
+
+            // --- FAUCET ---
+            console.log('🚰 Accès à la page faucet...');
+            await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
+            await delay(10000); // Attendre le chargement complet
+
+            // --- CLAIM ---
+            const claimClicked = await clickClaimButton(page);
+            if (claimClicked) {
+                status.success = true;
+                status.message = 'Connexion réussie et CLAIM effectué';
+            } else {
+                status.success = true; // Connexion OK même si claim échoue
+                status.message = 'Connexion réussie, mais CLAIM non trouvé';
+            }
+        }
 
     } catch (error) {
         console.error('❌ Erreur fatale :', error);
