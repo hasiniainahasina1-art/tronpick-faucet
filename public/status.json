@@ -1,5 +1,5 @@
 {
   "success": false,
-  "time": "2026-04-10T04:13:25.068Z",
-  "message": "Échec login: Email must be a valid email!"
+  "time": "2026-04-10T04:17:13.114Z",
+  "message": "Execution context was destroyed, most likely because of a navigation."
 }
