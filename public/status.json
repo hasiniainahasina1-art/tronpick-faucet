@@ -1,5 +1,5 @@
 {
-  "success": false,
-  "time": "2026-04-10T18:00:35.751Z",
-  "message": "Node is either not clickable or not an Element"
+  "success": true,
+  "time": "2026-04-10T18:05:39.222Z",
+  "message": "Connexion OK, CLAIM échec: Bouton CLAIM introuvable ou désactivé"
 }
