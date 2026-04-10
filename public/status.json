@@ -1,5 +1,5 @@
 {
-  "success": false,
-  "time": "2026-04-10T03:08:29.754Z",
-  "message": "Échec: All fields cannot be empty!"
+  "success": true,
+  "time": "2026-04-10T03:14:52.928Z",
+  "message": "Connexion réussie !"
 }
