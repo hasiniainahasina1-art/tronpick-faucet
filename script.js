@@ -70,7 +70,7 @@ async function isLoggedIn(page) {
     return false;
 }
 
-// Clic natif sur CLAIM
+// Clic sur CLAIM avec recherche textuelle exacte
 async function clickClaimButton(page) {
     console.log('🎯 Recherche du bouton "CLAIM"...');
     await page.waitForNetworkIdle({ timeout: 15000 }).catch(() => {});
@@ -82,66 +82,76 @@ async function clickClaimButton(page) {
     console.log('⏳ Pause de 10 secondes avant le clic...');
     await delay(10000);
 
-    // Sélecteur exact pour le bouton CLAIM
-    const claimSelectors = [
-        'button:has-text("CLAIM")',
-        'button:contains("CLAIM")',
-        'button:has-text("Claim")',
-        'input[value="CLAIM"]',
-        'a:has-text("CLAIM")'
-    ];
+    // Récupérer tous les éléments cliquables avec leur texte
+    const clickables = await page.evaluate(() => {
+        const elements = Array.from(document.querySelectorAll('button, input[type="submit"], a, [role="button"], div[class*="btn"], span[class*="btn"]'));
+        return elements
+            .filter(el => el.offsetParent !== null)
+            .map(el => ({
+                tag: el.tagName,
+                text: (el.textContent || el.value || '').trim(),
+                disabled: el.disabled || false,
+                selector: el.id ? `#${el.id}` : el.className ? `.${el.className.split(' ')[0]}` : null
+            }));
+    });
 
-    let clicked = false;
-    for (const sel of claimSelectors) {
-        try {
-            const btn = await page.$(sel);
-            if (btn) {
-                // Vérifier s'il est activé et visible
-                const isEnabled = await btn.evaluate(el => !el.disabled && el.offsetParent !== null);
-                if (isEnabled) {
-                    console.log(`✅ Bouton trouvé avec sélecteur : ${sel}`);
-                    // Faire défiler jusqu'au bouton
-                    await btn.evaluate(el => el.scrollIntoView({ behavior: 'smooth', block: 'center' }));
-                    await delay(500);
-                    // Clic natif Puppeteer
-                    await btn.click();
-                    console.log('🖱️ Clic natif effectué');
-                    clicked = true;
-                    break;
-                }
-            }
-        } catch (e) {}
+    console.log(`📋 ${clickables.length} éléments cliquables visibles :`);
+    clickables.forEach((c, i) => {
+        console.log(`   ${i+1}. [${c.tag}] "${c.text}" ${c.disabled ? '(DÉSACTIVÉ)' : ''}`);
+    });
+
+    // Trouver l'index du bouton CLAIM (insensible à la casse)
+    const claimIndex = clickables.findIndex(c => c.text.toUpperCase() === 'CLAIM');
+    if (claimIndex === -1) {
+        console.log('❌ Bouton CLAIM non trouvé parmi les éléments cliquables');
+        return { success: false, message: 'Bouton CLAIM introuvable' };
     }
 
-    if (!clicked) {
-        // Dernière chance : rechercher par texte dans tous les boutons
-        const found = await page.evaluate(() => {
-            const btns = [...document.querySelectorAll('button, input[type="submit"], a')];
-            const claim = btns.find(el => (el.textContent || el.value || '').trim().toUpperCase() === 'CLAIM');
-            if (claim && !claim.disabled && claim.offsetParent !== null) {
-                claim.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                claim.click();
-                return true;
-            }
-            return false;
+    const claimInfo = clickables[claimIndex];
+    console.log(`✅ Bouton CLAIM trouvé à l'index ${claimIndex+1} (${claimInfo.tag}, disabled=${claimInfo.disabled})`);
+
+    if (claimInfo.disabled) {
+        console.log('⚠️ Bouton CLAIM est désactivé. Claim impossible pour le moment.');
+        // Lire le message de timer
+        const timerMsg = await page.evaluate(() => {
+            const txt = document.body.innerText;
+            const match = txt.match(/next claim.*?(\d+)\s*(hour|minute|second)/i);
+            return match ? match[0] : 'Timer actif mais message non trouvé';
         });
-        if (found) {
-            console.log('✅ Clic via recherche textuelle');
-            clicked = true;
-        }
+        return { success: false, message: `Bouton désactivé: ${timerMsg}` };
     }
 
-    if (!clicked) {
-        console.log('❌ Impossible de cliquer sur CLAIM');
-        return { success: false, message: 'Clic impossible' };
+    // Construire un sélecteur fiable basé sur le tag et le texte (via XPath)
+    let elementHandle = null;
+    try {
+        // XPath pour trouver un élément dont le texte exact est "CLAIM"
+        const xpath = `//*[self::button or self::a or self::input][translate(normalize-space(text()), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')='claim']`;
+        elementHandle = await page.waitForSelector(`::-p-xpath(${xpath})`, { timeout: 5000 });
+    } catch (e) {
+        // Fallback : rechercher parmi tous les éléments par texte
+        elementHandle = await page.evaluateHandle((targetText) => {
+            const els = [...document.querySelectorAll('button, a, input[type="submit"]')];
+            return els.find(el => (el.textContent || el.value || '').trim().toUpperCase() === targetText);
+        }, 'CLAIM');
     }
+
+    if (!elementHandle || !(await elementHandle.asElement())) {
+        console.log('❌ Impossible de récupérer le handle du bouton');
+        return { success: false, message: 'Handle introuvable' };
+    }
+
+    // Scroll et clic natif
+    await elementHandle.evaluate(el => el.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+    await delay(500);
+    await elementHandle.click();
+    console.log('🖱️ Clic natif effectué');
 
     // Attendre la réponse
-    console.log('⏳ Attente de feedback après clic...');
+    console.log('⏳ Attente de feedback...');
     await page.waitForNetworkIdle({ timeout: 15000 }).catch(() => {});
     await delay(5000);
 
-    // Analyser les messages
+    // Détecter les messages
     const feedback = await page.evaluate(() => {
         const msgSels = ['.alert', '.message', '.toast', '.notification', '.swal2-popup', '.modal', '[class*="success"]', '[class*="error"]'];
         for (const s of msgSels) {
@@ -151,7 +161,7 @@ async function clickClaimButton(page) {
             }
         }
         const btn = [...document.querySelectorAll('button, input[type="submit"]')].find(el => (el.textContent || el.value || '').trim().toUpperCase() === 'CLAIM');
-        if (btn && btn.disabled) return { type: 'button_disabled', text: 'Bouton désactivé' };
+        if (btn && btn.disabled) return { type: 'button_disabled', text: 'Bouton désactivé après clic' };
         return null;
     });
 
@@ -161,7 +171,7 @@ async function clickClaimButton(page) {
     console.log(screenshot);
     console.log('📸 CAPTURE_APRES_BASE64_END');
 
-    // Texte de la page
+    // Texte page
     const pageText = await page.evaluate(() => document.body.innerText);
     console.log('📄 Extrait texte page :');
     pageText.split('\n').filter(l => l.trim()).slice(0, 20).forEach(l => console.log(`   ${l}`));
@@ -175,7 +185,7 @@ async function clickClaimButton(page) {
         return { success: false, message: feedback.text };
     }
 
-    return { success: false, message: 'Aucun retour' };
+    return { success: false, message: 'Aucun retour détecté' };
 }
 
 (async () => {
