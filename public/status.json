@@ -1,5 +1,5 @@
 {
-  "success": false,
-  "time": "2026-04-10T04:19:39.823Z",
-  "message": "Execution context was destroyed, most likely because of a navigation."
+  "success": true,
+  "time": "2026-04-10T04:23:30.267Z",
+  "message": "Connexion réussie et CLAIM effectué"
 }
