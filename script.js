@@ -70,7 +70,7 @@ async function isLoggedIn(page) {
     return false;
 }
 
-// Clic sur CLAIM – version finale
+// Clic sur CLAIM – version finale avec liste après désactivation
 async function clickClaimButton(page) {
     console.log('🎯 Recherche et clic sur CLAIM...');
     await page.waitForNetworkIdle({ timeout: 15000 }).catch(() => {});
@@ -109,8 +109,7 @@ async function clickClaimButton(page) {
     await delay(5000);
 
     // Détecter les messages et l'état du bouton
-    const feedback = await page.evaluate(() => {
-        // Messages visibles
+    let feedback = await page.evaluate(() => {
         const msgSels = ['.alert', '.message', '.toast', '.notification', '.swal2-popup', '.modal', '[class*="success"]', '[class*="error"]'];
         for (const s of msgSels) {
             const el = document.querySelector(s);
@@ -118,11 +117,45 @@ async function clickClaimButton(page) {
                 return el.textContent.trim();
             }
         }
-        // Vérifier si le bouton CLAIM est devenu désactivé
         const btn = [...document.querySelectorAll('button, input[type="submit"]')].find(el => (el.textContent || el.value || '').trim().toUpperCase() === 'CLAIM');
         if (btn && btn.disabled) return 'Bouton désactivé après clic';
         return null;
     });
+
+    // Si le feedback est "Bouton désactivé", on attend 5 secondes et on reliste les boutons
+    if (feedback === 'Bouton désactivé après clic') {
+        console.log('⏳ Pause de 5 secondes après désactivation...');
+        await delay(5000);
+
+        // Lister tous les boutons visibles après la désactivation
+        const buttonsAfter = await page.evaluate(() => {
+            return Array.from(document.querySelectorAll('button, input[type="submit"], a, [role="button"]'))
+                .filter(el => el.offsetParent !== null)
+                .map(el => ({
+                    tag: el.tagName,
+                    text: (el.textContent || el.value || '').trim().substring(0, 30),
+                    disabled: el.disabled || false
+                }));
+        });
+        console.log(`📋 ${buttonsAfter.length} boutons visibles après désactivation :`);
+        buttonsAfter.forEach((b, i) => console.log(`   ${i+1}. [${b.tag}] "${b.text}" ${b.disabled ? '(DÉSACTIVÉ)' : ''}`));
+
+        // Vérifier à nouveau les messages
+        const newMessage = await page.evaluate(() => {
+            const msgSels = ['.alert', '.message', '.toast', '.notification', '.swal2-popup', '.modal', '[class*="success"]', '[class*="error"]'];
+            for (const s of msgSels) {
+                const el = document.querySelector(s);
+                if (el && el.offsetParent !== null && el.textContent.trim()) {
+                    return el.textContent.trim();
+                }
+            }
+            return null;
+        });
+        if (newMessage) {
+            console.log(`💬 Nouveau message détecté : "${newMessage}"`);
+            feedback = newMessage;
+        }
+    }
 
     // Texte de la page pour capture timer
     const pageText = await page.evaluate(() => document.body.innerText);
@@ -130,9 +163,8 @@ async function clickClaimButton(page) {
     const timerInfo = timerMatch ? timerMatch[0] : null;
 
     if (feedback) {
-        console.log(`💬 Feedback : "${feedback}"`);
+        console.log(`💬 Feedback final : "${feedback}"`);
         if (timerInfo) console.log(`⏱️ Timer détecté : ${timerInfo}`);
-        // Succès si bouton désactivé ou message de succès
         const isSuccess = feedback.includes('désactivé') || feedback.toLowerCase().includes('success') || feedback.toLowerCase().includes('claimed') || feedback.toLowerCase().includes('reward');
         if (isSuccess) {
             return { success: true, message: feedback + (timerInfo ? ` (${timerInfo})` : '') };
