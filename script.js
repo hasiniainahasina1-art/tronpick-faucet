@@ -57,87 +57,54 @@ async function login(page) {
     console.log('✅ Login OK:', page.url());
 }
 
-/* ================= FIND CLAIM ================= */
-async function findClaim(page) {
+/* ================= FIND BEST BUTTON ================= */
+async function findBestButton(page) {
     return await page.evaluate(() => {
-        const keywords = ['claim', 'reward', 'roll', 'collect', 'get'];
+        const keywords = ['claim', 'reward', 'roll', 'collect', 'spin', 'get'];
 
-        const els = [...document.querySelectorAll('*')];
+        const elements = [...document.querySelectorAll('button, a, div, input')];
 
-        for (const el of els) {
-            const txt = (el.textContent || '').toLowerCase().trim();
+        let best = null;
 
-            if (!txt) continue;
+        for (const el of elements) {
+            const text = (el.textContent || el.value || '').toLowerCase().trim();
+            const rect = el.getBoundingClientRect();
 
-            if (keywords.some(k => txt.includes(k))) {
-                const r = el.getBoundingClientRect();
+            if (!text) continue;
+            if (rect.width < 50 || rect.height < 20) continue;
+            if (el.offsetParent === null) continue;
 
-                if (r.width > 50 && r.height > 20) {
-                    return {
-                        x: r.x + r.width / 2,
-                        y: r.y + r.height / 2,
-                        text: txt
-                    };
-                }
+            const score = keywords.reduce((acc, k) => acc + (text.includes(k) ? 1 : 0), 0);
+
+            if (score > 0) {
+                best = {
+                    x: rect.x + rect.width / 2,
+                    y: rect.y + rect.height / 2,
+                    text,
+                    score
+                };
+                break;
             }
         }
 
-        return null;
+        return best;
     });
 }
 
-/* ================= FIND CLAIM IFRAME ================= */
-async function findClaimFrame(page) {
-    for (const frame of page.frames()) {
-        try {
-            const result = await frame.evaluate(() => {
-                const keywords = ['claim', 'reward', 'roll', 'collect'];
-
-                const els = [...document.querySelectorAll('*')];
-
-                for (const el of els) {
-                    const txt = (el.textContent || '').toLowerCase();
-
-                    if (keywords.some(k => txt.includes(k))) {
-                        const r = el.getBoundingClientRect();
-
-                        return {
-                            x: r.x + r.width / 2,
-                            y: r.y + r.height / 2
-                        };
-                    }
-                }
-
-                return null;
-            });
-
-            if (result) return result;
-
-        } catch (e) {}
-    }
-
-    return null;
-}
-
-/* ================= CLICK ULTRA STABLE ================= */
+/* ================= CLICK ================= */
 async function realClick(page, pos) {
     try {
-        // micro mouvement anti bug
-        await page.mouse.move(pos.x + 1, pos.y + 1);
-        await delay(100);
-
         await page.mouse.move(pos.x, pos.y, { steps: 30 });
         await delay(400);
 
-        // clic stable (fix erreur "left is not pressed")
         await page.mouse.click(pos.x, pos.y, {
             delay: 120 + Math.random() * 200
         });
 
-        console.log('✅ Clic effectué');
+        console.log('✅ Clic sur:', pos.text);
 
     } catch (e) {
-        console.log('⚠️ Fallback JS click');
+        console.log('⚠️ Fallback JS');
 
         await page.evaluate(({ x, y }) => {
             const el = document.elementFromPoint(x, y);
@@ -152,36 +119,31 @@ async function claim(page) {
 
     await human(page);
 
-    console.log('🔍 Recherche bouton...');
+    console.log('🔍 Recherche bouton actif...');
 
-    let pos = null;
+    let button = null;
 
     for (let i = 0; i < 6; i++) {
-        pos = await findClaim(page);
+        button = await findBestButton(page);
 
-        if (!pos) {
-            console.log('🔄 Recherche iframe...');
-            pos = await findClaimFrame(page);
-        }
+        if (button) break;
 
-        if (pos) break;
-
-        console.log('⏳ Retry...');
+        console.log('⏳ Aucun bouton trouvé, retry...');
         await delay(4000);
     }
 
-    if (!pos) {
-        return { success: false, message: '❌ Aucun bouton détecté' };
+    if (!button) {
+        return { success: false, message: '❌ Aucun bouton actif trouvé' };
     }
 
-    console.log('📍 Bouton trouvé:', pos);
+    console.log('📍 Bouton détecté:', button);
 
     // écoute API
     let apiSuccess = false;
 
     const listener = async res => {
         const url = res.url().toLowerCase();
-        if (url.includes('claim')) {
+        if (url.includes('claim') || url.includes('reward')) {
             const txt = await res.text().catch(() => '');
             if (txt.includes('success')) apiSuccess = true;
         }
@@ -189,8 +151,8 @@ async function claim(page) {
 
     page.on('response', listener);
 
-    console.log('🔥 CLIC HUMAIN...');
-    await realClick(page, pos);
+    console.log('🔥 CLIC...');
+    await realClick(page, button);
 
     await delay(12000);
 
@@ -198,7 +160,7 @@ async function claim(page) {
 
     const txt = await page.evaluate(() => document.body.innerText.toLowerCase());
 
-    if (apiSuccess || txt.includes('claimed')) {
+    if (apiSuccess || txt.includes('claimed') || txt.includes('success')) {
         return { success: true, message: '✅ SUCCESS' };
     }
 
@@ -206,25 +168,7 @@ async function claim(page) {
         return { success: false, message: '⏳ COOLDOWN' };
     }
 
-    return { success: false, message: '❌ CLAIM échoué' };
-}
-
-/* ================= RETRY ================= */
-async function claimRetry(page) {
-    for (let i = 1; i <= 3; i++) {
-        console.log(`🔁 Tentative ${i}`);
-
-        const res = await claim(page);
-
-        console.log('📊', res);
-
-        if (res.success) return res;
-        if (res.message.includes('COOLDOWN')) return res;
-
-        await delay(10000);
-    }
-
-    return { success: false, message: '❌ Échec total' };
+    return { success: false, message: '❌ Action non validée' };
 }
 
 /* ================= MAIN ================= */
@@ -249,7 +193,6 @@ async function claimRetry(page) {
 
         await page.setViewport({ width: 1280, height: 720 });
 
-        // anti-bot
         await page.evaluateOnNewDocument(() => {
             Object.defineProperty(navigator, 'webdriver', {
                 get: () => false
@@ -258,7 +201,7 @@ async function claimRetry(page) {
 
         await login(page);
 
-        const result = await claimRetry(page);
+        const result = await claim(page);
 
         console.log('🏁 RESULT FINAL:', result);
 
