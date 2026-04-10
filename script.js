@@ -19,18 +19,18 @@ async function safeGoto(page, url) {
         timeout: 60000
     }).catch(() => console.log('⚠️ Timeout ignoré'));
 
-    await delay(5000);
+    await delay(6000);
 }
 
 /* ================= HUMAN ================= */
 async function human(page) {
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 6; i++) {
         await page.mouse.move(
-            Math.random() * 800,
-            Math.random() * 600,
-            { steps: 20 }
+            Math.random() * 900,
+            Math.random() * 700,
+            { steps: 25 }
         );
-        await delay(300 + Math.random() * 500);
+        await delay(300 + Math.random() * 600);
     }
 }
 
@@ -38,39 +38,47 @@ async function human(page) {
 async function login(page) {
     await safeGoto(page, 'https://tronpick.io/login.php');
 
-    await page.type('input[type="email"]', EMAIL, { delay: 50 });
-    await page.type('input[type="password"]', PASSWORD, { delay: 50 });
+    await page.type('input[type="email"]', EMAIL, { delay: 60 });
+    await page.type('input[type="password"]', PASSWORD, { delay: 60 });
 
     await human(page);
 
-    const loginBtn = await page.evaluateHandle(() => {
+    const btn = await page.evaluateHandle(() => {
         return [...document.querySelectorAll('button')]
             .find(b => b.textContent.toLowerCase().includes('log in'));
     });
 
-    if (!loginBtn) throw new Error('Bouton login introuvable');
+    if (!btn) throw new Error('❌ Bouton login introuvable');
 
-    await loginBtn.click().catch(() => console.log('⚠️ click fallback'));
+    await btn.click().catch(() => console.log('⚠️ click fallback'));
 
     await delay(8000);
 
     console.log('✅ Login OK:', page.url());
 }
 
-/* ================= FIND CLAIM ================= */
+/* ================= FIND CLAIM MAIN ================= */
 async function findClaim(page) {
     return await page.evaluate(() => {
+        const keywords = ['claim', 'reward', 'roll', 'collect', 'get'];
+
         const els = [...document.querySelectorAll('*')];
 
         for (const el of els) {
-            const txt = (el.textContent || '').trim().toUpperCase();
+            const txt = (el.textContent || '').toLowerCase().trim();
 
-            if (txt === 'CLAIM' && el.offsetParent !== null) {
+            if (!txt) continue;
+
+            if (keywords.some(k => txt.includes(k))) {
                 const r = el.getBoundingClientRect();
-                return {
-                    x: r.x + r.width / 2,
-                    y: r.y + r.height / 2
-                };
+
+                if (r.width > 50 && r.height > 20) {
+                    return {
+                        x: r.x + r.width / 2,
+                        y: r.y + r.height / 2,
+                        text: txt
+                    };
+                }
             }
         }
 
@@ -78,9 +86,42 @@ async function findClaim(page) {
     });
 }
 
-/* ================= CLICK REAL ================= */
+/* ================= FIND CLAIM IFRAME ================= */
+async function findClaimFrame(page) {
+    for (const frame of page.frames()) {
+        try {
+            const result = await frame.evaluate(() => {
+                const keywords = ['claim', 'reward', 'roll', 'collect'];
+
+                const els = [...document.querySelectorAll('*')];
+
+                for (const el of els) {
+                    const txt = (el.textContent || '').toLowerCase();
+
+                    if (keywords.some(k => txt.includes(k))) {
+                        const r = el.getBoundingClientRect();
+
+                        return {
+                            x: r.x + r.width / 2,
+                            y: r.y + r.height / 2
+                        };
+                    }
+                }
+
+                return null;
+            });
+
+            if (result) return result;
+
+        } catch (e) {}
+    }
+
+    return null;
+}
+
+/* ================= CLICK ================= */
 async function realClick(page, pos) {
-    await page.mouse.move(pos.x, pos.y, { steps: 25 });
+    await page.mouse.move(pos.x, pos.y, { steps: 30 });
     await delay(500);
 
     await page.mouse.down();
@@ -94,26 +135,42 @@ async function claim(page) {
 
     await human(page);
 
-    console.log('🔍 Recherche CLAIM...');
+    console.log('🔍 Recherche bouton...');
 
     let pos = null;
 
-    // retry find bouton
-    for (let i = 0; i < 5; i++) {
+    // 🔁 retry intelligent
+    for (let i = 0; i < 6; i++) {
         pos = await findClaim(page);
+
+        if (!pos) {
+            console.log('🔄 Recherche iframe...');
+            pos = await findClaimFrame(page);
+        }
+
         if (pos) break;
 
-        console.log('⏳ Bouton non trouvé, retry...');
-        await delay(3000);
+        console.log('⏳ Toujours rien, retry...');
+        await delay(4000);
     }
 
     if (!pos) {
-        return { success: false, message: 'CLAIM introuvable' };
+        return { success: false, message: '❌ Aucun bouton détecté' };
     }
 
-    console.log('📍 Position:', pos);
+    console.log('📍 Bouton trouvé:', pos);
 
-    // écoute API
+    // 🔴 debug visuel
+    await page.evaluate(() => {
+        document.querySelectorAll('*').forEach(el => {
+            const t = (el.textContent || '').toLowerCase();
+            if (t.includes('claim') || t.includes('reward')) {
+                el.style.border = '2px solid red';
+            }
+        });
+    });
+
+    // 📡 écoute API
     let apiSuccess = false;
 
     const listener = async res => {
@@ -126,24 +183,24 @@ async function claim(page) {
 
     page.on('response', listener);
 
-    console.log('🔥 CLIC...');
+    console.log('🔥 CLIC HUMAIN...');
     await realClick(page, pos);
 
-    await delay(10000);
+    await delay(12000);
 
     page.off('response', listener);
 
-    const text = await page.evaluate(() => document.body.innerText.toLowerCase());
+    const txt = await page.evaluate(() => document.body.innerText.toLowerCase());
 
-    if (apiSuccess || text.includes('claimed')) {
-        return { success: true, message: 'SUCCESS' };
+    if (apiSuccess || txt.includes('claimed')) {
+        return { success: true, message: '✅ SUCCESS' };
     }
 
-    if (text.includes('wait') || text.includes('cooldown')) {
-        return { success: false, message: 'COOLDOWN' };
+    if (txt.includes('wait') || txt.includes('cooldown')) {
+        return { success: false, message: '⏳ COOLDOWN' };
     }
 
-    return { success: false, message: 'Échec CLAIM' };
+    return { success: false, message: '❌ CLAIM échoué' };
 }
 
 /* ================= RETRY ================= */
@@ -156,13 +213,12 @@ async function claimRetry(page) {
         console.log('📊', res);
 
         if (res.success) return res;
+        if (res.message.includes('COOLDOWN')) return res;
 
-        if (res.message === 'COOLDOWN') return res;
-
-        await delay(8000);
+        await delay(10000);
     }
 
-    return { success: false, message: 'Échec total' };
+    return { success: false, message: '❌ Échec total' };
 }
 
 /* ================= MAIN ================= */
@@ -170,7 +226,7 @@ async function claimRetry(page) {
     let browser;
 
     try {
-        console.log('🚀 Lancement');
+        console.log('🚀 START');
 
         const { browser: br, page } = await connect({
             headless: false,
@@ -187,7 +243,7 @@ async function claimRetry(page) {
 
         await page.setViewport({ width: 1280, height: 720 });
 
-        // anti detection
+        // anti-bot
         await page.evaluateOnNewDocument(() => {
             Object.defineProperty(navigator, 'webdriver', {
                 get: () => false
