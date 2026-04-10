@@ -2,7 +2,7 @@ const { connect } = require('puppeteer-real-browser');
 const fs = require('fs');
 const path = require('path');
 
-const EMAIL = process.env.TRONPICK_EMAIL.trim().toLowerCase(); // nettoyage
+const EMAIL = process.env.TRONPICK_EMAIL.trim().toLowerCase();
 const PASSWORD = process.env.TRONPICK_PASSWORD;
 const PROXY_USERNAME = process.env.PROXY_USERNAME;
 const PROXY_PASSWORD = process.env.PROXY_PASSWORD;
@@ -16,17 +16,14 @@ if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Saisie robuste d'un champ avec double vérification
+// Saisie robuste d'un champ
 async function fillField(page, selector, value, fieldName) {
     console.log(`⌨️ Remplissage du champ ${fieldName}...`);
     await page.waitForSelector(selector, { timeout: 10000 });
-
-    // Effacer complètement le champ
     await page.click(selector, { clickCount: 3 });
     await page.keyboard.press('Backspace');
     await delay(100);
 
-    // Méthode 1 : Définition directe via evaluate + événements
     await page.evaluate((sel, val) => {
         const el = document.querySelector(sel);
         el.value = val;
@@ -37,65 +34,77 @@ async function fillField(page, selector, value, fieldName) {
     await delay(300);
 
     let actualValue = await page.$eval(selector, el => el.value);
-    console.log(`   Valeur après evaluate : "${actualValue}"`);
-
-    // Si la valeur n'est pas correcte, on utilise la saisie lettre par lettre
     if (actualValue !== value) {
-        console.log(`   ⚠️ Valeur incorrecte, tentative par saisie lettre par lettre...`);
+        console.log(`   ⚠️ Valeur incorrecte, saisie lettre par lettre...`);
         await page.click(selector, { clickCount: 3 });
         await page.keyboard.press('Backspace');
         await delay(100);
         for (const char of value) {
             await page.keyboard.type(char, { delay: 30 });
-            await delay(10);
         }
         actualValue = await page.$eval(selector, el => el.value);
-        console.log(`   Valeur après saisie lettre par lettre : "${actualValue}"`);
     }
 
     if (actualValue !== value) {
-        throw new Error(`Impossible de remplir correctement le champ ${fieldName}`);
+        throw new Error(`Impossible de remplir le champ ${fieldName}`);
     }
-    console.log(`✅ Champ ${fieldName} rempli avec succès`);
+    console.log(`✅ Champ ${fieldName} rempli`);
 }
 
-// Surveillance de Turnstile
+// Attendre que Turnstile disparaisse (après navigation)
 async function waitForTurnstileGone(page, maxWaitMs = 60000) {
     console.log('🔎 Surveillance de Turnstile...');
     const start = Date.now();
     while (Date.now() - start < maxWaitMs) {
-        const frames = page.frames();
-        const turnstileFrame = frames.find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
-        if (!turnstileFrame) {
-            console.log('✅ Iframe Turnstile disparue');
-            return true;
-        }
         try {
+            const frames = page.frames();
+            const turnstileFrame = frames.find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
+            if (!turnstileFrame) {
+                console.log('✅ Iframe Turnstile disparue');
+                return true;
+            }
             const checked = await turnstileFrame.$eval('input[type="checkbox"]', cb => cb.checked);
             if (checked) console.log('   Case Turnstile cochée');
-        } catch (e) {}
+        } catch (e) {
+            // Ignorer les erreurs de contexte pendant la navigation
+        }
         await delay(2000);
     }
-    console.log('⚠️ Turnstile toujours présent après timeout');
+    console.log('⚠️ Timeout Turnstile');
     return false;
 }
 
+// Vérifier si connecté (avec robustesse)
 async function isLoggedIn(page) {
-    const url = page.url();
-    return !url.includes('login.php');
-}
-
-async function getErrorMessages(page) {
-    return await page.evaluate(() => {
-        const selectors = ['.alert-danger', '.error', '.message-error', '[class*="error"]', '.text-danger'];
+    try {
+        const url = page.url();
+        if (!url.includes('login.php')) return true;
+        const selectors = ['a[href*="dashboard"]', 'a[href*="account"]', '.user-menu'];
         for (const sel of selectors) {
-            const el = document.querySelector(sel);
-            if (el && el.offsetParent !== null) return el.textContent.trim();
+            const el = await page.$(sel);
+            if (el) return true;
         }
-        return null;
-    });
+    } catch (e) {}
+    return false;
 }
 
+// Obtenir message d'erreur
+async function getErrorMessages(page) {
+    try {
+        return await page.evaluate(() => {
+            const selectors = ['.alert-danger', '.error', '.message-error', '[class*="error"]', '.text-danger'];
+            for (const sel of selectors) {
+                const el = document.querySelector(sel);
+                if (el && el.offsetParent !== null) return el.textContent.trim();
+            }
+            return null;
+        });
+    } catch (e) {
+        return null;
+    }
+}
+
+// Clic sur CLAIM
 async function clickClaimButton(page) {
     console.log('🎯 Recherche du bouton CLAIM...');
     const clicked = await page.evaluate(() => {
@@ -145,20 +154,13 @@ async function clickClaimButton(page) {
         console.log('🌐 Accès login...');
         await page.goto('https://tronpick.io/login.php', { waitUntil: 'networkidle2', timeout: 60000 });
 
-        // Déterminer les sélecteurs
         const emailSelector = 'input[type="email"], input[name="email"], input#email';
         const passwordSelector = 'input[type="password"], input[name="password"], input#password';
 
-        // Remplissage
         await fillField(page, emailSelector, EMAIL, 'email');
         await delay(500);
         await fillField(page, passwordSelector, PASSWORD, 'password');
         await delay(2000);
-
-        // Vérification finale avant clic
-        const emailValue = await page.$eval(emailSelector, el => el.value);
-        const passwordValue = await page.$eval(passwordSelector, el => el.value);
-        console.log(`📝 Valeurs avant clic – email: "${emailValue}", password: "${passwordValue.replace(/./g, '*')}"`);
 
         console.log('🔐 Clic sur "Log in"...');
         const loginButton = await page.evaluateHandle(() => {
@@ -166,38 +168,43 @@ async function clickClaimButton(page) {
             return buttons.find(btn => btn.textContent.trim() === 'Log in');
         });
         if (!loginButton) throw new Error('Bouton "Log in" introuvable');
-        await loginButton.click();
-        console.log('✅ Clic effectué');
 
-        // Attendre Turnstile
+        // ⚠️ Important : attendre la navigation APRÈS le clic
+        await Promise.all([
+            page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(e => {
+                console.log('⚠️ Navigation timeout ou erreur :', e.message);
+            }),
+            loginButton.click()
+        ]);
+        console.log('✅ Navigation terminée (ou timeout)');
+
+        // Après navigation, la page peut encore charger Turnstile
+        await delay(3000);
         const turnstileGone = await waitForTurnstileGone(page, 60000);
-        if (!turnstileGone) throw new Error('Turnstile non résolu');
+        if (!turnstileGone) {
+            console.log('⚠️ Turnstile non résolu, mais on continue...');
+        }
 
-        // Attendre confirmation connexion
-        console.log('⏳ Attente de la connexion...');
-        const startWait = Date.now();
-        let loggedIn = false;
-        while (Date.now() - startWait < 20000) {
-            loggedIn = await isLoggedIn(page);
-            if (loggedIn) break;
+        // Vérifier si connecté
+        console.log('⏳ Vérification de la connexion...');
+        const loggedIn = await isLoggedIn(page);
+        const currentUrl = page.url();
+        console.log('📍 URL après login :', currentUrl);
+
+        if (!loggedIn) {
             const err = await getErrorMessages(page);
             if (err) {
                 console.log('❌ Message d\'erreur :', err);
                 status.message = `Échec login: ${err}`;
-                break;
+            } else {
+                status.message = 'Échec de connexion';
+                console.log('❌', status.message);
             }
-            await delay(2000);
-        }
-
-        if (!status.message && !loggedIn) {
-            throw new Error('Échec de connexion (toujours sur login.php)');
-        }
-
-        if (loggedIn) {
+        } else {
             console.log('✅ Connexion réussie !');
 
             // --- FAUCET ---
-            console.log('🚰 Accès à la page faucet...');
+            console.log('🚰 Accès faucet...');
             await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
             await delay(10000);
 
