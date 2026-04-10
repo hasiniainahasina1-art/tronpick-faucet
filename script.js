@@ -70,35 +70,23 @@ async function isLoggedIn(page) {
     return false;
 }
 
-// Analyse du clic CLAIM
-async function clickClaimWithDiagnostics(page) {
-    console.log('🎯 Recherche du bouton CLAIM...');
+// Clic sur CLAIM/Withdraw avec diagnostic
+async function clickClaimButton(page) {
+    console.log('🎯 Recherche du bouton CLAIM/WITHDRAW...');
 
-    // Collecte des requêtes réseau
-    const requests = [];
-    const onRequest = (req) => {
-        if (['xhr', 'fetch'].includes(req.resourceType())) {
-            requests.push({ url: req.url(), method: req.method(), postData: req.postData() });
-        }
-    };
-    page.on('request', onRequest);
+    // Mots-clés élargis
+    const keywords = ['claim', 'roll', 'get', 'receive', 'collect', 'free', 'withdraw', 'get reward', 'claim now'];
 
-    // Collecte des messages console
-    const consoleMessages = [];
-    const onConsole = msg => consoleMessages.push({ type: msg.type(), text: msg.text() });
-    page.on('console', onConsole);
-
-    // Trouver le bouton dans la page principale ou iframes
+    // Fonction pour trouver dans une frame
     const findButtonInFrame = async (frame) => {
         try {
-            return await frame.evaluateHandle(() => {
-                const keywords = ['claim', 'roll', 'get', 'receive', 'collect', 'free', 'withdraw'];
+            return await frame.evaluateHandle((kw) => {
                 const elements = Array.from(document.querySelectorAll('button, input[type="submit"], a, div[role="button"], span[role="button"]'));
                 return elements.find(el => {
                     const text = (el.textContent || el.value || '').toLowerCase();
-                    return keywords.some(kw => text.includes(kw)) && !el.disabled && el.offsetParent !== null;
+                    return kw.some(k => text.includes(k)) && !el.disabled && el.offsetParent !== null;
                 });
-            });
+            }, keywords);
         } catch (e) { return null; }
     };
 
@@ -116,67 +104,33 @@ async function clickClaimWithDiagnostics(page) {
     }
 
     if (!buttonHandle) {
-        console.log('❌ Bouton CLAIM introuvable');
+        console.log('❌ Bouton introuvable');
         return { success: false, message: 'Bouton introuvable' };
     }
 
     // Informations avant clic
-    const beforeInfo = await targetFrame.evaluate(el => ({
-        text: el.textContent.trim(),
-        disabled: el.disabled,
-        className: el.className,
-        boundingBox: el.getBoundingClientRect()
-    }), buttonHandle);
-    console.log(`📌 Bouton avant clic : "${beforeInfo.text}", disabled=${beforeInfo.disabled}`);
+    const beforeText = await targetFrame.evaluate(el => el.textContent.trim(), buttonHandle);
+    const beforeDisabled = await targetFrame.evaluate(el => el.disabled, buttonHandle);
+    console.log(`📌 Bouton avant clic : "${beforeText}", disabled=${beforeDisabled}`);
 
-    // S'assurer que le bouton est visible et cliquable
+    // Scroll vers le bouton pour s'assurer qu'il est visible
     await targetFrame.evaluate(el => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), buttonHandle);
     await delay(500);
 
-    // Simuler un clic réaliste (mouvement de souris + clic)
-    const box = beforeInfo.boundingBox;
-    if (box) {
-        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 10 });
-        await delay(100);
-        await page.mouse.down();
-        await delay(50);
-        await page.mouse.up();
-    } else {
-        await buttonHandle.click();
-    }
-    console.log('🖱️ Clic émulé');
+    // Clic direct (sans coordonnées)
+    console.log('🖱️ Clic sur le bouton...');
+    await buttonHandle.click();
 
     // Attendre les requêtes réseau
     await page.waitForNetworkIdle({ timeout: 10000 }).catch(() => console.log('⚠️ Network idle timeout'));
 
-    // Informations après clic
-    const afterInfo = await targetFrame.evaluate(el => ({
-        text: el.textContent.trim(),
-        disabled: el.disabled,
-        className: el.className
-    }), buttonHandle);
-    console.log(`📌 Bouton après clic : "${afterInfo.text}", disabled=${afterInfo.disabled}`);
+    // Vérifier l'état après clic
+    const afterText = await targetFrame.evaluate(el => el.textContent.trim(), buttonHandle);
+    const afterDisabled = await targetFrame.evaluate(el => el.disabled, buttonHandle);
+    console.log(`📌 Bouton après clic : "${afterText}", disabled=${afterDisabled}`);
 
-    // Nettoyer les écouteurs
-    page.off('request', onRequest);
-    page.off('console', onConsole);
-
-    // Analyser les requêtes
-    console.log(`🌐 Requêtes AJAX/Fetch capturées : ${requests.length}`);
-    requests.forEach((r, i) => {
-        console.log(`   ${i+1}. ${r.method} ${r.url}`);
-        if (r.postData) console.log(`      Body: ${r.postData}`);
-    });
-
-    // Analyser les messages console
-    const relevantConsole = consoleMessages.filter(m => m.type === 'log' || m.type === 'info' || m.type === 'error');
-    if (relevantConsole.length) {
-        console.log(`📟 Messages console :`);
-        relevantConsole.forEach(m => console.log(`   [${m.type}] ${m.text}`));
-    }
-
-    // Vérifier les messages d'erreur/succès dans le DOM
-    const domMessage = await page.evaluate(() => {
+    // Rechercher un message de succès/erreur
+    const message = await page.evaluate(() => {
         const sels = ['.alert', '.message', '.toast', '[class*="success"]', '[class*="error"]'];
         for (const s of sels) {
             const el = document.querySelector(s);
@@ -184,24 +138,19 @@ async function clickClaimWithDiagnostics(page) {
         }
         return null;
     });
-    if (domMessage) console.log(`💬 Message DOM : ${domMessage}`);
+    if (message) console.log(`💬 Message DOM : ${message}`);
 
     // Déterminer le succès
-    const changed = (beforeInfo.text !== afterInfo.text) || (beforeInfo.disabled !== afterInfo.disabled);
-    const hasRequest = requests.length > 0;
-    const hasMessage = domMessage !== null;
-
-    if (changed || hasRequest || hasMessage) {
-        return { success: true, message: 'Action détectée (changement bouton / requête / message)' };
+    const changed = (beforeText !== afterText) || (beforeDisabled !== afterDisabled);
+    if (changed || message) {
+        return { success: true, message: message || 'Action détectée (changement bouton)' };
     } else {
-        // Capture d'écran et HTML pour diagnostic
+        // Capture d'écran si aucun changement
         const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
         console.log('📸 CAPTURE_BASE64_START');
         console.log(screenshot);
         console.log('📸 CAPTURE_BASE64_END');
-        const html = await page.content();
-        console.log('📄 HTML (extrait) :', html.substring(0, 500));
-        return { success: false, message: 'Aucune réaction détectée' };
+        return { success: false, message: 'Aucune réaction visible' };
     }
 }
 
@@ -266,13 +215,16 @@ async function clickClaimWithDiagnostics(page) {
             await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
             await delay(10000);
 
-            // --- CLAIM avec diagnostics ---
-            const claimResult = await clickClaimWithDiagnostics(page);
+            // --- CLAIM ---
+            const claimResult = await clickClaimButton(page);
 
-            status.success = claimResult.success;
-            status.message = claimResult.success
-                ? `Connexion OK, CLAIM: ${claimResult.message}`
-                : `Connexion OK, CLAIM échec: ${claimResult.message}`;
+            if (claimResult.success) {
+                status.success = true;
+                status.message = `Connexion OK, CLAIM: ${claimResult.message}`;
+            } else {
+                status.success = true; // Connexion OK même si claim échoue
+                status.message = `Connexion OK, CLAIM échec: ${claimResult.message}`;
+            }
         }
 
     } catch (error) {
