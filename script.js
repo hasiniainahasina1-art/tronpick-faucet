@@ -46,7 +46,15 @@ const randomScroll = async (page) => {
     await page.evaluate((y) => window.scrollBy({ top: -y / 2, behavior: 'smooth' }), scrollY);
 };
 
-// 📋 Fonction pour lister tous les éléments interactifs visibles
+// Lister toutes les iframes avec leurs URLs
+async function listAllFrames(page) {
+    const frames = page.frames();
+    console.log(`\n🖼️  ${frames.length} frame(s) détectée(s) :`);
+    frames.forEach((frame, i) => {
+        console.log(`   Frame ${i}: ${frame.url().substring(0, 100)}`);
+    });
+}
+
 async function listAllButtons(page) {
     console.log('\n🔎 ANALYSE DE L\'INTERFACE (éléments visibles) :');
     const elements = await page.evaluate(() => {
@@ -55,24 +63,20 @@ async function listAllButtons(page) {
         return els
             .filter(el => {
                 const rect = el.getBoundingClientRect();
-                return rect.width > 0 && rect.height > 0; // visible
+                return rect.width > 0 && rect.height > 0;
             })
-            .map(el => {
-                return {
-                    tag: el.tagName,
-                    type: el.type || null,
-                    text: (el.textContent || el.value || el.placeholder || el.getAttribute('aria-label') || '').trim().substring(0, 40),
-                    id: el.id || null,
-                    class: el.className || null,
-                    href: el.href || null
-                };
-            });
+            .map(el => ({
+                tag: el.tagName,
+                type: el.type || null,
+                text: (el.textContent || el.value || el.placeholder || el.getAttribute('aria-label') || '').trim().substring(0, 40),
+                id: el.id || null,
+                class: el.className || null
+            }));
     });
     elements.forEach((el, i) => {
         console.log(`${i+1}. [${el.tag}] ${el.type ? `type="${el.type}"` : ''} "${el.text}"`);
     });
     console.log(`✅ Total : ${elements.length} éléments interactifs visibles\n`);
-    return elements;
 }
 
 async function waitForLoginSuccess(page, timeoutMs = 20000) {
@@ -99,47 +103,54 @@ async function waitForLoginSuccess(page, timeoutMs = 20000) {
     return false;
 }
 
-async function handleTurnstile(page, timeoutMs = 30000) {
-    console.log('🛡️ Attente de l\'iframe Turnstile...');
-    try {
-        const frame = await page.waitForFrame(
-            f => f.url().includes('challenges.cloudflare.com/turnstile'),
-            { timeout: timeoutMs }
-        );
-        console.log('✅ Iframe Turnstile trouvée');
-
-        await frame.waitForSelector('body', { timeout: 5000 });
-        const frameBox = await frame.boundingBox();
-        if (frameBox) {
-            await humanMouseMove(page, frameBox.x + 150, frameBox.y + 150);
-        }
-
-        await frame.click('input[type="checkbox"]');
-        console.log('✅ Clic sur la case Turnstile');
-
-        const start = Date.now();
-        while (Date.now() - start < 25000) {
-            const stillThere = page.frames().some(f => f.url().includes('challenges.cloudflare.com/turnstile'));
-            if (!stillThere) {
-                console.log('✅ Turnstile disparu, challenge résolu');
-                return true;
-            }
+// Gestion de Turnstile avec diagnostic étendu
+async function handleTurnstileWithRetry(page, maxAttempts = 5, waitBetween = 3000) {
+    console.log('🛡️ Attente de l\'iframe Turnstile (avec retry)...');
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        console.log(`   Tentative ${attempt}/${maxAttempts}...`);
+        const frames = page.frames();
+        const turnstileFrame = frames.find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
+        if (turnstileFrame) {
+            console.log('✅ Iframe Turnstile trouvée');
             try {
-                const checked = await frame.$eval('input[type="checkbox"]', cb => cb.checked);
-                if (checked) {
-                    console.log('✅ Case Turnstile cochée');
-                    await delay(3000);
-                    return true;
+                await turnstileFrame.waitForSelector('body', { timeout: 5000 });
+                const frameBox = await turnstileFrame.boundingBox();
+                if (frameBox) await humanMouseMove(page, frameBox.x + 150, frameBox.y + 150);
+                await turnstileFrame.click('input[type="checkbox"]');
+                console.log('✅ Clic sur la case Turnstile');
+
+                // Attendre résolution
+                const start = Date.now();
+                while (Date.now() - start < 25000) {
+                    const stillThere = page.frames().some(f => f.url().includes('challenges.cloudflare.com/turnstile'));
+                    if (!stillThere) {
+                        console.log('✅ Turnstile disparu, challenge résolu');
+                        return true;
+                    }
+                    try {
+                        const checked = await turnstileFrame.$eval('input[type="checkbox"]', cb => cb.checked);
+                        if (checked) {
+                            console.log('✅ Case Turnstile cochée');
+                            await delay(3000);
+                            return true;
+                        }
+                    } catch (e) {}
+                    await delay(2000);
                 }
-            } catch (e) {}
-            await delay(2000);
+                console.log('⚠️ Timeout résolution Turnstile');
+                return false;
+            } catch (e) {
+                console.log(`⚠️ Erreur interaction : ${e.message}`);
+            }
         }
-        console.log('⚠️ Timeout attente résolution Turnstile');
-        return false;
-    } catch (e) {
-        console.log('⚠️ Iframe Turnstile non trouvée dans le délai :', e.message);
-        return false;
+        if (attempt < maxAttempts) {
+            await delay(waitBetween);
+        }
     }
+    console.log('❌ Iframe Turnstile introuvable après plusieurs tentatives.');
+    // Lister les frames pour diagnostic
+    await listAllFrames(page);
+    return false;
 }
 
 (async () => {
@@ -174,7 +185,7 @@ async function handleTurnstile(page, timeoutMs = 30000) {
         await page.setViewport({ width: 1280, height: 720 });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-        // --- LOGIN PAGE ---
+        // --- LOGIN ---
         console.log('🌐 Accès login...');
         await page.goto('https://tronpick.io/login.php', { waitUntil: 'networkidle2', timeout: 30000 });
         await humanDelay(1000, 2000);
@@ -198,11 +209,8 @@ async function handleTurnstile(page, timeoutMs = 30000) {
         await humanMouseMove(page, 700, 500);
         await randomScroll(page);
 
-        // 📋 LISTER LES ÉLÉMENTS AVANT CLIC
+        // Lister les boutons avant clic
         await listAllButtons(page);
-
-        // Vérifier Turnstile avant clic
-        await handleTurnstile(page, 5000).catch(() => {});
 
         // Trouver et cliquer sur "Log in"
         console.log('🔐 Recherche bouton "Log in"...');
@@ -219,18 +227,19 @@ async function handleTurnstile(page, timeoutMs = 30000) {
         console.log('🖱️ Clic sur "Log in"...');
         await loginButton.click();
 
-        console.log('⏳ Attente de la fin des requêtes AJAX...');
-        await page.waitForNetworkIdle({ timeout: 10000 }).catch(() => console.log('⚠️ Network idle timeout, poursuite...'));
+        // Attendre un peu après le clic
+        await delay(3000);
 
-        console.log('⏳ Gestion Turnstile post-clic...');
-        const turnstileResolved = await handleTurnstile(page, 25000);
+        // Gérer Turnstile avec retry
+        const turnstileResolved = await handleTurnstileWithRetry(page, 8, 4000);
         if (turnstileResolved) {
             console.log('✅ Turnstile résolu');
             await page.waitForNetworkIdle({ timeout: 10000 }).catch(() => {});
         } else {
-            console.log('⚠️ Turnstile non résolu ou non apparu');
+            console.log('⚠️ Turnstile non résolu, on continue quand même...');
         }
 
+        // Vérifier connexion
         console.log('🔍 Attente de confirmation de connexion...');
         const loggedIn = await waitForLoginSuccess(page, 15000);
         const currentUrl = page.url();
@@ -247,8 +256,6 @@ async function handleTurnstile(page, timeoutMs = 30000) {
             });
             status.message = errorMsg ? `Échec: ${errorMsg}` : 'Échec de connexion';
             console.log('❌', status.message);
-            
-            // 📋 RELISTER APRÈS ÉCHEC POUR VOIR LES CHANGEMENTS
             await listAllButtons(page);
         }
 
@@ -256,15 +263,13 @@ async function handleTurnstile(page, timeoutMs = 30000) {
         console.error('❌ Erreur fatale :', error);
         status.message = error.message;
 
-        // 📸 CAPTURE D'ÉCRAN EN CAS D'ERREUR
+        // Capture d'écran
         try {
             const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
             console.log('📸 CAPTURE_BASE64_START');
             console.log(screenshot);
             console.log('📸 CAPTURE_BASE64_END');
-        } catch (e) {
-            console.log('⚠️ Impossible de prendre la capture d\'écran');
-        }
+        } catch (e) {}
     } finally {
         if (browser) await browser.close();
     }
