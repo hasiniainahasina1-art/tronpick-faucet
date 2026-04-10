@@ -16,7 +16,7 @@ if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Mouvement de souris courbe (Bézier quadratique)
+// Mouvement de souris réaliste (courbe de Bézier)
 async function humanMouseMove(page, targetX, targetY) {
     const start = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
     const steps = 25;
@@ -87,7 +87,7 @@ async function isLoggedIn(page) {
     return false;
 }
 
-// Clic réaliste sur CLAIM
+// Clic réaliste sur CLAIM avec interception réseau
 async function clickClaimButton(page) {
     console.log('🎯 Recherche et clic réaliste sur CLAIM...');
     await page.waitForNetworkIdle({ timeout: 15000 }).catch(() => {});
@@ -118,23 +118,43 @@ async function clickClaimButton(page) {
 
     console.log(`📍 Coordonnées du bouton : (${Math.round(coords.x)}, ${Math.round(coords.y)})`);
 
-    // Mouvement réaliste de la souris jusqu'au bouton
+    // Intercepter les réponses réseau pour diagnostic
+    const responses = [];
+    const responseListener = async (response) => {
+        const req = response.request();
+        if (['xhr', 'fetch'].includes(req.resourceType())) {
+            try {
+                const text = await response.text().catch(() => '');
+                responses.push({ url: response.url(), status: response.status(), body: text.substring(0, 500) });
+            } catch (e) {}
+        }
+    };
+    page.on('response', responseListener);
+
+    // Mouvement réaliste et clic
     console.log('🖱️ Déplacement de la souris vers le bouton...');
     await humanMouseMove(page, coords.x, coords.y);
-    await delay(300); // pause avant clic
-
-    // Clic natif via page.mouse
+    await delay(300);
     console.log('🔽 Clic natif (mouse.click)');
     await page.mouse.click(coords.x, coords.y);
-
     console.log('✅ Clic effectué');
 
-    // Attendre la réponse
+    // Attendre les réponses réseau
     console.log('⏳ Attente de la réponse du site...');
     await page.waitForNetworkIdle({ timeout: 15000 }).catch(() => {});
     await delay(5000);
 
-    // Détecter feedback
+    // Arrêter l'interception
+    page.off('response', responseListener);
+
+    // Afficher les réponses capturées
+    console.log(`🌐 Réponses AJAX/Fetch (${responses.length}) :`);
+    responses.forEach((r, i) => {
+        console.log(`   ${i+1}. [${r.status}] ${r.url}`);
+        if (r.body) console.log(`       Body: ${r.body}`);
+    });
+
+    // Détecter feedback DOM
     let feedback = await page.evaluate(() => {
         const msgSels = ['.alert', '.message', '.toast', '.notification', '.swal2-popup', '.modal', '[class*="success"]', '[class*="error"]'];
         for (const s of msgSels) {
@@ -148,6 +168,28 @@ async function clickClaimButton(page) {
         return null;
     });
 
+    // Analyser les réponses pour trouver un message significatif
+    let serverMessage = null;
+    for (const r of responses) {
+        if (r.body) {
+            const bodyLower = r.body.toLowerCase();
+            if (bodyLower.includes('success') || bodyLower.includes('claimed') || bodyLower.includes('reward')) {
+                serverMessage = r.body;
+                break;
+            }
+            if (bodyLower.includes('wait') || bodyLower.includes('cooldown') || bodyLower.includes('already') || bodyLower.includes('too early') || bodyLower.includes('timer')) {
+                serverMessage = r.body;
+                break;
+            }
+        }
+    }
+
+    if (serverMessage) {
+        console.log(`💬 Message serveur détecté : "${serverMessage}"`);
+        feedback = serverMessage;
+    }
+
+    // Pause après désactivation si nécessaire
     if (feedback === 'Bouton désactivé après clic') {
         console.log('⏳ Pause de 5 secondes après désactivation...');
         await delay(5000);
@@ -162,34 +204,45 @@ async function clickClaimButton(page) {
             return null;
         });
         if (newMessage) {
-            console.log(`💬 Nouveau message : "${newMessage}"`);
+            console.log(`💬 Nouveau message DOM : "${newMessage}"`);
             feedback = newMessage;
         }
     }
 
+    // Texte de la page pour timer
     const pageText = await page.evaluate(() => document.body.innerText);
     const timerMatch = pageText.match(/next claim.*?(\d+)\s*(hour|minute|second)/i);
     const timerInfo = timerMatch ? timerMatch[0] : null;
 
+    // Déterminer le succès
+    let success = false;
+    let finalMessage = feedback || 'Aucun retour';
+
     if (feedback) {
-        console.log(`💬 Feedback final : "${feedback}"`);
-        if (timerInfo) console.log(`⏱️ Timer détecté : ${timerInfo}`);
-        const isSuccess = feedback.includes('désactivé') || feedback.toLowerCase().includes('success') || feedback.toLowerCase().includes('claimed') || feedback.toLowerCase().includes('reward');
-        return { success: isSuccess, message: feedback + (timerInfo ? ` (${timerInfo})` : '') };
+        const fbLower = feedback.toLowerCase();
+        if (fbLower.includes('success') || fbLower.includes('claimed') || fbLower.includes('reward') || feedback.includes('désactivé')) {
+            success = true;
+        }
     }
 
-    // Vérification supplémentaire du bouton désactivé
-    const isDisabledNow = await page.evaluate(() => {
-        const btn = [...document.querySelectorAll('button, input[type="submit"]')].find(el => (el.textContent || el.value || '').trim().toUpperCase() === 'CLAIM');
-        return btn ? btn.disabled : false;
-    });
-
-    if (isDisabledNow) {
-        console.log('✅ Bouton désactivé (succès implicite)');
-        return { success: true, message: 'Bouton désactivé après clic' + (timerInfo ? ` (${timerInfo})` : '') };
+    // Si aucune réponse claire mais bouton désactivé, on considère un succès avec réserve
+    if (!success) {
+        const isDisabledNow = await page.evaluate(() => {
+            const btn = [...document.querySelectorAll('button, input[type="submit"]')].find(el => (el.textContent || el.value || '').trim().toUpperCase() === 'CLAIM');
+            return btn ? btn.disabled : false;
+        });
+        if (isDisabledNow) {
+            success = true;
+            finalMessage = 'Bouton désactivé (succès présumé)';
+        }
     }
 
-    return { success: false, message: 'Aucun retour détecté' };
+    if (timerInfo) {
+        finalMessage += ` (${timerInfo})`;
+    }
+
+    console.log(`📌 Résultat final : ${success ? 'SUCCÈS' : 'ÉCHEC'} - ${finalMessage}`);
+    return { success, message: finalMessage };
 }
 
 (async () => {
