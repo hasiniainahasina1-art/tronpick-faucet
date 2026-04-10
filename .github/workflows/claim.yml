@@ -2,9 +2,8 @@ name: Claim Tronpick Faucet
 
 on:
   schedule:
-    # Exécution toutes les 6 heures (modifiez selon vos besoins)
-    - cron: '0 */6 * * *'
-  workflow_dispatch:   # Permet de lancer manuellement depuis l'interface GitHub
+    - cron: '0 */6 * * *'   # toutes les 6 heures (modifiable)
+  workflow_dispatch:         # déclenchement manuel
 
 jobs:
   claim:
@@ -13,22 +12,26 @@ jobs:
       - name: 📥 Récupérer le code source
         uses: actions/checkout@v4
 
+      - name: 📦 Installer les dépendances système (xvfb)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
       - name: 🟢 Installer Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: 📦 Installer les dépendances
+      - name: 📦 Installer les dépendances Node.js
         run: npm install
 
-      - name: 🤖 Exécuter le script de claim
+      - name: 🤖 Exécuter le script avec xvfb (navigateur furtif)
         env:
           TRONPICK_EMAIL: ${{ secrets.TRONPICK_EMAIL }}
           TRONPICK_PASSWORD: ${{ secrets.TRONPICK_PASSWORD }}
           PROXY_USERNAME: ${{ secrets.PROXY_USERNAME }}
           PROXY_PASSWORD: ${{ secrets.PROXY_PASSWORD }}
-          BROWSERLESS_TOKEN: ${{ secrets.BROWSERLESS_TOKEN }}
-        run: node script.js
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" node script.js
 
       - name: 📝 Commiter et pousser le nouveau statut
         run: |
