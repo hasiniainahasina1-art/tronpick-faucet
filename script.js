@@ -42,7 +42,7 @@ async function fillField(page, selector, value, fieldName) {
     console.log(`✅ ${fieldName} rempli`);
 }
 
-// Connexion (inchangée)
+// Connexion
 async function login(page) {
     console.log('🌐 Accès login...');
     await page.goto('https://tronpick.io/login.php', { waitUntil: 'networkidle2', timeout: 60000 });
@@ -74,57 +74,44 @@ async function login(page) {
     console.log('✅ Connecté');
 }
 
-// Résolution du Turnstile faucet avec actions de réveil
-async function resolveFaucetTurnstile(page) {
-    console.log('🛡️ Résolution du Turnstile faucet...');
-
-    // Actions pour inciter Turnstile à apparaître
-    await page.evaluate(() => window.scrollBy(0, 300));
-    await delay(500);
-    await page.mouse.move(400, 300);
-    await page.mouse.click(400, 300);
-    await delay(1000);
-    await page.evaluate(() => window.scrollBy(0, -150));
-
-    try {
-        const frame = await page.waitForFrame(
-            f => f.url().includes('challenges.cloudflare.com/turnstile'),
-            { timeout: 90000 } // 90 secondes
-        );
-        console.log('✅ Iframe Turnstile faucet trouvée');
-
-        await frame.waitForSelector('body', { timeout: 5000 });
-        await frame.evaluate(() => {
-            const labels = [...document.querySelectorAll('label')];
-            const target = labels.find(l => l.textContent.toLowerCase().includes('verify you are human'));
-            if (target) target.click();
-            else {
-                const cb = document.querySelector('input[type="checkbox"]');
-                if (cb) cb.click();
+// Trouver et cliquer sur "Verify you are human" dans n'importe quelle frame
+async function clickVerifyYouAreHuman(page) {
+    console.log('🔍 Recherche de "Verify you are human"...');
+    const start = Date.now();
+    while (Date.now() - start < 60000) {
+        const frames = page.frames();
+        for (const frame of frames) {
+            try {
+                const found = await frame.evaluate(() => {
+                    // Chercher un label ou tout élément contenant le texte exact (insensible casse)
+                    const elements = document.querySelectorAll('label, span, div, button, a');
+                    for (const el of elements) {
+                        if (el.textContent.toLowerCase().includes('verify you are human')) {
+                            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            el.click();
+                            return true;
+                        }
+                    }
+                    // Fallback : cliquer sur la case à cocher Turnstile si présente
+                    const cb = document.querySelector('input[type="checkbox"]');
+                    if (cb) {
+                        cb.click();
+                        return true;
+                    }
+                    return false;
+                });
+                if (found) {
+                    console.log(`✅ Clic effectué dans la frame ${frames.indexOf(frame)}`);
+                    return true;
+                }
+            } catch (e) {
+                // Frame peut être inaccessible (cross-origin), on ignore
             }
-        });
-        console.log('✅ Clic sur "Verify you are human"');
-
-        // Attendre que Turnstile se résolve (max 45s)
-        const start = Date.now();
-        while (Date.now() - start < 45000) {
-            const isChecked = await frame.$eval('input[type="checkbox"]', cb => cb.checked).catch(() => false);
-            const token = await page.evaluate(() => {
-                const inp = document.querySelector('[name="cf-turnstile-response"]');
-                return inp ? inp.value : '';
-            });
-            if (isChecked || (token && token.length > 10)) {
-                console.log('✅ Turnstile résolu');
-                return true;
-            }
-            await delay(2000);
         }
-        console.log('⚠️ Timeout résolution Turnstile');
-        return false;
-    } catch (e) {
-        console.log('❌ Iframe Turnstile faucet non trouvée :', e.message);
-        return false;
+        await delay(2000);
     }
+    console.log('❌ Texte "Verify you are human" non trouvé après 60s');
+    return false;
 }
 
 // Clic sur CLAIM
@@ -160,10 +147,17 @@ async function clickClaim(page) {
         await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
         await delay(10000);
 
-        const resolved = await resolveFaucetTurnstile(page);
-        if (!resolved) throw new Error('Turnstile faucet non résolu');
+        // Actions de réveil pour faire apparaître Turnstile
+        await page.evaluate(() => window.scrollBy(0, 300));
+        await delay(500);
+        await page.mouse.move(400, 300);
+        await page.mouse.click(400, 300);
+        await delay(1000);
 
-        console.log('⏳ Attente de 15 secondes après Turnstile...');
+        const clicked = await clickVerifyYouAreHuman(page);
+        if (!clicked) throw new Error('Impossible de cliquer sur "Verify you are human"');
+
+        console.log('⏳ Attente de 15 secondes pour la résolution automatique...');
         await delay(15000);
 
         await clickClaim(page);
