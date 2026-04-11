@@ -16,7 +16,7 @@ if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Saisie robuste
+// Saisie robuste (inchangée)
 async function fillField(page, selector, value, fieldName) {
     console.log(`⌨️ Remplissage ${fieldName}...`);
     await page.waitForSelector(selector, { timeout: 10000 });
@@ -42,77 +42,64 @@ async function fillField(page, selector, value, fieldName) {
     console.log(`✅ ${fieldName} rempli`);
 }
 
-// Résolution renforcée de Turnstile (vérifie le token)
+// Résolution de Turnstile avec renouvellement forcé du token
 async function resolveTurnstile(page, maxWaitMs = 90000) {
-    console.log('🔎 Résolution renforcée de Turnstile...');
+    console.log('🔎 Résolution renforcée de Turnstile (renouvellement forcé)...');
     const start = Date.now();
 
-    // Boucle principale d'attente de l'iframe
-    while (Date.now() - start < maxWaitMs) {
+    // Étape 1 : Trouver l'iframe Turnstile
+    let turnstileFrame = null;
+    while (Date.now() - start < 30000 && !turnstileFrame) {
         const frames = page.frames();
-        const turnstileFrame = frames.find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
-
-        if (!turnstileFrame) {
-            // Vérifier si le token Turnstile est déjà présent dans la page (peut arriver si résolu précédemment)
-            const tokenExists = await page.evaluate(() => {
-                return !!document.querySelector('[name="cf-turnstile-response"]')?.value ||
-                       !!document.querySelector('[name="turnstile-token"]')?.value ||
-                       !!document.querySelector('input[name*="captcha"]')?.value;
-            });
-            if (tokenExists) {
-                console.log('✅ Token Turnstile déjà présent');
-                return true;
-            }
-            console.log('✅ Iframe Turnstile disparue');
-            return true;
-        }
-
-        try {
-            // Vérifier si la case est déjà cochée
-            const isChecked = await turnstileFrame.$eval('input[type="checkbox"]', cb => cb.checked);
-            if (!isChecked) {
-                console.log('   Case non cochée, tentative de clic...');
-                await turnstileFrame.waitForSelector('body', { timeout: 5000 });
-                await turnstileFrame.click('input[type="checkbox"]');
-                console.log('   Clic effectué, attente validation...');
-            } else {
-                console.log('   Case déjà cochée, attente du token...');
-            }
-        } catch (e) {
-            // L'élément n'est peut-être pas encore prêt
-        }
-
-        // Attendre que le token Turnstile apparaisse (max 10 secondes par itération)
-        const tokenAppeared = await page.evaluate(() => {
-            return new Promise(resolve => {
-                const start = Date.now();
-                const check = () => {
-                    const tokenInput = document.querySelector('[name="cf-turnstile-response"]') ||
-                                       document.querySelector('[name="turnstile-token"]') ||
-                                       document.querySelector('input[name*="captcha-response"]');
-                    if (tokenInput && tokenInput.value) {
-                        resolve(true);
-                    } else if (Date.now() - start < 10000) {
-                        setTimeout(check, 500);
-                    } else {
-                        resolve(false);
-                    }
-                };
-                check();
-            });
-        });
-
-        if (tokenAppeared) {
-            console.log('✅ Token Turnstile généré');
-            // Laisser un peu de temps pour que le site prenne en compte le token
-            await delay(2000);
-            return true;
-        }
-
-        await delay(2000);
+        turnstileFrame = frames.find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
+        if (!turnstileFrame) await delay(1000);
     }
 
-    console.log('⚠️ Timeout Turnstile');
+    if (!turnstileFrame) {
+        console.log('⚠️ Iframe Turnstile non trouvée, on vérifie si le token existe déjà...');
+        const tokenExists = await page.evaluate(() => {
+            return !!document.querySelector('[name="cf-turnstile-response"]')?.value;
+        });
+        if (tokenExists) {
+            console.log('✅ Token Turnstile présent sans iframe');
+            return true;
+        }
+        console.log('❌ Iframe Turnstile introuvable et pas de token');
+        return false;
+    }
+
+    console.log('✅ Iframe Turnstile trouvée');
+
+    // Étape 2 : Cliquer sur la case pour forcer un nouveau token
+    try {
+        await turnstileFrame.waitForSelector('body', { timeout: 5000 });
+        // Cliquer même si déjà cochée pour renouveler
+        await turnstileFrame.click('input[type="checkbox"]');
+        console.log('   Clic effectué pour renouveler le token');
+    } catch (e) {
+        console.log('⚠️ Impossible de cliquer sur la case Turnstile');
+    }
+
+    // Étape 3 : Attendre que le nouveau token apparaisse (max 45 secondes)
+    const tokenWaitStart = Date.now();
+    let tokenValue = '';
+    while (Date.now() - tokenWaitStart < 45000) {
+        tokenValue = await page.evaluate(() => {
+            const input = document.querySelector('[name="cf-turnstile-response"]') ||
+                          document.querySelector('[name="turnstile-token"]') ||
+                          document.querySelector('input[name*="captcha-response"]');
+            return input ? input.value : '';
+        });
+        if (tokenValue && tokenValue.length > 10) {
+            console.log(`✅ Nouveau token Turnstile généré (${tokenValue.length} caractères)`);
+            // Laisser le temps au site d'enregistrer le token
+            await delay(3000);
+            return true;
+        }
+        await delay(1000);
+    }
+
+    console.log('⚠️ Timeout attente du nouveau token');
     return false;
 }
 
@@ -131,17 +118,16 @@ async function clickClaimButton(page) {
     await page.waitForNetworkIdle({ timeout: 15000 }).catch(() => {});
     await delay(3000);
 
-    // 1. Résoudre le Turnstile faucet avec la fonction renforcée
+    // Résoudre Turnstile faucet avec renouvellement
     const faucetTurnstileResolved = await resolveTurnstile(page, 90000);
     if (!faucetTurnstileResolved) {
         console.log('❌ Turnstile faucet non résolu');
         return { success: false, message: 'Turnstile faucet non résolu' };
     }
 
-    // 2. Attendre un peu pour la stabilité
-    await delay(3000);
+    await delay(2000);
 
-    // 3. Cliquer sur le bouton Claim
+    // Cliquer sur le bouton Claim
     const claimSelector = '#process_claim_hourly_faucet';
     try {
         await page.waitForSelector(claimSelector, { timeout: 10000 });
@@ -170,12 +156,12 @@ async function clickClaimButton(page) {
         console.log('✅ Clic fallback réussi');
     }
 
-    // 4. Attendre réponse
+    // Attendre réponse
     console.log('⏳ Attente réponse...');
     await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
     await delay(5000);
 
-    // 5. Messages DOM
+    // Messages DOM
     const messages = await page.evaluate(() => {
         return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [class*="message"], [role="alert"]'))
             .map(el => el.textContent.trim()).filter(t => t);
