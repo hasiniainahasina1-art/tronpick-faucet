@@ -1,9 +1,6 @@
-const puppeteer = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+const { connect } = require('puppeteer-real-browser');
 const fs = require('fs');
 const path = require('path');
-
-puppeteer.use(StealthPlugin());
 
 const EMAIL = process.env.TRONPICK_EMAIL.trim().toLowerCase();
 const PASSWORD = process.env.TRONPICK_PASSWORD;
@@ -22,7 +19,6 @@ if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Saisie robuste (identique)
 async function fillField(page, selector, value, fieldName) {
     console.log(`⌨️ Remplissage ${fieldName}...`);
     await page.waitForSelector(selector, { timeout: 10000 });
@@ -48,7 +44,6 @@ async function fillField(page, selector, value, fieldName) {
     console.log(`✅ ${fieldName} rempli`);
 }
 
-// Connexion (adaptée pour Firefox)
 async function login(page) {
     console.log('🌐 Accès login...');
     await page.goto('https://tronpick.io/login.php', { waitUntil: 'networkidle2', timeout: 60000 });
@@ -56,7 +51,6 @@ async function login(page) {
     await fillField(page, 'input[type="password"]', PASSWORD, 'password');
     await delay(2000);
 
-    // Gestion du Turnstile login (Firefox peut avoir une iframe différente, on utilise waitForFrame)
     try {
         const frame = await page.waitForFrame(f => f.url().includes('challenges.cloudflare.com/turnstile'), { timeout: 30000 });
         console.log('✅ Turnstile login présent, clic...');
@@ -81,7 +75,6 @@ async function login(page) {
     console.log('✅ Connecté');
 }
 
-// Actions de réveil (inchangées)
 async function wakeUpPage(page) {
     console.log('🖱️ Actions de réveil...');
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
@@ -99,7 +92,6 @@ async function wakeUpPage(page) {
     await delay(2000);
 }
 
-// Gestion Turnstile faucet (identique mais avec captures)
 async function handleFaucetTurnstile(page) {
     console.log('🚰 Accès faucet...');
     await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
@@ -109,10 +101,10 @@ async function handleFaucetTurnstile(page) {
     await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
     await delay(20000);
 
-    await page.screenshot({ path: path.join(outputDir, '01_firefox_after_reload.png'), fullPage: true });
+    await page.screenshot({ path: path.join(outputDir, '01_after_reload.png'), fullPage: true });
     await wakeUpPage(page);
     await delay(10000);
-    await page.screenshot({ path: path.join(outputDir, '02_firefox_after_wakeup.png'), fullPage: true });
+    await page.screenshot({ path: path.join(outputDir, '02_after_wakeup.png'), fullPage: true });
 
     console.log('🔍 Recherche de "Verify you are human"...');
     const start = Date.now();
@@ -147,7 +139,7 @@ async function handleFaucetTurnstile(page) {
     }
     
     if (!clicked) {
-        await page.screenshot({ path: path.join(outputDir, '03_firefox_verify_not_found.png'), fullPage: true });
+        await page.screenshot({ path: path.join(outputDir, '03_verify_not_found.png'), fullPage: true });
         console.log('❌ Texte non trouvé après 60s');
         return false;
     }
@@ -170,14 +162,13 @@ async function handleFaucetTurnstile(page) {
     ).catch(() => false);
 
     if (!tokenGenerated) {
-        await page.screenshot({ path: path.join(outputDir, '04_firefox_token_not_generated.png'), fullPage: true });
+        await page.screenshot({ path: path.join(outputDir, '04_token_not_generated.png'), fullPage: true });
         return false;
     }
     console.log('✅ Token Turnstile généré');
     return true;
 }
 
-// Clic sur CLAIM par coordonnées
 async function clickClaim(page) {
     console.log('🎯 Clic sur le bouton CLAIM...');
     const coords = await page.evaluate(() => {
@@ -196,28 +187,17 @@ async function clickClaim(page) {
     let browser;
     const status = { success: false, time: new Date().toISOString(), message: '' };
     try {
-        console.log('🚀 Lancement de Firefox...');
-        browser = await puppeteer.launch({
-            product: 'firefox',
-            protocol: 'webDriverBiDi',
+        console.log('🚀 Lancement de Chrome...');
+        const { browser: br, page } = await connect({
             headless: false,
-            args: [
-                `--proxy-server=http://${PROXY_HOST}:${PROXY_PORT}`,
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--window-size=1280,720'
-            ]
+            turnstile: true,
+            proxy: { host: PROXY_HOST, port: PROXY_PORT, username: PROXY_USERNAME, password: PROXY_PASSWORD }
         });
-
-        const page = await browser.newPage();
-        await page.authenticate({ username: PROXY_USERNAME, password: PROXY_PASSWORD });
-        console.log('✅ Proxy authentifié');
-
+        browser = br;
         page.on('dialog', d => d.accept());
         await page.setViewport({ width: 1280, height: 720 });
 
         await login(page);
-
         const turnstileOk = await handleFaucetTurnstile(page);
         if (!turnstileOk) throw new Error('Turnstile faucet non résolu');
 
@@ -225,7 +205,6 @@ async function clickClaim(page) {
         await delay(10000);
 
         await clickClaim(page);
-
         await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
         await delay(5000);
 
