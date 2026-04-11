@@ -74,43 +74,77 @@ async function login(page) {
     console.log('✅ Connecté');
 }
 
-// Trouver et cliquer sur "Verify you are human" dans n'importe quelle frame
-async function clickVerifyYouAreHuman(page) {
+// Trouver et cliquer 3 fois sur "Verify you are human", puis attendre résolution
+async function resolveTurnstileByClicking(page) {
     console.log('🔍 Recherche de "Verify you are human"...');
     const start = Date.now();
+    let frameFound = null;
+
+    // 1. Trouver l'élément dans n'importe quelle frame
     while (Date.now() - start < 60000) {
         const frames = page.frames();
         for (const frame of frames) {
             try {
                 const found = await frame.evaluate(() => {
-                    // Chercher un label ou tout élément contenant le texte exact (insensible casse)
                     const elements = document.querySelectorAll('label, span, div, button, a');
                     for (const el of elements) {
                         if (el.textContent.toLowerCase().includes('verify you are human')) {
-                            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            el.click();
                             return true;
                         }
-                    }
-                    // Fallback : cliquer sur la case à cocher Turnstile si présente
-                    const cb = document.querySelector('input[type="checkbox"]');
-                    if (cb) {
-                        cb.click();
-                        return true;
                     }
                     return false;
                 });
                 if (found) {
-                    console.log(`✅ Clic effectué dans la frame ${frames.indexOf(frame)}`);
-                    return true;
+                    frameFound = frame;
+                    break;
                 }
-            } catch (e) {
-                // Frame peut être inaccessible (cross-origin), on ignore
-            }
+            } catch (e) {}
         }
+        if (frameFound) break;
         await delay(2000);
     }
-    console.log('❌ Texte "Verify you are human" non trouvé après 60s');
+
+    if (!frameFound) {
+        console.log('❌ Texte non trouvé');
+        return false;
+    }
+
+    console.log(`✅ Texte trouvé dans la frame`);
+
+    // 2. Cliquer 3 fois avec pauses (simulation humaine)
+    for (let i = 1; i <= 3; i++) {
+        await frameFound.evaluate(() => {
+            const elements = document.querySelectorAll('label, span, div, button, a');
+            for (const el of elements) {
+                if (el.textContent.toLowerCase().includes('verify you are human')) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    el.click();
+                    return;
+                }
+            }
+        });
+        console.log(`   Clic ${i}/3 effectué`);
+        if (i < 3) await delay(1500);
+    }
+
+    // 3. Attendre la résolution (case cochée ou token présent)
+    console.log('⏳ Attente de la résolution de Turnstile...');
+    const waitStart = Date.now();
+    while (Date.now() - waitStart < 30000) {
+        try {
+            const isChecked = await frameFound.$eval('input[type="checkbox"]', cb => cb.checked);
+            const token = await page.evaluate(() => {
+                const inp = document.querySelector('[name="cf-turnstile-response"]');
+                return inp ? inp.value : '';
+            });
+            if (isChecked || (token && token.length > 10)) {
+                console.log('✅ Turnstile résolu');
+                return true;
+            }
+        } catch (e) {}
+        await delay(2000);
+    }
+    console.log('⚠️ Timeout résolution Turnstile');
     return false;
 }
 
@@ -147,18 +181,18 @@ async function clickClaim(page) {
         await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
         await delay(10000);
 
-        // Actions de réveil pour faire apparaître Turnstile
+        // Réveil
         await page.evaluate(() => window.scrollBy(0, 300));
         await delay(500);
         await page.mouse.move(400, 300);
         await page.mouse.click(400, 300);
         await delay(1000);
 
-        const clicked = await clickVerifyYouAreHuman(page);
-        if (!clicked) throw new Error('Impossible de cliquer sur "Verify you are human"');
+        const resolved = await resolveTurnstileByClicking(page);
+        if (!resolved) throw new Error('Turnstile non résolu');
 
-        console.log('⏳ Attente de 15 secondes pour la résolution automatique...');
-        await delay(15000);
+        console.log('⏳ Pause de 10 secondes après résolution...');
+        await delay(10000);
 
         await clickClaim(page);
 
