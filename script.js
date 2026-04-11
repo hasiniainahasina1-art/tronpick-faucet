@@ -98,50 +98,37 @@ async function humanScrollToClaim(page) {
 }
 
 async function clickVerifyYouAreHuman(page) {
-    console.log('🔍 Recherche de "verify you are human"...');
-    const start = Date.now();
-    let clicked = false;
-
-    // Attendre d'abord que l'iframe Turnstile soit présente
-    let turnstileFrame = null;
-    while (Date.now() - start < 30000 && !turnstileFrame) {
-        const frames = page.frames();
-        turnstileFrame = frames.find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
-        if (!turnstileFrame) await delay(1000);
-    }
-
+    console.log('🔍 Clic sur "verify you are human"...');
+    const frames = page.frames();
+    const turnstileFrame = frames.find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
     if (!turnstileFrame) {
         console.log('⚠️ Iframe Turnstile non trouvée');
-        return;
+        return false;
     }
 
-    console.log('✅ Iframe Turnstile trouvée, tentative de clic...');
-    
-    while (Date.now() - start < 60000 && !clicked) {
-        try {
-            await turnstileFrame.waitForSelector('body', { timeout: 2000 });
-            const found = await turnstileFrame.evaluate(() => {
-                const elements = document.querySelectorAll('label, span, div, button, a');
-                for (const el of elements) {
-                    if (el.textContent.toLowerCase().includes('verify you are human')) {
-                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        el.click();
-                        return true;
-                    }
+    try {
+        await turnstileFrame.waitForSelector('body', { timeout: 5000 });
+        const clicked = await turnstileFrame.evaluate(() => {
+            const elements = document.querySelectorAll('label, span, div, button, a');
+            for (const el of elements) {
+                if (el.textContent.toLowerCase().includes('verify you are human')) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    el.click();
+                    return true;
                 }
-                const cb = document.querySelector('input[type="checkbox"]');
-                if (cb) { cb.click(); return true; }
-                return false;
-            });
-            if (found) {
-                console.log('✅ Clic effectué dans l\'iframe Turnstile');
-                clicked = true;
-                break;
             }
-        } catch (e) {}
-        await delay(2000);
+            const cb = document.querySelector('input[type="checkbox"]');
+            if (cb) { cb.click(); return true; }
+            return false;
+        });
+        if (clicked) {
+            console.log('✅ Clic effectué dans l\'iframe Turnstile');
+            return true;
+        }
+    } catch (e) {
+        console.log('⚠️ Erreur lors du clic :', e.message);
     }
-    if (!clicked) console.log('⚠️ Échec du clic sur "verify you are human"');
+    return false;
 }
 
 async function clickClaim(page) {
@@ -189,21 +176,36 @@ async function clickClaim(page) {
         await delay(2000);
         await page.screenshot({ path: path.join(outputDir, '03_before_click_turnstile.png'), fullPage: true });
 
-        // Attendre un peu que l'iframe se charge après le scroll
+        // Attendre que l'iframe Turnstile soit bien visible (3 secondes)
+        console.log('⏳ Pause de 3 secondes pour laisser apparaître le Turnstile...');
         await delay(3000);
-        
-        // Clic sur "verify you are human"
-        await clickVerifyYouAreHuman(page);
-        await page.screenshot({ path: path.join(outputDir, '04_after_click_turnstile.png'), fullPage: true });
+        await page.screenshot({ path: path.join(outputDir, '04_turnstile_visible.png'), fullPage: true });
 
-        console.log('⏳ Attente de 10 secondes pour validation...');
+        // Premier clic sur "verify you are human"
+        console.log('🖱️ Premier clic sur "verify you are human"');
+        await clickVerifyYouAreHuman(page);
+        await page.screenshot({ path: path.join(outputDir, '05_after_first_click.png'), fullPage: true });
+
+        console.log('⏳ Attente de 10 secondes...');
         await delay(10000);
-        await page.screenshot({ path: path.join(outputDir, '05_before_claim.png'), fullPage: true });
+
+        // Deuxième clic sur "verify you are human"
+        console.log('🖱️ Deuxième clic sur "verify you are human"');
+        await clickVerifyYouAreHuman(page);
+        await page.screenshot({ path: path.join(outputDir, '06_after_second_click.png'), fullPage: true });
+
+        console.log('⏳ Attente de 10 secondes...');
+        await delay(10000);
+
+        // Attente supplémentaire de 10 secondes avant CLAIM
+        console.log('⏳ Attente de 10 secondes avant le clic sur CLAIM...');
+        await delay(10000);
+        await page.screenshot({ path: path.join(outputDir, '07_before_claim.png'), fullPage: true });
 
         await clickClaim(page);
         await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
         await delay(5000);
-        await page.screenshot({ path: path.join(outputDir, '06_after_claim.png'), fullPage: true });
+        await page.screenshot({ path: path.join(outputDir, '08_after_claim.png'), fullPage: true });
 
         const messages = await page.evaluate(() => {
             return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [role="alert"]'))
