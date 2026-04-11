@@ -75,98 +75,27 @@ async function login(page) {
     console.log('✅ Connecté');
 }
 
-async function wakeUpPage(page) {
-    console.log('🖱️ Actions de réveil...');
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    await delay(1000);
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await delay(1000);
-    await page.mouse.move(300, 200);
-    await page.mouse.move(600, 400);
-    await page.mouse.move(500, 500);
-    await page.mouse.move(400, 600);
-    await delay(500);
-    await page.mouse.click(500, 450);
-    await delay(2000);
-    await page.mouse.click(550, 480);
-    await delay(2000);
-}
+async function humanScrollToClaim(page) {
+    console.log('📜 Scroll progressif vers le bouton CLAIM...');
+    // Récupérer la position du bouton
+    const coords = await page.evaluate(() => {
+        const btn = document.querySelector('#process_claim_hourly_faucet');
+        if (!btn) return null;
+        const rect = btn.getBoundingClientRect();
+        return { y: rect.y + window.scrollY };
+    });
+    if (!coords) throw new Error('Bouton CLAIM introuvable pour le scroll');
 
-async function handleFaucetTurnstile(page) {
-    console.log('🚰 Accès faucet...');
-    await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
-    await delay(5000);
-    
-    console.log('🔄 Actualisation de la page faucet...');
-    await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
-    await delay(20000);
-
-    await page.screenshot({ path: path.join(outputDir, '01_after_reload.png'), fullPage: true });
-    await wakeUpPage(page);
-    await delay(10000);
-    await page.screenshot({ path: path.join(outputDir, '02_after_wakeup.png'), fullPage: true });
-
-    console.log('🔍 Recherche de "Verify you are human"...');
-    const start = Date.now();
-    let clicked = false;
-    
-    while (Date.now() - start < 60000 && !clicked) {
-        const frames = page.frames();
-        for (const frame of frames) {
-            try {
-                const found = await frame.evaluate(() => {
-                    const elements = document.querySelectorAll('label, span, div, button, a');
-                    for (const el of elements) {
-                        if (el.textContent.toLowerCase().includes('verify you are human')) {
-                            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            el.click();
-                            return true;
-                        }
-                    }
-                    return false;
-                });
-                if (found) {
-                    console.log(`✅ Clic effectué dans une frame`);
-                    clicked = true;
-                    break;
-                }
-            } catch (e) {}
-        }
-        if (!clicked) {
-            await wakeUpPage(page);
-            await delay(5000);
-        }
+    const startY = await page.evaluate(() => window.scrollY);
+    const targetY = Math.max(0, coords.y - 200); // s'arrêter 200px au-dessus
+    const steps = 20;
+    for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        const currentY = startY + (targetY - startY) * t;
+        await page.evaluate((y) => window.scrollTo(0, y), currentY);
+        await delay(50 + Math.random() * 100);
     }
-    
-    if (!clicked) {
-        await page.screenshot({ path: path.join(outputDir, '03_verify_not_found.png'), fullPage: true });
-        console.log('❌ Texte non trouvé après 60s');
-        return false;
-    }
-
-    for (let i = 1; i <= 2; i++) {
-        await page.evaluate(() => {
-            const el = [...document.querySelectorAll('*')].find(e => e.textContent.toLowerCase().includes('verify you are human'));
-            if (el) el.click();
-        });
-        await delay(1500);
-    }
-
-    console.log('⏳ Attente de la génération du token (max 30s)...');
-    const tokenGenerated = await page.waitForFunction(
-        () => {
-            const inp = document.querySelector('[name="cf-turnstile-response"]');
-            return inp && inp.value.length > 10;
-        },
-        { timeout: 30000 }
-    ).catch(() => false);
-
-    if (!tokenGenerated) {
-        await page.screenshot({ path: path.join(outputDir, '04_token_not_generated.png'), fullPage: true });
-        return false;
-    }
-    console.log('✅ Token Turnstile généré');
-    return true;
+    console.log('✅ Scroll terminé');
 }
 
 async function clickClaim(page) {
@@ -198,15 +127,26 @@ async function clickClaim(page) {
         await page.setViewport({ width: 1280, height: 720 });
 
         await login(page);
-        const turnstileOk = await handleFaucetTurnstile(page);
-        if (!turnstileOk) throw new Error('Turnstile faucet non résolu');
 
-        console.log('⏳ Pause de 10 secondes après validation...');
-        await delay(10000);
+        console.log('⏳ Attente de 5 secondes après connexion...');
+        await delay(5000);
+
+        console.log('🔄 Actualisation de la page faucet...');
+        await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
+        await page.screenshot({ path: path.join(outputDir, '01_after_reload.png'), fullPage: true });
+
+        console.log('⏳ Attente de 20 secondes pour chargement du Turnstile...');
+        await delay(20000);
+        await page.screenshot({ path: path.join(outputDir, '02_after_wait.png'), fullPage: true });
+
+        await humanScrollToClaim(page);
+        await delay(2000);
+        await page.screenshot({ path: path.join(outputDir, '03_before_click.png'), fullPage: true });
 
         await clickClaim(page);
         await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
         await delay(5000);
+        await page.screenshot({ path: path.join(outputDir, '04_after_click.png'), fullPage: true });
 
         const messages = await page.evaluate(() => {
             return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [role="alert"]'))
