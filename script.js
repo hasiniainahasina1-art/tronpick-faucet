@@ -72,44 +72,69 @@ async function login(page) {
     console.log('✅ Connecté');
 }
 
+async function forceTurnstileToAppear(page) {
+    console.log('🖱️ Actions pour forcer l\'apparition de Turnstile...');
+    // Scroll vers la zone du captcha (juste au-dessus du bouton CLAIM)
+    await page.evaluate(() => window.scrollBy(0, 400));
+    await delay(500);
+    // Mouvements de souris sur la zone
+    await page.mouse.move(400, 300);
+    await delay(300);
+    await page.mouse.move(500, 350);
+    await delay(300);
+    await page.mouse.move(600, 400);
+    await delay(300);
+    // Clic dans la zone où devrait apparaître Turnstile
+    await page.mouse.click(500, 400);
+    await delay(1000);
+    // Re-scroll
+    await page.evaluate(() => window.scrollBy(0, -200));
+    await delay(500);
+}
+
 async function resolveTurnstile(page) {
     console.log('🛡️ Attente de l\'iframe Turnstile...');
-    try {
-        const frame = await page.waitForFrame(
-            f => f.url().includes('challenges.cloudflare.com/turnstile'),
-            { timeout: 120000 }
-        );
-        console.log('✅ Iframe Turnstile trouvée');
-
-        for (let i = 1; i <= 3; i++) {
-            await frame.waitForSelector('body', { timeout: 5000 }).catch(() => {});
-            await frame.click('input[type="checkbox"]').catch(() => {});
-            console.log(`   Clic ${i}/3 sur la case Turnstile`);
-            if (i < 3) await delay(1500);
+    const maxAttempts = 30; // 30 * 4s = 120s max
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const frames = page.frames();
+        const turnstileFrame = frames.find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
+        if (turnstileFrame) {
+            console.log(`✅ Iframe Turnstile trouvée après ${attempt} tentatives`);
+            // Cliquer 3 fois
+            for (let i = 1; i <= 3; i++) {
+                await turnstileFrame.waitForSelector('body', { timeout: 2000 }).catch(() => {});
+                await turnstileFrame.click('input[type="checkbox"]').catch(() => {});
+                console.log(`   Clic ${i}/3 sur la case`);
+                if (i < 3) await delay(1500);
+            }
+            // Attendre résolution
+            console.log('⏳ Attente résolution...');
+            const start = Date.now();
+            while (Date.now() - start < 45000) {
+                try {
+                    const isChecked = await turnstileFrame.$eval('input[type="checkbox"]', cb => cb.checked);
+                    const token = await page.evaluate(() => {
+                        const inp = document.querySelector('[name="cf-turnstile-response"]');
+                        return inp ? inp.value : '';
+                    });
+                    if (isChecked || (token && token.length > 10)) {
+                        console.log('✅ Turnstile résolu');
+                        return true;
+                    }
+                } catch (e) {}
+                await delay(2000);
+            }
+            console.log('⚠️ Timeout résolution');
+            return false;
         }
-
-        console.log('⏳ Attente de la résolution...');
-        const start = Date.now();
-        while (Date.now() - start < 45000) {
-            try {
-                const isChecked = await frame.$eval('input[type="checkbox"]', cb => cb.checked);
-                const token = await page.evaluate(() => {
-                    const inp = document.querySelector('[name="cf-turnstile-response"]');
-                    return inp ? inp.value : '';
-                });
-                if (isChecked || (token && token.length > 10)) {
-                    console.log('✅ Turnstile résolu');
-                    return true;
-                }
-            } catch (e) {}
-            await delay(2000);
+        // Si l'iframe n'est pas trouvée, forcer son apparition toutes les 3 tentatives
+        if (attempt % 3 === 0) {
+            await forceTurnstileToAppear(page);
         }
-        console.log('⚠️ Timeout résolution Turnstile');
-        return false;
-    } catch (e) {
-        console.log('❌ Iframe Turnstile non trouvée :', e.message);
-        return false;
+        await delay(4000);
     }
+    console.log('❌ Iframe Turnstile non trouvée après 120s');
+    return false;
 }
 
 async function clickClaim(page) {
@@ -144,11 +169,7 @@ async function clickClaim(page) {
         await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
         await delay(10000);
 
-        await page.evaluate(() => window.scrollBy(0, 300));
-        await delay(500);
-        await page.mouse.move(400, 300);
-        await page.mouse.click(400, 300);
-        await delay(1000);
+        await forceTurnstileToAppear(page);
 
         const resolved = await resolveTurnstile(page);
         if (!resolved) throw new Error('Turnstile non résolu');
