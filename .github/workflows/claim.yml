@@ -17,16 +17,13 @@ jobs:
         with:
           node-version: '20'
 
-      - name: 📦 Installer les dépendances système (Firefox + xvfb)
+      - name: 📦 Installer les dépendances système (xvfb)
         run: |
           sudo apt-get update
-          sudo apt-get install -y firefox xvfb
+          sudo apt-get install -y xvfb
 
       - name: 📦 Installer les dépendances Node.js
         run: npm install
-
-      - name: 🔧 Installer le binaire Firefox pour Puppeteer
-        run: npx puppeteer browsers install firefox
 
       - name: 🤖 Exécuter le script avec xvfb
         env:
