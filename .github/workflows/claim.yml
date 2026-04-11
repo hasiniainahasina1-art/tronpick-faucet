@@ -9,7 +9,7 @@ jobs:
   claim:
     runs-on: ubuntu-latest
     steps:
-      - name: 📥 Récupérer le code
+      - name: 📥 Récupérer le code source
         uses: actions/checkout@v4
 
       - name: 🟢 Installer Node.js
@@ -17,10 +17,10 @@ jobs:
         with:
           node-version: '20'
 
-      - name: 📦 Installer les dépendances système (xvfb)
+      - name: 📦 Installer les dépendances système (Firefox + xvfb)
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb
+          sudo apt-get install -y firefox xvfb
 
       - name: 📦 Installer les dépendances Node.js
         run: npm install
