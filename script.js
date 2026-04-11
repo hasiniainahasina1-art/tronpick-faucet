@@ -9,6 +9,10 @@ const PROXY_PASSWORD = process.env.PROXY_PASSWORD;
 const PROXY_HOST = '31.59.20.176';
 const PROXY_PORT = '6754';
 
+// Création du dossier de captures
+const outputDir = path.join(__dirname, 'screenshots');
+if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+
 if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
     console.error('❌ Variables d\'environnement manquantes');
     process.exit(1);
@@ -16,6 +20,7 @@ if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Saisie robuste
 async function fillField(page, selector, value, fieldName) {
     console.log(`⌨️ Remplissage ${fieldName}...`);
     await page.waitForSelector(selector, { timeout: 10000 });
@@ -41,20 +46,23 @@ async function fillField(page, selector, value, fieldName) {
     console.log(`✅ ${fieldName} rempli`);
 }
 
+// Connexion avec gestion Turnstile
 async function login(page) {
     console.log('🌐 Accès login...');
     await page.goto('https://tronpick.io/login.php', { waitUntil: 'networkidle2', timeout: 60000 });
+
     await fillField(page, 'input[type="email"], input[name="email"]', EMAIL, 'email');
     await fillField(page, 'input[type="password"]', PASSWORD, 'password');
     await delay(2000);
 
     // Résoudre Turnstile login (simplifié)
     try {
-        await page.waitForFrame(f => f.url().includes('challenges.cloudflare.com/turnstile'), { timeout: 30000 });
+        const frame = await page.waitForFrame(
+            f => f.url().includes('challenges.cloudflare.com/turnstile'),
+            { timeout: 30000 }
+        );
         console.log('✅ Turnstile login présent, clic...');
-        const frames = page.frames();
-        const tf = frames.find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
-        await tf.click('input[type="checkbox"]');
+        await frame.click('input[type="checkbox"]');
         await delay(5000);
     } catch (e) {
         console.log('⚠️ Turnstile login non trouvé, on continue...');
@@ -75,28 +83,29 @@ async function login(page) {
     console.log('✅ Connecté');
 }
 
+// Diagnostic complet de la page faucet (avant clic)
 async function diagnoseFaucet(page) {
     console.log('🔬 DIAGNOSTIC FAUCET AVANT CLIC');
-    
-    // Capture AVANT
+
+    // Capture d'écran AVANT
     const screenshotBefore = await page.screenshot({ encoding: 'base64', fullPage: true });
-    console.log('📸 CAPTURE_AVANT_BASE64_START');
-    console.log(screenshotBefore);
-    console.log('📸 CAPTURE_AVANT_BASE64_END');
+    const beforePath = path.join(outputDir, `before_${Date.now()}.png`);
+    fs.writeFileSync(beforePath, screenshotBefore, 'base64');
+    console.log(`📸 Capture AVANT sauvegardée : ${beforePath}`);
 
     // Lister toutes les iframes
     const frames = page.frames();
     console.log(`🖼️ ${frames.length} frames :`);
     frames.forEach((f, i) => console.log(`   ${i}: ${f.url().substring(0, 100)}`));
 
-    // Lister tous les inputs cachés
+    // Lister les inputs cachés
     const hiddenInputs = await page.evaluate(() => {
         return Array.from(document.querySelectorAll('input[type="hidden"]')).map(el => ({
             name: el.name,
             value: el.value.substring(0, 100)
         }));
     });
-    console.log('📦 Inputs cachés :', hiddenInputs);
+    console.log('📦 Inputs cachés :', JSON.stringify(hiddenInputs, null, 2));
 
     // État du bouton Claim
     const btnInfo = await page.evaluate(() => {
@@ -112,12 +121,12 @@ async function diagnoseFaucet(page) {
     console.log('🔘 Bouton Claim :', btnInfo);
 }
 
+// Clic forcé et monitoring réseau
 async function forceClickAndMonitor(page) {
-    // Intercepter TOUT le trafic réseau
     const networkLogs = [];
     const requestListener = (req) => {
         if (['xhr', 'fetch'].includes(req.resourceType())) {
-            networkLogs.push({ url: req.url(), method: req.method(), postData: req.postData() });
+            networkLogs.push({ type: 'request', url: req.url(), method: req.method(), postData: req.postData() });
         }
     };
     const responseListener = async (res) => {
@@ -125,14 +134,13 @@ async function forceClickAndMonitor(page) {
         if (['xhr', 'fetch'].includes(req.resourceType())) {
             try {
                 const body = await res.text().catch(() => '');
-                networkLogs.push({ url: res.url(), status: res.status(), body: body.substring(0, 500) });
+                networkLogs.push({ type: 'response', url: res.url(), status: res.status(), body: body.substring(0, 500) });
             } catch (e) {}
         }
     };
     page.on('request', requestListener);
     page.on('response', responseListener);
 
-    // Cliquer sur Claim
     console.log('🖱️ Clic forcé sur le bouton Claim...');
     const clicked = await page.evaluate(() => {
         const btn = document.querySelector('#process_claim_hourly_faucet');
@@ -144,7 +152,6 @@ async function forceClickAndMonitor(page) {
         return false;
     });
     if (!clicked) {
-        // Fallback par texte
         const fallback = await page.evaluate(() => {
             const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim().toUpperCase() === 'CLAIM');
             if (b && !b.disabled) { b.click(); return true; }
@@ -154,24 +161,25 @@ async function forceClickAndMonitor(page) {
     }
     console.log('✅ Clic effectué');
 
-    // Attendre 15 secondes
     await delay(15000);
-    
     page.off('request', requestListener);
     page.off('response', responseListener);
 
-    // Afficher le trafic réseau
+    // Logs réseau
     console.log(`🌐 Trafic réseau (${networkLogs.length}) :`);
     networkLogs.forEach((log, i) => {
-        if (log.method) console.log(`   ${i+1}. REQ ${log.method} ${log.url}`);
-        if (log.status) console.log(`   ${i+1}. RES ${log.status} ${log.url} -> ${log.body || ''}`);
+        if (log.type === 'request') {
+            console.log(`   ${i+1}. REQ ${log.method} ${log.url}`);
+        } else {
+            console.log(`   ${i+1}. RES ${log.status} ${log.url} → ${log.body || ''}`);
+        }
     });
 
     // Capture APRÈS
     const screenshotAfter = await page.screenshot({ encoding: 'base64', fullPage: true });
-    console.log('📸 CAPTURE_APRES_BASE64_START');
-    console.log(screenshotAfter);
-    console.log('📸 CAPTURE_APRES_BASE64_END');
+    const afterPath = path.join(outputDir, `after_${Date.now()}.png`);
+    fs.writeFileSync(afterPath, screenshotAfter, 'base64');
+    console.log(`📸 Capture APRÈS sauvegardée : ${afterPath}`);
 
     // Messages DOM
     const messages = await page.evaluate(() => {
@@ -204,10 +212,8 @@ async function forceClickAndMonitor(page) {
         page.on('dialog', d => d.accept());
         await page.setViewport({ width: 1280, height: 720 });
 
-        // --- LOGIN ---
         await login(page);
 
-        // --- FAUCET ---
         console.log('🚰 Accès faucet...');
         await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
         await delay(10000);
@@ -215,10 +221,9 @@ async function forceClickAndMonitor(page) {
         await diagnoseFaucet(page);
         const result = await forceClickAndMonitor(page);
 
-        // Déterminer le succès
-        const success = result.finalState?.disabled || 
+        const success = result.finalState?.disabled ||
                         result.messages.some(m => /success|claimed|reward|sent/i.test(m)) ||
-                        result.networkLogs.some(l => l.status === 200 && /claim|reward|faucet/i.test(l.url));
+                        result.networkLogs.some(l => l.type === 'response' && l.status === 200 && /claim|reward|faucet/i.test(l.url));
         status.success = success;
         status.message = result.messages[0] || (result.finalState?.disabled ? 'Bouton désactivé' : 'Aucune réaction');
 
