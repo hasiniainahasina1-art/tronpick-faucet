@@ -74,77 +74,79 @@ async function login(page) {
     console.log('✅ Connecté');
 }
 
-// Trouver et cliquer 3 fois sur "Verify you are human", puis attendre résolution
+// Recherche et clic sur "verify you are human" avec attente explicite
 async function resolveTurnstileByClicking(page) {
-    console.log('🔍 Recherche de "Verify you are human"...');
+    console.log('🔍 Recherche de "verify you are human" (minuscules)...');
     const start = Date.now();
-    let frameFound = null;
+    const maxWait = 120000; // 2 minutes
 
-    // 1. Trouver l'élément dans n'importe quelle frame
-    while (Date.now() - start < 60000) {
+    while (Date.now() - start < maxWait) {
         const frames = page.frames();
+        console.log(`   Vérification de ${frames.length} frames...`);
         for (const frame of frames) {
             try {
+                // Attendre que le corps de la frame soit chargé
+                await frame.waitForSelector('body', { timeout: 2000 }).catch(() => {});
+                
+                // Chercher l'élément contenant le texte (insensible casse)
                 const found = await frame.evaluate(() => {
-                    const elements = document.querySelectorAll('label, span, div, button, a');
+                    const elements = document.querySelectorAll('label, span, div, button, a, *');
                     for (const el of elements) {
-                        if (el.textContent.toLowerCase().includes('verify you are human')) {
-                            return true;
+                        const text = el.textContent.toLowerCase();
+                        if (text.includes('verify you are human')) {
+                            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            // Retourner des infos pour log
+                            return { tag: el.tagName, text: el.textContent.trim() };
                         }
                     }
-                    return false;
+                    return null;
                 });
+                
                 if (found) {
-                    frameFound = frame;
-                    break;
+                    console.log(`✅ Trouvé dans une frame : ${found.tag} "${found.text}"`);
+                    
+                    // Cliquer 3 fois avec pauses
+                    for (let i = 1; i <= 3; i++) {
+                        await frame.evaluate(() => {
+                            const elements = document.querySelectorAll('*');
+                            for (const el of elements) {
+                                if (el.textContent.toLowerCase().includes('verify you are human')) {
+                                    el.click();
+                                    return;
+                                }
+                            }
+                        });
+                        console.log(`   Clic ${i}/3 effectué`);
+                        if (i < 3) await delay(1500);
+                    }
+                    
+                    // Attendre la résolution
+                    console.log('⏳ Attente résolution Turnstile...');
+                    const waitStart = Date.now();
+                    while (Date.now() - waitStart < 30000) {
+                        try {
+                            const isChecked = await frame.$eval('input[type="checkbox"]', cb => cb.checked);
+                            const token = await page.evaluate(() => {
+                                const inp = document.querySelector('[name="cf-turnstile-response"]');
+                                return inp ? inp.value : '';
+                            });
+                            if (isChecked || (token && token.length > 10)) {
+                                console.log('✅ Turnstile résolu');
+                                return true;
+                            }
+                        } catch (e) {}
+                        await delay(2000);
+                    }
+                    console.log('⚠️ Timeout résolution');
+                    return false;
                 }
-            } catch (e) {}
+            } catch (e) {
+                // Frame inaccessible, on ignore
+            }
         }
-        if (frameFound) break;
-        await delay(2000);
+        await delay(3000);
     }
-
-    if (!frameFound) {
-        console.log('❌ Texte non trouvé');
-        return false;
-    }
-
-    console.log(`✅ Texte trouvé dans la frame`);
-
-    // 2. Cliquer 3 fois avec pauses (simulation humaine)
-    for (let i = 1; i <= 3; i++) {
-        await frameFound.evaluate(() => {
-            const elements = document.querySelectorAll('label, span, div, button, a');
-            for (const el of elements) {
-                if (el.textContent.toLowerCase().includes('verify you are human')) {
-                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    el.click();
-                    return;
-                }
-            }
-        });
-        console.log(`   Clic ${i}/3 effectué`);
-        if (i < 3) await delay(1500);
-    }
-
-    // 3. Attendre la résolution (case cochée ou token présent)
-    console.log('⏳ Attente de la résolution de Turnstile...');
-    const waitStart = Date.now();
-    while (Date.now() - waitStart < 30000) {
-        try {
-            const isChecked = await frameFound.$eval('input[type="checkbox"]', cb => cb.checked);
-            const token = await page.evaluate(() => {
-                const inp = document.querySelector('[name="cf-turnstile-response"]');
-                return inp ? inp.value : '';
-            });
-            if (isChecked || (token && token.length > 10)) {
-                console.log('✅ Turnstile résolu');
-                return true;
-            }
-        } catch (e) {}
-        await delay(2000);
-    }
-    console.log('⚠️ Timeout résolution Turnstile');
+    console.log('❌ Texte non trouvé après 2 minutes');
     return false;
 }
 
