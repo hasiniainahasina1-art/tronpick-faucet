@@ -207,6 +207,12 @@ async function clickClaim(page) {
 
         console.log('⏳ Attente de 10 secondes avant le clic sur CLAIM...');
         await delay(10000);
+        console.log('🖱️ Premier clic sur "verify you are human"');
+            await clickVerifyYouAreHuman(page);
+            await page.screenshot({ path: path.join(outputDir, '04_after_first_click.png'), fullPage: true });
+
+            console.log('⏳ Attente de 10 secondes...');
+            await delay(10000);
         await page.screenshot({ path: path.join(outputDir, '06_before_claim.png'), fullPage: true });
 
         await clickClaim(page);
