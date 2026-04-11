@@ -16,7 +16,6 @@ if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Saisie robuste
 async function fillField(page, selector, value, fieldName) {
     console.log(`⌨️ Remplissage ${fieldName}...`);
     await page.waitForSelector(selector, { timeout: 10000 });
@@ -42,34 +41,54 @@ async function fillField(page, selector, value, fieldName) {
     console.log(`✅ ${fieldName} rempli`);
 }
 
-// Réveiller la page pour faire apparaître Turnstile
 async function wakeUpPage(page) {
-    await page.evaluate(() => window.scrollBy(0, 300));
+    console.log('🖱️ Actions de réveil...');
+    await page.evaluate(() => window.scrollBy(0, 500));
+    await delay(800);
+    await page.evaluate(() => window.scrollBy(0, -300));
     await delay(500);
-    await page.evaluate(() => window.scrollBy(0, -150));
-    await delay(500);
-    await page.mouse.move(400, 300);
-    await page.mouse.move(600, 400);
+    await page.mouse.move(300, 200);
+    await page.mouse.move(700, 500);
+    await page.mouse.move(500, 400);
     await delay(300);
-    await page.click('body', { offset: { x: 100, y: 100 } });
+    await page.click('body', { offset: { x: 200, y: 200 } });
+    await delay(1000);
 }
 
-// Résolution de Turnstile avec attente d'iframe et génération de token frais
 async function resolveTurnstile(page, maxWaitMs = 90000) {
     console.log('🔎 Résolution de Turnstile...');
     const start = Date.now();
-    
-    // Attendre l'iframe Turnstile (max 30s)
     let turnstileFrame = null;
-    while (Date.now() - start < 30000) {
+
+    // Fonction pour trouver l'iframe avec plusieurs patterns d'URL
+    const findTurnstileFrame = () => {
         const frames = page.frames();
-        turnstileFrame = frames.find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
+        return frames.find(f => 
+            f.url().includes('challenges.cloudflare.com/turnstile') ||
+            f.url().includes('challenges.cloudflare.com/cdn-cgi/challenge-platform/h/b/turnstile')
+        );
+    };
+
+    // Attente initiale (30s)
+    while (Date.now() - start < 30000) {
+        turnstileFrame = findTurnstileFrame();
         if (turnstileFrame) break;
         await delay(1000);
     }
 
     if (!turnstileFrame) {
-        // Vérifier si un token valide existe déjà
+        console.log('⚠️ Iframe non apparue, réveil de la page...');
+        await wakeUpPage(page);
+        // Seconde attente après réveil (30s supplémentaires)
+        while (Date.now() - start < 60000) {
+            turnstileFrame = findTurnstileFrame();
+            if (turnstileFrame) break;
+            await delay(1000);
+        }
+    }
+
+    if (!turnstileFrame) {
+        // Dernière vérification du token
         const tokenExists = await page.evaluate(() => {
             const input = document.querySelector('[name="cf-turnstile-response"]');
             return input && input.value.length > 10;
@@ -78,33 +97,22 @@ async function resolveTurnstile(page, maxWaitMs = 90000) {
             console.log('✅ Token déjà présent et valide');
             return true;
         }
-        console.log('⚠️ Iframe non trouvée, tentative de réveil...');
-        await wakeUpPage(page);
-        while (Date.now() - start < 45000) {
-            const frames = page.frames();
-            turnstileFrame = frames.find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
-            if (turnstileFrame) break;
-            await delay(1000);
-        }
-    }
-
-    if (!turnstileFrame) {
-        console.log('❌ Iframe Turnstile introuvable');
+        console.log('❌ Iframe Turnstile introuvable et pas de token');
         return false;
     }
 
     console.log('✅ Iframe Turnstile trouvée');
 
-    // Cliquer sur la case pour générer un nouveau token
+    // Cliquer sur la case
     try {
         await turnstileFrame.waitForSelector('body', { timeout: 5000 });
         await turnstileFrame.click('input[type="checkbox"]');
         console.log('   Clic sur la case Turnstile');
     } catch (e) {
-        console.log('⚠️ Clic sur la case impossible, on continue...');
+        console.log('⚠️ Clic impossible, on continue...');
     }
 
-    // Attendre un token valide (longueur > 10)
+    // Attendre un token valide
     const tokenWaitStart = Date.now();
     while (Date.now() - tokenWaitStart < 45000) {
         const tokenValue = await page.evaluate(() => {
@@ -125,10 +133,7 @@ async function resolveTurnstile(page, maxWaitMs = 90000) {
 }
 
 async function isLoggedIn(page) {
-    try {
-        return !page.url().includes('login.php');
-    } catch (e) {}
-    return false;
+    return !page.url().includes('login.php');
 }
 
 async function clickClaimButton(page) {
@@ -193,31 +198,23 @@ async function clickClaimButton(page) {
         // --- LOGIN ---
         console.log('🌐 Accès login...');
         await page.goto('https://tronpick.io/login.php', { waitUntil: 'networkidle2', timeout: 60000 });
-
         await fillField(page, 'input[type="email"], input[name="email"]', EMAIL, 'email');
         await fillField(page, 'input[type="password"]', PASSWORD, 'password');
         await delay(2000);
-
         const loginTurnstileResolved = await resolveTurnstile(page, 60000);
-        if (!loginTurnstileResolved) {
-            throw new Error('Turnstile login non résolu');
-        }
+        if (!loginTurnstileResolved) throw new Error('Turnstile login non résolu');
 
         console.log('🔐 Clic sur "Log in"...');
         const loginClicked = await page.evaluate(() => {
             const btns = [...document.querySelectorAll('button')];
             const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
-            if (loginBtn) {
-                loginBtn.click();
-                return true;
-            }
+            if (loginBtn) { loginBtn.click(); return true; }
             return false;
         });
         if (!loginClicked) throw new Error('Bouton Log in introuvable');
 
         await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 90000 }).catch(() => {});
         await delay(5000);
-
         if (!await isLoggedIn(page)) {
             const err = await page.evaluate(() => {
                 const el = document.querySelector('.alert-danger, .error');
