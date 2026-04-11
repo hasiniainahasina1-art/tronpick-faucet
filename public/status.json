@@ -1,5 +1,5 @@
 {
   "success": false,
-  "time": "2026-04-11T14:25:50.989Z",
-  "message": "×Error!Invalid captcha code. Please try again!"
+  "time": "2026-04-11T17:03:59.612Z",
+  "message": "Could not find Firefox (rev. latest). This can occur if either\n 1. you did not perform an installation for Firefox before running the script (e.g. `npx puppeteer browsers install firefox`) or\n 2. your cache path is incorrectly configured (which is: /home/runner/.cache/puppeteer).\nFor (2), check out our guide on configuring puppeteer at https://pptr.dev/guides/configuration."
 }
