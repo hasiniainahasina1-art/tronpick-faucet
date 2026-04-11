@@ -42,7 +42,7 @@ async function fillField(page, selector, value, fieldName) {
     console.log(`✅ ${fieldName} rempli`);
 }
 
-// Connexion (inchangée)
+// Connexion
 async function login(page) {
     console.log('🌐 Accès login...');
     await page.goto('https://tronpick.io/login.php', { waitUntil: 'networkidle2', timeout: 60000 });
@@ -74,64 +74,75 @@ async function login(page) {
     console.log('✅ Connecté');
 }
 
-// Nouvelle méthode : clic avancé sur le conteneur Turnstile
-async function clickTurnstileAdvanced(page) {
-    console.log('🖱️ Tentative de clic avancé sur Turnstile...');
+// Nouvelle fonction de résolution Turnstile avec deux approches
+async function resolveTurnstile(page) {
+    console.log('🛡️ Résolution avancée de Turnstile...');
+    await delay(5000);
+
+    // Approche 1 : via iframe accessible par sélecteur CSS
+    const iframeHandle = await page.$('iframe[src*="challenges.cloudflare.com/turnstile"]');
+    if (iframeHandle) {
+        console.log('✅ Iframe Turnstile trouvée via sélecteur CSS');
+        const frame = await iframeHandle.contentFrame();
+        if (frame) {
+            console.log('   Accès au contenu de l\'iframe réussi');
+            try {
+                await frame.waitForSelector('body', { timeout: 5000 });
+                const clicked = await frame.evaluate(() => {
+                    const label = Array.from(document.querySelectorAll('label')).find(l => l.textContent.toLowerCase().includes('verify you are human'));
+                    if (label) { label.click(); return true; }
+                    const cb = document.querySelector('input[type="checkbox"]');
+                    if (cb) { cb.click(); return true; }
+                    return false;
+                });
+                if (clicked) {
+                    console.log('   Clic effectué dans l\'iframe');
+                    await page.waitForFunction(() => {
+                        const inp = document.querySelector('[name="cf-turnstile-response"]');
+                        return inp && inp.value.length > 10;
+                    }, { timeout: 30000 });
+                    console.log('✅ Token généré après clic dans l\'iframe');
+                    return true;
+                }
+            } catch (e) {
+                console.log('   Erreur dans l\'iframe :', e.message);
+            }
+        }
+    }
+
+    // Approche 2 : clic par coordonnées sur l'iframe elle-même
+    console.log('🔄 Passage à la méthode de clic par coordonnées sur l\'iframe...');
     try {
-        // Attendre que le champ caché Turnstile apparaisse (max 30s)
-        await page.waitForSelector('[name="cf-turnstile-response"]', { timeout: 30000 });
-        
-        // Récupérer l'élément parent du champ caché
-        const parentHandle = await page.evaluateHandle(() => {
-            const input = document.querySelector('[name="cf-turnstile-response"]');
-            return input ? input.parentElement : null;
-        });
-        if (!parentHandle) throw new Error('Parent du champ Turnstile non trouvé');
+        await page.waitForSelector('iframe[src*="challenges.cloudflare.com/turnstile"]', { timeout: 30000 });
+        const iframeElement = await page.$('iframe[src*="challenges.cloudflare.com/turnstile"]');
+        const box = await iframeElement.boundingBox();
+        if (!box) throw new Error('Bounding box non disponible');
 
-        // Obtenir les coordonnées du parent
-        const rect = await parentHandle.evaluate(el => {
-            const { x, y, width, height } = el.getBoundingClientRect();
-            return { x, y, width, height };
-        });
+        const clickX = box.x + box.width / 2;
+        const clickY = box.y + box.height / 2;
+        console.log(`📍 Clic prévu au centre de l'iframe (${Math.round(clickX)}, ${Math.round(clickY)})`);
 
-        // Calculer un point de clic à l'intérieur (25px de la gauche, milieu vertical)
-        const clickX = rect.x + 25;
-        const clickY = rect.y + rect.height / 2;
-
-        console.log(`📍 Clic prévu aux coordonnées (${Math.round(clickX)}, ${Math.round(clickY)})`);
-
-        // Mouvement de souris réaliste (courbe de Bézier simplifiée)
         const start = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
         const steps = 25;
         for (let i = 1; i <= steps; i++) {
             const t = i / steps;
-            const cp = {
-                x: start.x + (Math.random() - 0.5) * 200,
-                y: start.y + (Math.random() - 0.5) * 200
-            };
+            const cp = { x: start.x + (Math.random() - 0.5) * 200, y: start.y + (Math.random() - 0.5) * 200 };
             const x = Math.pow(1 - t, 2) * start.x + 2 * (1 - t) * t * cp.x + Math.pow(t, 2) * clickX;
             const y = Math.pow(1 - t, 2) * start.y + 2 * (1 - t) * t * cp.y + Math.pow(t, 2) * clickY;
             await page.mouse.move(x, y);
-            await delay(Math.floor(Math.random() * 20) + 10);
+            await delay(20);
         }
-
-        // Clic
         await page.mouse.click(clickX, clickY);
-        console.log('✅ Clic avancé effectué');
+        console.log('✅ Clic effectué sur l\'iframe');
 
-        // Attendre que le token Turnstile soit généré (max 30s)
-        console.log('⏳ Attente de la génération du token...');
-        await page.waitForFunction(
-            () => {
-                const inp = document.querySelector('[name="cf-turnstile-response"]');
-                return inp && inp.value.length > 10;
-            },
-            { timeout: 30000 }
-        );
-        console.log('✅ Token Turnstile généré, captcha résolu !');
+        await page.waitForFunction(() => {
+            const inp = document.querySelector('[name="cf-turnstile-response"]');
+            return inp && inp.value.length > 10;
+        }, { timeout: 30000 });
+        console.log('✅ Token généré');
         return true;
     } catch (e) {
-        console.error('❌ Échec du clic avancé :', e.message);
+        console.error('❌ Échec de la méthode par coordonnées :', e.message);
         return false;
     }
 }
@@ -169,8 +180,7 @@ async function clickClaim(page) {
         await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
         await delay(10000);
 
-        // Résolution du Turnstile faucet par clic avancé
-        const resolved = await clickTurnstileAdvanced(page);
+        const resolved = await resolveTurnstile(page);
         if (!resolved) throw new Error('Turnstile faucet non résolu');
 
         console.log('⏳ Pause de 10 secondes après résolution...');
@@ -187,9 +197,7 @@ async function clickClaim(page) {
         });
         console.log('💬 Messages :', messages);
 
-        const btnDisabled = await page.evaluate(() => {
-            return document.querySelector('#process_claim_hourly_faucet')?.disabled || false;
-        });
+        const btnDisabled = await page.evaluate(() => document.querySelector('#process_claim_hourly_faucet')?.disabled || false);
 
         const success = btnDisabled || messages.some(m => /success|claimed|reward|sent/i.test(m));
         status.success = success;
