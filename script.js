@@ -20,7 +20,7 @@ if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Coordonnées fixes (résolution 1280x720)
-const TURNSTILE_CLICK = { x: 640, y: 195 };
+const TURNSTILE_CLICK = { x: 640, y: 230 };
 const CLAIM_CLICK = { x: 640, y: 223 };
 
 async function fillField(page, selector, value, fieldName) {
