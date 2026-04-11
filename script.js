@@ -77,7 +77,6 @@ async function login(page) {
 
 async function humanScrollToClaim(page) {
     console.log('📜 Scroll progressif vers le bouton CLAIM...');
-    // Récupérer la position du bouton
     const coords = await page.evaluate(() => {
         const btn = document.querySelector('#process_claim_hourly_faucet');
         if (!btn) return null;
@@ -87,7 +86,7 @@ async function humanScrollToClaim(page) {
     if (!coords) throw new Error('Bouton CLAIM introuvable pour le scroll');
 
     const startY = await page.evaluate(() => window.scrollY);
-    const targetY = Math.max(0, coords.y - 200); // s'arrêter 200px au-dessus
+    const targetY = Math.max(0, coords.y - 200);
     const steps = 20;
     for (let i = 1; i <= steps; i++) {
         const t = i / steps;
@@ -96,6 +95,40 @@ async function humanScrollToClaim(page) {
         await delay(50 + Math.random() * 100);
     }
     console.log('✅ Scroll terminé');
+}
+
+async function clickVerifyYouAreHuman(page) {
+    console.log('🔍 Clic sur "verify you are human"...');
+    const frames = page.frames();
+    const turnstileFrame = frames.find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
+    if (!turnstileFrame) {
+        console.log('⚠️ Iframe Turnstile non trouvée');
+        return false;
+    }
+
+    try {
+        await turnstileFrame.waitForSelector('body', { timeout: 5000 });
+        const clicked = await turnstileFrame.evaluate(() => {
+            const elements = document.querySelectorAll('label, span, div, button, a');
+            for (const el of elements) {
+                if (el.textContent.toLowerCase().includes('verify you are human')) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    el.click();
+                    return true;
+                }
+            }
+            const cb = document.querySelector('input[type="checkbox"]');
+            if (cb) { cb.click(); return true; }
+            return false;
+        });
+        if (clicked) {
+            console.log('✅ Clic effectué dans l\'iframe Turnstile');
+            return true;
+        }
+    } catch (e) {
+        console.log('⚠️ Erreur lors du clic :', e.message);
+    }
+    return false;
 }
 
 async function clickClaim(page) {
@@ -141,12 +174,45 @@ async function clickClaim(page) {
 
         await humanScrollToClaim(page);
         await delay(2000);
-        await page.screenshot({ path: path.join(outputDir, '03_before_click.png'), fullPage: true });
+        await page.screenshot({ path: path.join(outputDir, '03_turnstile_appeared.png'), fullPage: true });
+
+        // Attendre explicitement l'iframe Turnstile (max 10 secondes)
+        console.log('⏳ Attente de l\'apparition de l\'iframe Turnstile (max 10s)...');
+        const turnstileAppeared = await page.waitForFrame(
+            f => f.url().includes('challenges.cloudflare.com/turnstile'),
+            { timeout: 10000 }
+        ).catch(() => null);
+        
+        if (!turnstileAppeared) {
+            console.log('⚠️ Iframe Turnstile non apparue, on tente le claim directement...');
+        } else {
+            console.log('✅ Iframe Turnstile détectée');
+
+            // Premier clic
+            console.log('🖱️ Premier clic sur "verify you are human"');
+            await clickVerifyYouAreHuman(page);
+            await page.screenshot({ path: path.join(outputDir, '04_after_first_click.png'), fullPage: true });
+
+            console.log('⏳ Attente de 10 secondes...');
+            await delay(10000);
+
+            // Deuxième clic
+            console.log('🖱️ Deuxième clic sur "verify you are human"');
+            await clickVerifyYouAreHuman(page);
+            await page.screenshot({ path: path.join(outputDir, '05_after_second_click.png'), fullPage: true });
+
+            console.log('⏳ Attente de 10 secondes...');
+            await delay(10000);
+        }
+
+        console.log('⏳ Attente de 10 secondes avant le clic sur CLAIM...');
+        await delay(10000);
+        await page.screenshot({ path: path.join(outputDir, '06_before_claim.png'), fullPage: true });
 
         await clickClaim(page);
         await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
         await delay(5000);
-        await page.screenshot({ path: path.join(outputDir, '04_after_click.png'), fullPage: true });
+        await page.screenshot({ path: path.join(outputDir, '07_after_claim.png'), fullPage: true });
 
         const messages = await page.evaluate(() => {
             return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [role="alert"]'))
