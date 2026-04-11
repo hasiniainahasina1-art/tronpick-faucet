@@ -2,8 +2,9 @@ name: Claim Tronpick Faucet
 
 on:
   schedule:
-    - cron: '0 */6 * * *'   # toutes les 6 heures
-  workflow_dispatch:
+    # Exécution toutes les 6 heures (modifiable selon vos besoins)
+    - cron: '0 */6 * * *'
+  workflow_dispatch:         # permet de lancer manuellement depuis l'interface GitHub
 
 jobs:
   claim:
@@ -35,7 +36,7 @@ jobs:
 
       - name: 📤 Upload des captures d'écran (artefacts)
         uses: actions/upload-artifact@v4
-        if: always()
+        if: always()   # upload même en cas d'échec
         with:
           name: faucet-screenshots
           path: screenshots/
