@@ -16,7 +16,6 @@ if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Saisie robuste
 async function fillField(page, selector, value, fieldName) {
     console.log(`⌨️ Remplissage ${fieldName}...`);
     await page.waitForSelector(selector, { timeout: 10000 });
@@ -42,7 +41,6 @@ async function fillField(page, selector, value, fieldName) {
     console.log(`✅ ${fieldName} rempli`);
 }
 
-// Connexion
 async function login(page) {
     console.log('🌐 Accès login...');
     await page.goto('https://tronpick.io/login.php', { waitUntil: 'networkidle2', timeout: 60000 });
@@ -74,83 +72,46 @@ async function login(page) {
     console.log('✅ Connecté');
 }
 
-// Recherche et clic sur "verify you are human" avec attente explicite
-async function resolveTurnstileByClicking(page) {
-    console.log('🔍 Recherche de "verify you are human" (minuscules)...');
-    const start = Date.now();
-    const maxWait = 120000; // 2 minutes
+async function resolveTurnstile(page) {
+    console.log('🛡️ Attente de l\'iframe Turnstile...');
+    try {
+        const frame = await page.waitForFrame(
+            f => f.url().includes('challenges.cloudflare.com/turnstile'),
+            { timeout: 120000 }
+        );
+        console.log('✅ Iframe Turnstile trouvée');
 
-    while (Date.now() - start < maxWait) {
-        const frames = page.frames();
-        console.log(`   Vérification de ${frames.length} frames...`);
-        for (const frame of frames) {
-            try {
-                // Attendre que le corps de la frame soit chargé
-                await frame.waitForSelector('body', { timeout: 2000 }).catch(() => {});
-                
-                // Chercher l'élément contenant le texte (insensible casse)
-                const found = await frame.evaluate(() => {
-                    const elements = document.querySelectorAll('label, span, div, button, a, *');
-                    for (const el of elements) {
-                        const text = el.textContent.toLowerCase();
-                        if (text.includes('verify you are human')) {
-                            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            // Retourner des infos pour log
-                            return { tag: el.tagName, text: el.textContent.trim() };
-                        }
-                    }
-                    return null;
-                });
-                
-                if (found) {
-                    console.log(`✅ Trouvé dans une frame : ${found.tag} "${found.text}"`);
-                    
-                    // Cliquer 3 fois avec pauses
-                    for (let i = 1; i <= 3; i++) {
-                        await frame.evaluate(() => {
-                            const elements = document.querySelectorAll('*');
-                            for (const el of elements) {
-                                if (el.textContent.toLowerCase().includes('verify you are human')) {
-                                    el.click();
-                                    return;
-                                }
-                            }
-                        });
-                        console.log(`   Clic ${i}/3 effectué`);
-                        if (i < 3) await delay(1500);
-                    }
-                    
-                    // Attendre la résolution
-                    console.log('⏳ Attente résolution Turnstile...');
-                    const waitStart = Date.now();
-                    while (Date.now() - waitStart < 30000) {
-                        try {
-                            const isChecked = await frame.$eval('input[type="checkbox"]', cb => cb.checked);
-                            const token = await page.evaluate(() => {
-                                const inp = document.querySelector('[name="cf-turnstile-response"]');
-                                return inp ? inp.value : '';
-                            });
-                            if (isChecked || (token && token.length > 10)) {
-                                console.log('✅ Turnstile résolu');
-                                return true;
-                            }
-                        } catch (e) {}
-                        await delay(2000);
-                    }
-                    console.log('⚠️ Timeout résolution');
-                    return false;
-                }
-            } catch (e) {
-                // Frame inaccessible, on ignore
-            }
+        for (let i = 1; i <= 3; i++) {
+            await frame.waitForSelector('body', { timeout: 5000 }).catch(() => {});
+            await frame.click('input[type="checkbox"]').catch(() => {});
+            console.log(`   Clic ${i}/3 sur la case Turnstile`);
+            if (i < 3) await delay(1500);
         }
-        await delay(3000);
+
+        console.log('⏳ Attente de la résolution...');
+        const start = Date.now();
+        while (Date.now() - start < 45000) {
+            try {
+                const isChecked = await frame.$eval('input[type="checkbox"]', cb => cb.checked);
+                const token = await page.evaluate(() => {
+                    const inp = document.querySelector('[name="cf-turnstile-response"]');
+                    return inp ? inp.value : '';
+                });
+                if (isChecked || (token && token.length > 10)) {
+                    console.log('✅ Turnstile résolu');
+                    return true;
+                }
+            } catch (e) {}
+            await delay(2000);
+        }
+        console.log('⚠️ Timeout résolution Turnstile');
+        return false;
+    } catch (e) {
+        console.log('❌ Iframe Turnstile non trouvée :', e.message);
+        return false;
     }
-    console.log('❌ Texte non trouvé après 2 minutes');
-    return false;
 }
 
-// Clic sur CLAIM
 async function clickClaim(page) {
     console.log('🎯 Clic sur le bouton CLAIM...');
     const claimSelector = '#process_claim_hourly_faucet';
@@ -183,14 +144,13 @@ async function clickClaim(page) {
         await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
         await delay(10000);
 
-        // Réveil
         await page.evaluate(() => window.scrollBy(0, 300));
         await delay(500);
         await page.mouse.move(400, 300);
         await page.mouse.click(400, 300);
         await delay(1000);
 
-        const resolved = await resolveTurnstileByClicking(page);
+        const resolved = await resolveTurnstile(page);
         if (!resolved) throw new Error('Turnstile non résolu');
 
         console.log('⏳ Pause de 10 secondes après résolution...');
