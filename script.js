@@ -9,7 +9,6 @@ const PROXY_PASSWORD = process.env.PROXY_PASSWORD;
 const PROXY_HOST = '31.59.20.176';
 const PROXY_PORT = '6754';
 
-// Dossier pour les captures d'écran
 const outputDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
@@ -20,7 +19,6 @@ if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Saisie robuste
 async function fillField(page, selector, value, fieldName) {
     console.log(`⌨️ Remplissage ${fieldName}...`);
     await page.waitForSelector(selector, { timeout: 10000 });
@@ -46,7 +44,6 @@ async function fillField(page, selector, value, fieldName) {
     console.log(`✅ ${fieldName} rempli`);
 }
 
-// Connexion
 async function login(page) {
     console.log('🌐 Accès login...');
     await page.goto('https://tronpick.io/login.php', { waitUntil: 'networkidle2', timeout: 60000 });
@@ -78,87 +75,81 @@ async function login(page) {
     console.log('✅ Connecté');
 }
 
-// Gestion du Turnstile faucet avec rafraîchissement et clic humain
-async function handleFaucetTurnstile(page) {
+async function resolveTurnstileOnFaucet(page) {
     console.log('🚰 Accès faucet...');
     await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
     await delay(5000);
     
-    console.log('🔄 Actualisation de la page faucet pour forcer le Turnstile...');
+    console.log('🔄 Actualisation de la page faucet...');
     await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
-    await delay(15000); // Pause après rechargement
+    await delay(15000);
 
-    console.log('🔍 Recherche de "Verify you are human"...');
-    const start = Date.now();
-    let clicked = false;
-    
-    while (Date.now() - start < 60000 && !clicked) {
-        const frames = page.frames();
-        for (const frame of frames) {
-            try {
-                const found = await frame.evaluate(() => {
-                    const elements = document.querySelectorAll('label, span, div, button, a');
-                    for (const el of elements) {
-                        if (el.textContent.toLowerCase().includes('verify you are human')) {
-                            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            el.click();
-                            return true;
-                        }
-                    }
-                    const cb = document.querySelector('input[type="checkbox"]');
-                    if (cb) {
-                        cb.click();
-                        return true;
-                    }
-                    return false;
-                });
-                if (found) {
-                    console.log(`✅ Clic effectué dans une frame`);
-                    clicked = true;
-                    break;
+    console.log('🔍 Recherche et clic sur "Verify you are human" (3 fois)...');
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        const clicked = await page.evaluate(() => {
+            const elements = document.querySelectorAll('label, span, div, button, a');
+            for (const el of elements) {
+                if (el.textContent.toLowerCase().includes('verify you are human')) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    el.click();
+                    return true;
                 }
-            } catch (e) {}
+            }
+            return false;
+        });
+        if (clicked) {
+            console.log(`   Clic ${attempt} effectué`);
+        } else {
+            console.log(`   Clic ${attempt} : texte non trouvé`);
+            break;
         }
-        if (!clicked) await delay(2000);
+        await delay(1500);
     }
-    
-    if (!clicked) {
-        console.log('❌ Texte "Verify you are human" non trouvé après 60s');
-        // Capture d'écran de diagnostic
-        const screenshotPath = path.join(outputDir, `faucet_no_verify_${Date.now()}.png`);
+
+    console.log('⏳ Attente de la génération du token Turnstile (max 30s)...');
+    const tokenGenerated = await page.waitForFunction(
+        () => {
+            const inp = document.querySelector('[name="cf-turnstile-response"]');
+            return inp && inp.value.length > 10;
+        },
+        { timeout: 30000 }
+    ).catch(() => false);
+
+    if (!tokenGenerated) {
+        const screenshotPath = path.join(outputDir, `no_token_${Date.now()}.png`);
         await page.screenshot({ path: screenshotPath, fullPage: true });
-        console.log(`📸 Capture sauvegardée : ${screenshotPath}`);
+        console.log(`📸 Token non généré. Capture : ${screenshotPath}`);
         return false;
     }
-
-    console.log('⏳ Attente de la génération du token (max 30s)...');
-    try {
-        await page.waitForFunction(
-            () => {
-                const inp = document.querySelector('[name="cf-turnstile-response"]');
-                return inp && inp.value.length > 10;
-            },
-            { timeout: 30000 }
-        );
-        console.log('✅ Token Turnstile généré');
-        return true;
-    } catch (e) {
-        console.log('⚠️ Token non généré, mais on continue...');
-        return true; // Tente le claim quand même
-    }
+    console.log('✅ Token Turnstile généré');
+    return true;
 }
 
-// Clic sur CLAIM
-async function clickClaim(page) {
-    console.log('🎯 Clic sur le bouton CLAIM...');
-    const claimSelector = '#process_claim_hourly_faucet';
-    await page.waitForSelector(claimSelector, { timeout: 10000 });
-    const btn = await page.$(claimSelector);
-    if (!await btn.evaluate(el => !el.disabled && el.offsetParent !== null)) {
-        throw new Error('Bouton CLAIM désactivé (timer)');
+async function clickClaimByCoordinates(page) {
+    console.log('🎯 Récupération des coordonnées du bouton CLAIM...');
+    const coords = await page.evaluate(() => {
+        const btn = document.querySelector('#process_claim_hourly_faucet');
+        if (!btn) return null;
+        const rect = btn.getBoundingClientRect();
+        return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+    });
+    if (!coords) throw new Error('Impossible de trouver le bouton CLAIM');
+
+    console.log(`📍 Coordonnées du bouton : (${Math.round(coords.x)}, ${Math.round(coords.y)})`);
+
+    // Mouvement de souris réaliste
+    const start = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
+    const steps = 20;
+    for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        const cp = { x: start.x + (Math.random() - 0.5) * 150, y: start.y + (Math.random() - 0.5) * 150 };
+        const x = Math.pow(1 - t, 2) * start.x + 2 * (1 - t) * t * cp.x + Math.pow(t, 2) * coords.x;
+        const y = Math.pow(1 - t, 2) * start.y + 2 * (1 - t) * t * cp.y + Math.pow(t, 2) * coords.y;
+        await page.mouse.move(x, y);
+        await delay(15);
     }
-    await btn.click();
-    console.log('✅ Clic sur CLAIM effectué');
+    await page.mouse.click(coords.x, coords.y);
+    console.log('✅ Clic par coordonnées effectué');
 }
 
 (async () => {
@@ -177,13 +168,13 @@ async function clickClaim(page) {
 
         await login(page);
 
-        const turnstileOk = await handleFaucetTurnstile(page);
+        const turnstileOk = await resolveTurnstileOnFaucet(page);
         if (!turnstileOk) throw new Error('Turnstile faucet non résolu');
 
-        console.log('⏳ Pause de 10 secondes avant le clic sur CLAIM...');
+        console.log('⏳ Pause de 10 secondes après validation...');
         await delay(10000);
 
-        await clickClaim(page);
+        await clickClaimByCoordinates(page);
 
         await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
         await delay(5000);
@@ -205,14 +196,13 @@ async function clickClaim(page) {
     } catch (e) {
         console.error('❌', e);
         status.message = e.message;
-        // Capture d'écran en cas d'erreur fatale
         if (browser) {
             try {
                 const pages = await browser.pages();
                 const page = pages[pages.length - 1];
                 const screenshotPath = path.join(outputDir, `fatal_error_${Date.now()}.png`);
                 await page.screenshot({ path: screenshotPath, fullPage: true });
-                console.log(`📸 Capture d'erreur sauvegardée : ${screenshotPath}`);
+                console.log(`📸 Capture d'erreur : ${screenshotPath}`);
             } catch (se) {}
         }
     } finally {
