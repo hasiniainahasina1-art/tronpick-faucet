@@ -1,5 +1,5 @@
 {
   "success": false,
-  "time": "2026-04-11T03:51:01.007Z",
-  "message": "❌ CLAIM échoué : Turnstile faucet non résolu"
+  "time": "2026-04-11T03:57:34.309Z",
+  "message": "SyntaxError: Failed to execute 'querySelector' on 'Document': 'button:has-text(\"Log in\")' is not a valid selector.\nK (app.js:3:1788)\napp.js:2:16"
 }
