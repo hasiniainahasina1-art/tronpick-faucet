@@ -16,7 +16,7 @@ if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Saisie robuste (inchangée)
+// Saisie robuste
 async function fillField(page, selector, value, fieldName) {
     console.log(`⌨️ Remplissage ${fieldName}...`);
     await page.waitForSelector(selector, { timeout: 10000 });
@@ -42,17 +42,34 @@ async function fillField(page, selector, value, fieldName) {
     console.log(`✅ ${fieldName} rempli`);
 }
 
-// Turnstile
-async function waitForTurnstileGone(page, maxWaitMs = 60000) {
-    console.log('🔎 Surveillance Turnstile...');
+// Gestion avancée de Turnstile
+async function resolveTurnstile(page, maxWaitMs = 60000) {
+    console.log('🔎 Résolution de Turnstile...');
     const start = Date.now();
     while (Date.now() - start < maxWaitMs) {
+        const frames = page.frames();
+        const turnstileFrame = frames.find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
+        if (!turnstileFrame) {
+            console.log('✅ Iframe Turnstile disparue');
+            return true;
+        }
         try {
-            const frames = page.frames();
-            const tf = frames.find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
-            if (!tf) { console.log('✅ Iframe Turnstile disparue'); return true; }
-            const checked = await tf.$eval('input[type="checkbox"]', cb => cb.checked);
-            if (checked) console.log('   Case cochée');
+            const isChecked = await turnstileFrame.$eval('input[type="checkbox"]', cb => cb.checked);
+            if (isChecked) {
+                console.log('   Case déjà cochée, attente validation...');
+                while (Date.now() - start < maxWaitMs) {
+                    if (!page.frames().some(f => f.url().includes('challenges.cloudflare.com/turnstile'))) {
+                        console.log('✅ Turnstile validé');
+                        return true;
+                    }
+                    await delay(1000);
+                }
+                return false;
+            }
+            console.log('   Case non cochée, tentative de clic...');
+            await turnstileFrame.waitForSelector('body', { timeout: 5000 });
+            await turnstileFrame.click('input[type="checkbox"]');
+            console.log('   Clic effectué, attente validation...');
         } catch (e) {}
         await delay(2000);
     }
@@ -70,140 +87,114 @@ async function isLoggedIn(page) {
     return false;
 }
 
-// Diagnostic et tentative de déclenchement manuel
-async function clickClaimButton(page) {
-    console.log('🎯 Analyse du bouton CLAIM...');
+// Diagnostic complet des boutons et clic sur le bon CLAIM
+async function clickCorrectClaimButton(page) {
+    console.log('🎯 Diagnostic des boutons de la page faucet...');
     await page.waitForNetworkIdle({ timeout: 15000 }).catch(() => {});
     await delay(3000);
 
-    console.log('🛡️ Vérification Turnstile faucet...');
-    await waitForTurnstileGone(page, 30000);
-
-    console.log('⏳ Pause de 10 secondes avant le clic...');
-    await delay(10000);
-
-    // Récupérer les infos du bouton et tenter de trouver des écouteurs
-    const btnAnalysis = await page.evaluate(() => {
-        const btn = [...document.querySelectorAll('button, input[type="submit"], a')].find(el => {
-            const text = (el.textContent || el.value || '').trim().toUpperCase();
-            return text === 'CLAIM' && !el.disabled && el.offsetParent !== null;
-        });
-        if (!btn) return { found: false };
-
-        btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-        // Récupérer les propriétés utiles
-        const info = {
-            tag: btn.tagName,
-            id: btn.id,
-            className: btn.className,
-            attributes: Array.from(btn.attributes).map(a => ({ name: a.name, value: a.value })),
-            dataset: { ...btn.dataset },
-            events: []
-        };
-
-        // Tenter d'obtenir les écouteurs via l'API Chrome DevTools (si disponible)
-        if (typeof window.getEventListeners === 'function') {
-            try {
-                const listeners = window.getEventListeners(btn);
-                for (const [type, arr] of Object.entries(listeners)) {
-                    info.events.push({ type, count: arr.length });
-                }
-            } catch (e) {}
-        }
-
-        // Chercher des fonctions globales suspectes
-        const globalFuncs = [];
-        for (const key of Object.keys(window)) {
-            if (typeof window[key] === 'function' && /claim|faucet|withdraw|roll|getreward/i.test(key)) {
-                globalFuncs.push(key);
-            }
-        }
-
-        return { found: true, info, globalFuncs, btnExists: true };
+    // 1. Lister TOUS les boutons visibles avec leurs caractéristiques
+    const allButtons = await page.evaluate(() => {
+        return Array.from(document.querySelectorAll('button, input[type="submit"], a, [role="button"]'))
+            .filter(el => el.offsetParent !== null)
+            .map(el => {
+                const text = (el.textContent || el.value || '').trim();
+                return {
+                    tag: el.tagName,
+                    text: text,
+                    disabled: el.disabled || false,
+                    className: el.className,
+                    id: el.id,
+                    href: el.href || null,
+                    dataset: { ...el.dataset }
+                };
+            });
     });
 
-    if (!btnAnalysis.found) {
-        console.log('❌ Bouton CLAIM non trouvé');
-        return { success: false, message: 'Bouton CLAIM introuvable' };
+    console.log(`📋 ${allButtons.length} boutons visibles :`);
+    allButtons.forEach((b, i) => {
+        console.log(`   ${i+1}. [${b.tag}] "${b.text}" ${b.disabled ? '(DÉSACTIVÉ)' : ''} class="${b.className}" id="${b.id}"`);
+    });
+
+    // 2. Identifier le bon bouton CLAIM : celui dont le texte est exactement "CLAIM" (insensible casse)
+    //    et qui n'est PAS associé à des commissions (exclure ceux dont le contexte mentionne "commission" ou "balance")
+    const claimCandidates = allButtons.filter(b => b.text.toUpperCase() === 'CLAIM' && !b.disabled);
+    console.log(`🔍 Candidats CLAIM actifs : ${claimCandidates.length}`);
+
+    if (claimCandidates.length === 0) {
+        console.log('❌ Aucun bouton CLAIM actif trouvé');
+        return { success: false, message: 'Aucun bouton CLAIM actif' };
     }
 
-    console.log('📋 Informations sur le bouton :');
-    console.log(JSON.stringify(btnAnalysis.info, null, 2));
-    console.log('🌐 Fonctions globales suspectes :', btnAnalysis.globalFuncs);
+    // Stratégie de sélection : on prend le premier candidat qui n'a pas de classe/id lié à "commission"
+    let targetButton = claimCandidates.find(b => 
+        !b.className.toLowerCase().includes('commission') && 
+        !b.className.toLowerCase().includes('balance') &&
+        !b.text.toLowerCase().includes('commission')
+    );
+    if (!targetButton) targetButton = claimCandidates[0]; // fallback
 
-    // Tenter plusieurs méthodes de clic
-    const clickMethods = [
-        { name: 'click()', action: () => page.evaluate(() => { const b = [...document.querySelectorAll('button')].find(b=>b.textContent.trim().toUpperCase()==='CLAIM'); if(b) b.click(); }) },
-        { name: 'mousedown/mouseup/click', action: () => page.evaluate(() => {
-            const b = [...document.querySelectorAll('button')].find(b=>b.textContent.trim().toUpperCase()==='CLAIM');
-            if(b) {
-                b.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-                b.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-                b.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    console.log(`🎯 Bouton cible : ${targetButton.tag} "${targetButton.text}" class="${targetButton.className}" id="${targetButton.id}"`);
+
+    // 3. Construire un sélecteur fiable
+    let selector;
+    if (targetButton.id) {
+        selector = `#${targetButton.id}`;
+    } else if (targetButton.className) {
+        const firstClass = targetButton.className.split(' ')[0];
+        selector = `${targetButton.tag}.${firstClass}`;
+    } else {
+        selector = targetButton.tag;
+    }
+
+    // 4. Attendre que le bouton soit cliquable et cliquer
+    try {
+        await page.waitForSelector(selector, { timeout: 5000 });
+        console.log(`🖱️ Clic sur le sélecteur : ${selector}`);
+        await page.click(selector);
+        console.log('✅ Clic effectué');
+    } catch (e) {
+        console.log(`⚠️ Clic via sélecteur échoué, tentative par texte exact...`);
+        const clicked = await page.evaluate(() => {
+            const btns = [...document.querySelectorAll('button, input[type="submit"], a')];
+            const target = btns.find(b => (b.textContent || b.value || '').trim().toUpperCase() === 'CLAIM' && !b.disabled && b.offsetParent !== null);
+            if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                target.click();
+                return true;
             }
-        })},
-        { name: 'focus + Enter', action: async () => {
-            await page.focus('button');
-            await page.keyboard.press('Enter');
-        }},
-        { name: 'form submit', action: () => page.evaluate(() => {
-            const b = [...document.querySelectorAll('button')].find(b=>b.textContent.trim().toUpperCase()==='CLAIM');
-            const form = b?.closest('form');
-            if (form) form.submit();
-        })}
-    ];
-
-    let bestResult = null;
-    for (const method of clickMethods) {
-        console.log(`🖱️ Tentative de clic via : ${method.name}`);
-        // Réactiver le bouton si nécessaire (parfois il se désactive après un premier clic)
-        await page.evaluate(() => {
-            const b = [...document.querySelectorAll('button')].find(b=>b.textContent.trim().toUpperCase()==='CLAIM');
-            if (b) b.disabled = false;
+            return false;
         });
-        await method.action();
-        await delay(5000);
-        
-        // Vérifier l'état après
-        const state = await page.evaluate(() => {
-            const btn = [...document.querySelectorAll('button')].find(b=>b.textContent.trim().toUpperCase()==='CLAIM');
-            if (!btn) return null;
-            const messages = Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [class*="message"]')).map(el => el.textContent.trim()).filter(t=>t);
-            return { disabled: btn.disabled, messages };
-        });
-        console.log(`   -> Bouton désactivé : ${state?.disabled}, messages : ${state?.messages.length ? state.messages[0] : 'aucun'}`);
-        if (state?.disabled || state?.messages.length) {
-            bestResult = { method: method.name, state };
-            break;
-        }
+        if (!clicked) throw new Error('Impossible de cliquer sur le bouton CLAIM');
+        console.log('✅ Clic par texte exact réussi');
     }
 
-    // Capture réseau
-    const requests = [];
-    const reqListener = (req) => requests.push(req.url());
-    page.on('request', reqListener);
-    await delay(10000);
-    page.off('request', reqListener);
+    // 5. Attendre et analyser la réponse
+    console.log('⏳ Attente de la réponse...');
+    await page.waitForNetworkIdle({ timeout: 15000 }).catch(() => {});
+    await delay(5000);
 
-    console.log(`🌐 Requêtes réseau (${requests.length}) :`, requests);
-
-    // Scan DOM final
-    const finalMessages = await page.evaluate(() => {
+    // 6. Récupérer les messages DOM
+    const messages = await page.evaluate(() => {
         return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [class*="message"], [role="alert"]'))
             .map(el => el.textContent.trim()).filter(t => t);
     });
-    console.log('💬 Messages DOM finaux :', finalMessages);
+    console.log('💬 Messages DOM après clic :', messages);
 
-    const btnFinal = await page.evaluate(() => {
-        const b = [...document.querySelectorAll('button')].find(b=>b.textContent.trim().toUpperCase()==='CLAIM');
-        return b ? b.disabled : null;
+    // 7. Vérifier si le bouton est désactivé (succès présumé)
+    const btnState = await page.evaluate(() => {
+        const b = [...document.querySelectorAll('button, input[type="submit"], a')].find(b => (b.textContent || b.value || '').trim().toUpperCase() === 'CLAIM');
+        return b ? { disabled: b.disabled, text: b.textContent.trim() } : null;
     });
-
-    if (btnFinal || finalMessages.length > 0) {
-        return { success: true, message: finalMessages[0] || 'Bouton désactivé' };
+    if (btnState) {
+        console.log(`📌 État du bouton CLAIM après clic : ${btnState.disabled ? 'DÉSACTIVÉ' : 'ACTIF'}`);
     }
-    return { success: false, message: 'Aucune réaction' };
+
+    // 8. Déterminer le succès
+    const success = btnState?.disabled || messages.some(m => /success|claimed|reward|sent/i.test(m)) || false;
+    const message = messages[0] || (btnState?.disabled ? 'Bouton désactivé (succès présumé)' : 'Aucune réaction');
+
+    return { success, message };
 }
 
 (async () => {
@@ -234,6 +225,9 @@ async function clickClaimButton(page) {
         await fillField(page, passSel, PASSWORD, 'password');
         await delay(2000);
 
+        const turnstileResolved = await resolveTurnstile(page, 45000);
+        if (!turnstileResolved) console.log('⚠️ Turnstile non résolu, on tente quand même...');
+
         console.log('🔐 Clic sur "Log in"...');
         const loginBtn = await page.evaluateHandle(() => {
             const btns = Array.from(document.querySelectorAll('button'));
@@ -242,13 +236,10 @@ async function clickClaimButton(page) {
         if (!loginBtn) throw new Error('Bouton Log in introuvable');
 
         await Promise.all([
-            page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(e => console.log('⚠️ Navigation timeout:', e.message)),
+            page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 90000 }).catch(e => console.log('⚠️ Navigation timeout:', e.message)),
             loginBtn.click()
         ]);
-        console.log('✅ Navigation terminée');
-
-        await delay(3000);
-        await waitForTurnstileGone(page, 60000);
+        await delay(5000);
 
         const loggedIn = await isLoggedIn(page);
         console.log('📍 URL après login :', page.url());
@@ -267,8 +258,8 @@ async function clickClaimButton(page) {
             await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
             await delay(10000);
 
-            // --- CLAIM ---
-            const claimResult = await clickClaimButton(page);
+            // --- CLAIM (ciblage précis) ---
+            const claimResult = await clickCorrectClaimButton(page);
 
             status.success = claimResult.success;
             status.message = claimResult.success
