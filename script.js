@@ -9,10 +9,6 @@ const PROXY_PASSWORD = process.env.PROXY_PASSWORD;
 const PROXY_HOST = '31.59.20.176';
 const PROXY_PORT = '6754';
 
-// Création du dossier de captures
-const outputDir = path.join(__dirname, 'screenshots');
-if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
-
 if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
     console.error('❌ Variables d\'environnement manquantes');
     process.exit(1);
@@ -20,7 +16,7 @@ if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Saisie robuste
+// Saisie robuste (inchangée)
 async function fillField(page, selector, value, fieldName) {
     console.log(`⌨️ Remplissage ${fieldName}...`);
     await page.waitForSelector(selector, { timeout: 10000 });
@@ -46,21 +42,16 @@ async function fillField(page, selector, value, fieldName) {
     console.log(`✅ ${fieldName} rempli`);
 }
 
-// Connexion avec gestion Turnstile
+// Connexion
 async function login(page) {
     console.log('🌐 Accès login...');
     await page.goto('https://tronpick.io/login.php', { waitUntil: 'networkidle2', timeout: 60000 });
-
     await fillField(page, 'input[type="email"], input[name="email"]', EMAIL, 'email');
     await fillField(page, 'input[type="password"]', PASSWORD, 'password');
     await delay(2000);
 
-    // Résoudre Turnstile login (simplifié)
     try {
-        const frame = await page.waitForFrame(
-            f => f.url().includes('challenges.cloudflare.com/turnstile'),
-            { timeout: 30000 }
-        );
+        const frame = await page.waitForFrame(f => f.url().includes('challenges.cloudflare.com/turnstile'), { timeout: 30000 });
         console.log('✅ Turnstile login présent, clic...');
         await frame.click('input[type="checkbox"]');
         await delay(5000);
@@ -83,119 +74,57 @@ async function login(page) {
     console.log('✅ Connecté');
 }
 
-// Diagnostic complet de la page faucet (avant clic)
-async function diagnoseFaucet(page) {
-    console.log('🔬 DIAGNOSTIC FAUCET AVANT CLIC');
+// Résolution du Turnstile faucet avec clic sur "Verify you are human"
+async function resolveFaucetTurnstile(page) {
+    console.log('🛡️ Résolution du Turnstile faucet...');
+    try {
+        const frame = await page.waitForFrame(f => f.url().includes('challenges.cloudflare.com/turnstile'), { timeout: 60000 });
+        console.log('✅ Iframe Turnstile faucet trouvée');
 
-    // Capture d'écran AVANT
-    const screenshotBefore = await page.screenshot({ encoding: 'base64', fullPage: true });
-    const beforePath = path.join(outputDir, `before_${Date.now()}.png`);
-    fs.writeFileSync(beforePath, screenshotBefore, 'base64');
-    console.log(`📸 Capture AVANT sauvegardée : ${beforePath}`);
+        await frame.waitForSelector('body', { timeout: 5000 });
+        await frame.evaluate(() => {
+            const labels = [...document.querySelectorAll('label')];
+            const target = labels.find(l => l.textContent.toLowerCase().includes('verify you are human'));
+            if (target) target.click();
+            else {
+                const cb = document.querySelector('input[type="checkbox"]');
+                if (cb) cb.click();
+            }
+        });
+        console.log('✅ Clic sur "Verify you are human"');
 
-    // Lister toutes les iframes
-    const frames = page.frames();
-    console.log(`🖼️ ${frames.length} frames :`);
-    frames.forEach((f, i) => console.log(`   ${i}: ${f.url().substring(0, 100)}`));
-
-    // Lister les inputs cachés
-    const hiddenInputs = await page.evaluate(() => {
-        return Array.from(document.querySelectorAll('input[type="hidden"]')).map(el => ({
-            name: el.name,
-            value: el.value.substring(0, 100)
-        }));
-    });
-    console.log('📦 Inputs cachés :', JSON.stringify(hiddenInputs, null, 2));
-
-    // État du bouton Claim
-    const btnInfo = await page.evaluate(() => {
-        const btn = document.querySelector('#process_claim_hourly_faucet');
-        if (!btn) return null;
-        return {
-            text: btn.textContent.trim(),
-            disabled: btn.disabled,
-            visible: btn.offsetParent !== null,
-            className: btn.className
-        };
-    });
-    console.log('🔘 Bouton Claim :', btnInfo);
+        const start = Date.now();
+        while (Date.now() - start < 45000) {
+            const isChecked = await frame.$eval('input[type="checkbox"]', cb => cb.checked).catch(() => false);
+            const token = await page.evaluate(() => {
+                const inp = document.querySelector('[name="cf-turnstile-response"]');
+                return inp ? inp.value : '';
+            });
+            if (isChecked || (token && token.length > 10)) {
+                console.log('✅ Turnstile résolu');
+                return true;
+            }
+            await delay(2000);
+        }
+        console.log('⚠️ Timeout résolution Turnstile');
+        return false;
+    } catch (e) {
+        console.log('❌ Iframe Turnstile faucet non trouvée :', e.message);
+        return false;
+    }
 }
 
-// Clic forcé et monitoring réseau
-async function forceClickAndMonitor(page) {
-    const networkLogs = [];
-    const requestListener = (req) => {
-        if (['xhr', 'fetch'].includes(req.resourceType())) {
-            networkLogs.push({ type: 'request', url: req.url(), method: req.method(), postData: req.postData() });
-        }
-    };
-    const responseListener = async (res) => {
-        const req = res.request();
-        if (['xhr', 'fetch'].includes(req.resourceType())) {
-            try {
-                const body = await res.text().catch(() => '');
-                networkLogs.push({ type: 'response', url: res.url(), status: res.status(), body: body.substring(0, 500) });
-            } catch (e) {}
-        }
-    };
-    page.on('request', requestListener);
-    page.on('response', responseListener);
-
-    console.log('🖱️ Clic forcé sur le bouton Claim...');
-    const clicked = await page.evaluate(() => {
-        const btn = document.querySelector('#process_claim_hourly_faucet');
-        if (btn && !btn.disabled) {
-            btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            btn.click();
-            return true;
-        }
-        return false;
-    });
-    if (!clicked) {
-        const fallback = await page.evaluate(() => {
-            const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim().toUpperCase() === 'CLAIM');
-            if (b && !b.disabled) { b.click(); return true; }
-            return false;
-        });
-        if (!fallback) throw new Error('Impossible de cliquer sur Claim');
+// Clic sur CLAIM
+async function clickClaim(page) {
+    console.log('🎯 Clic sur le bouton CLAIM...');
+    const claimSelector = '#process_claim_hourly_faucet';
+    await page.waitForSelector(claimSelector, { timeout: 10000 });
+    const btn = await page.$(claimSelector);
+    if (!await btn.evaluate(el => !el.disabled && el.offsetParent !== null)) {
+        throw new Error('Bouton CLAIM désactivé');
     }
-    console.log('✅ Clic effectué');
-
-    await delay(15000);
-    page.off('request', requestListener);
-    page.off('response', responseListener);
-
-    // Logs réseau
-    console.log(`🌐 Trafic réseau (${networkLogs.length}) :`);
-    networkLogs.forEach((log, i) => {
-        if (log.type === 'request') {
-            console.log(`   ${i+1}. REQ ${log.method} ${log.url}`);
-        } else {
-            console.log(`   ${i+1}. RES ${log.status} ${log.url} → ${log.body || ''}`);
-        }
-    });
-
-    // Capture APRÈS
-    const screenshotAfter = await page.screenshot({ encoding: 'base64', fullPage: true });
-    const afterPath = path.join(outputDir, `after_${Date.now()}.png`);
-    fs.writeFileSync(afterPath, screenshotAfter, 'base64');
-    console.log(`📸 Capture APRÈS sauvegardée : ${afterPath}`);
-
-    // Messages DOM
-    const messages = await page.evaluate(() => {
-        return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [role="alert"]'))
-            .map(el => el.textContent.trim()).filter(t => t);
-    });
-    console.log('💬 Messages DOM après clic :', messages);
-
-    // État final du bouton
-    const finalState = await page.evaluate(() => {
-        const btn = document.querySelector('#process_claim_hourly_faucet');
-        return btn ? { disabled: btn.disabled, text: btn.textContent.trim() } : null;
-    });
-    console.log('🔘 État final bouton :', finalState);
-
-    return { messages, finalState, networkLogs };
+    await btn.click();
+    console.log('✅ Clic sur CLAIM effectué');
 }
 
 (async () => {
@@ -218,14 +147,30 @@ async function forceClickAndMonitor(page) {
         await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
         await delay(10000);
 
-        await diagnoseFaucet(page);
-        const result = await forceClickAndMonitor(page);
+        const resolved = await resolveFaucetTurnstile(page);
+        if (!resolved) throw new Error('Turnstile faucet non résolu');
 
-        const success = result.finalState?.disabled ||
-                        result.messages.some(m => /success|claimed|reward|sent/i.test(m)) ||
-                        result.networkLogs.some(l => l.type === 'response' && l.status === 200 && /claim|reward|faucet/i.test(l.url));
+        console.log('⏳ Attente de 15 secondes après Turnstile...');
+        await delay(15000);
+
+        await clickClaim(page);
+
+        await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
+        await delay(5000);
+
+        const messages = await page.evaluate(() => {
+            return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [role="alert"]'))
+                .map(el => el.textContent.trim()).filter(t => t);
+        });
+        console.log('💬 Messages :', messages);
+
+        const btnDisabled = await page.evaluate(() => {
+            return document.querySelector('#process_claim_hourly_faucet')?.disabled || false;
+        });
+
+        const success = btnDisabled || messages.some(m => /success|claimed|reward|sent/i.test(m));
         status.success = success;
-        status.message = result.messages[0] || (result.finalState?.disabled ? 'Bouton désactivé' : 'Aucune réaction');
+        status.message = messages[0] || (btnDisabled ? 'Bouton désactivé' : 'Aucune réaction');
 
     } catch (e) {
         console.error('❌', e);
