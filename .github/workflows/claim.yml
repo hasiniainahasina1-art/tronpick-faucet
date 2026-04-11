@@ -2,9 +2,8 @@ name: Claim Tronpick Faucet
 
 on:
   schedule:
-    # Exécution toutes les 6 heures (modifiable selon vos besoins)
     - cron: '0 */6 * * *'
-  workflow_dispatch:         # permet de lancer manuellement depuis l'interface GitHub
+  workflow_dispatch:
 
 jobs:
   claim:
@@ -26,6 +25,9 @@ jobs:
       - name: 📦 Installer les dépendances Node.js
         run: npm install
 
+      - name: 🔧 Installer le binaire Firefox pour Puppeteer
+        run: npx puppeteer browsers install firefox
+
       - name: 🤖 Exécuter le script avec xvfb
         env:
           TRONPICK_EMAIL: ${{ secrets.TRONPICK_EMAIL }}
@@ -36,7 +38,7 @@ jobs:
 
       - name: 📤 Upload des captures d'écran (artefacts)
         uses: actions/upload-artifact@v4
-        if: always()   # upload même en cas d'échec
+        if: always()
         with:
           name: faucet-screenshots
           path: screenshots/
