@@ -174,38 +174,45 @@ async function clickClaim(page) {
 
         await humanScrollToClaim(page);
         await delay(2000);
-        await page.screenshot({ path: path.join(outputDir, '03_before_click_turnstile.png'), fullPage: true });
+        await page.screenshot({ path: path.join(outputDir, '03_turnstile_appeared.png'), fullPage: true });
 
-        // Attendre que l'iframe Turnstile soit bien visible (3 secondes)
-        console.log('⏳ Pause de 3 secondes pour laisser apparaître le Turnstile...');
-        await delay(3000);
-        await page.screenshot({ path: path.join(outputDir, '04_turnstile_visible.png'), fullPage: true });
+        // Attendre explicitement l'iframe Turnstile (max 10 secondes)
+        console.log('⏳ Attente de l\'apparition de l\'iframe Turnstile (max 10s)...');
+        const turnstileAppeared = await page.waitForFrame(
+            f => f.url().includes('challenges.cloudflare.com/turnstile'),
+            { timeout: 10000 }
+        ).catch(() => null);
+        
+        if (!turnstileAppeared) {
+            console.log('⚠️ Iframe Turnstile non apparue, on tente le claim directement...');
+        } else {
+            console.log('✅ Iframe Turnstile détectée');
 
-        // Premier clic sur "verify you are human"
-        console.log('🖱️ Premier clic sur "verify you are human"');
-        await clickVerifyYouAreHuman(page);
-        await page.screenshot({ path: path.join(outputDir, '05_after_first_click.png'), fullPage: true });
+            // Premier clic
+            console.log('🖱️ Premier clic sur "verify you are human"');
+            await clickVerifyYouAreHuman(page);
+            await page.screenshot({ path: path.join(outputDir, '04_after_first_click.png'), fullPage: true });
 
-        console.log('⏳ Attente de 10 secondes...');
-        await delay(10000);
+            console.log('⏳ Attente de 10 secondes...');
+            await delay(10000);
 
-        // Deuxième clic sur "verify you are human"
-        console.log('🖱️ Deuxième clic sur "verify you are human"');
-        await clickVerifyYouAreHuman(page);
-        await page.screenshot({ path: path.join(outputDir, '06_after_second_click.png'), fullPage: true });
+            // Deuxième clic
+            console.log('🖱️ Deuxième clic sur "verify you are human"');
+            await clickVerifyYouAreHuman(page);
+            await page.screenshot({ path: path.join(outputDir, '05_after_second_click.png'), fullPage: true });
 
-        console.log('⏳ Attente de 10 secondes...');
-        await delay(10000);
+            console.log('⏳ Attente de 10 secondes...');
+            await delay(10000);
+        }
 
-        // Attente supplémentaire de 10 secondes avant CLAIM
         console.log('⏳ Attente de 10 secondes avant le clic sur CLAIM...');
         await delay(10000);
-        await page.screenshot({ path: path.join(outputDir, '07_before_claim.png'), fullPage: true });
+        await page.screenshot({ path: path.join(outputDir, '06_before_claim.png'), fullPage: true });
 
         await clickClaim(page);
         await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
         await delay(5000);
-        await page.screenshot({ path: path.join(outputDir, '08_after_claim.png'), fullPage: true });
+        await page.screenshot({ path: path.join(outputDir, '07_after_claim.png'), fullPage: true });
 
         const messages = await page.evaluate(() => {
             return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [role="alert"]'))
