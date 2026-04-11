@@ -9,6 +9,10 @@ const PROXY_PASSWORD = process.env.PROXY_PASSWORD;
 const PROXY_HOST = '31.59.20.176';
 const PROXY_PORT = '6754';
 
+// Dossier pour les captures
+const outputDir = path.join(__dirname, 'screenshots');
+if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+
 if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
     console.error('❌ Variables d\'environnement manquantes');
     process.exit(1);
@@ -16,7 +20,6 @@ if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Saisie robuste
 async function fillField(page, selector, value, fieldName) {
     console.log(`⌨️ Remplissage ${fieldName}...`);
     await page.waitForSelector(selector, { timeout: 10000 });
@@ -42,7 +45,6 @@ async function fillField(page, selector, value, fieldName) {
     console.log(`✅ ${fieldName} rempli`);
 }
 
-// Connexion
 async function login(page) {
     console.log('🌐 Accès login...');
     await page.goto('https://tronpick.io/login.php', { waitUntil: 'networkidle2', timeout: 60000 });
@@ -74,18 +76,16 @@ async function login(page) {
     console.log('✅ Connecté');
 }
 
-// Nouvelle fonction de résolution Turnstile avec deux approches
 async function resolveTurnstile(page) {
     console.log('🛡️ Résolution avancée de Turnstile...');
     await delay(5000);
 
-    // Approche 1 : via iframe accessible par sélecteur CSS
+    // Approche 1 : via iframe
     const iframeHandle = await page.$('iframe[src*="challenges.cloudflare.com/turnstile"]');
     if (iframeHandle) {
         console.log('✅ Iframe Turnstile trouvée via sélecteur CSS');
         const frame = await iframeHandle.contentFrame();
         if (frame) {
-            console.log('   Accès au contenu de l\'iframe réussi');
             try {
                 await frame.waitForSelector('body', { timeout: 5000 });
                 const clicked = await frame.evaluate(() => {
@@ -110,8 +110,8 @@ async function resolveTurnstile(page) {
         }
     }
 
-    // Approche 2 : clic par coordonnées sur l'iframe elle-même
-    console.log('🔄 Passage à la méthode de clic par coordonnées sur l\'iframe...');
+    // Approche 2 : clic par coordonnées
+    console.log('🔄 Passage à la méthode de clic par coordonnées...');
     try {
         await page.waitForSelector('iframe[src*="challenges.cloudflare.com/turnstile"]', { timeout: 30000 });
         const iframeElement = await page.$('iframe[src*="challenges.cloudflare.com/turnstile"]');
@@ -120,7 +120,7 @@ async function resolveTurnstile(page) {
 
         const clickX = box.x + box.width / 2;
         const clickY = box.y + box.height / 2;
-        console.log(`📍 Clic prévu au centre de l'iframe (${Math.round(clickX)}, ${Math.round(clickY)})`);
+        console.log(`📍 Clic prévu au centre (${Math.round(clickX)}, ${Math.round(clickY)})`);
 
         const start = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
         const steps = 25;
@@ -143,11 +143,14 @@ async function resolveTurnstile(page) {
         return true;
     } catch (e) {
         console.error('❌ Échec de la méthode par coordonnées :', e.message);
+        // 📸 Capture d'écran de diagnostic
+        const screenshotPath = path.join(outputDir, `faucet_failure_${Date.now()}.png`);
+        await page.screenshot({ path: screenshotPath, fullPage: true });
+        console.log(`📸 Capture sauvegardée : ${screenshotPath}`);
         return false;
     }
 }
 
-// Clic sur CLAIM
 async function clickClaim(page) {
     console.log('🎯 Clic sur le bouton CLAIM...');
     const claimSelector = '#process_claim_hourly_faucet';
