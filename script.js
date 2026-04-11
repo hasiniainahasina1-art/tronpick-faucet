@@ -9,6 +9,10 @@ const PROXY_PASSWORD = process.env.PROXY_PASSWORD;
 const PROXY_HOST = '31.59.20.176';
 const PROXY_PORT = '6754';
 
+// Dossier pour les captures d'écran
+const outputDir = path.join(__dirname, 'screenshots');
+if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+
 if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
     console.error('❌ Variables d\'environnement manquantes');
     process.exit(1);
@@ -74,15 +78,15 @@ async function login(page) {
     console.log('✅ Connecté');
 }
 
-// Rafraîchir la page faucet et interagir avec Turnstile
+// Gestion du Turnstile faucet avec rafraîchissement et clic humain
 async function handleFaucetTurnstile(page) {
     console.log('🚰 Accès faucet...');
     await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
     await delay(5000);
     
-    console.log('🔄 Actualisation de la page faucet pour forcer le chargement du Turnstile...');
+    console.log('🔄 Actualisation de la page faucet pour forcer le Turnstile...');
     await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
-    await delay(15000); // Attente après rechargement
+    await delay(15000); // Pause après rechargement
 
     console.log('🔍 Recherche de "Verify you are human"...');
     const start = Date.now();
@@ -120,6 +124,10 @@ async function handleFaucetTurnstile(page) {
     
     if (!clicked) {
         console.log('❌ Texte "Verify you are human" non trouvé après 60s');
+        // Capture d'écran de diagnostic
+        const screenshotPath = path.join(outputDir, `faucet_no_verify_${Date.now()}.png`);
+        await page.screenshot({ path: screenshotPath, fullPage: true });
+        console.log(`📸 Capture sauvegardée : ${screenshotPath}`);
         return false;
     }
 
@@ -136,7 +144,7 @@ async function handleFaucetTurnstile(page) {
         return true;
     } catch (e) {
         console.log('⚠️ Token non généré, mais on continue...');
-        return true; // On tente le claim quand même
+        return true; // Tente le claim quand même
     }
 }
 
@@ -197,6 +205,16 @@ async function clickClaim(page) {
     } catch (e) {
         console.error('❌', e);
         status.message = e.message;
+        // Capture d'écran en cas d'erreur fatale
+        if (browser) {
+            try {
+                const pages = await browser.pages();
+                const page = pages[pages.length - 1];
+                const screenshotPath = path.join(outputDir, `fatal_error_${Date.now()}.png`);
+                await page.screenshot({ path: screenshotPath, fullPage: true });
+                console.log(`📸 Capture d'erreur sauvegardée : ${screenshotPath}`);
+            } catch (se) {}
+        }
     } finally {
         if (browser) await browser.close();
         fs.writeFileSync(path.join(__dirname, 'public', 'status.json'), JSON.stringify(status, null, 2));
