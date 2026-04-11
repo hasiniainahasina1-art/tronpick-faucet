@@ -42,7 +42,7 @@ async function fillField(page, selector, value, fieldName) {
     console.log(`✅ ${fieldName} rempli`);
 }
 
-// Gestion avancée de Turnstile
+// Gestion avancée de Turnstile (clic si nécessaire)
 async function resolveTurnstile(page, maxWaitMs = 60000) {
     console.log('🔎 Résolution de Turnstile...');
     const start = Date.now();
@@ -53,6 +53,7 @@ async function resolveTurnstile(page, maxWaitMs = 60000) {
             console.log('✅ Iframe Turnstile disparue');
             return true;
         }
+
         try {
             const isChecked = await turnstileFrame.$eval('input[type="checkbox"]', cb => cb.checked);
             if (isChecked) {
@@ -66,6 +67,7 @@ async function resolveTurnstile(page, maxWaitMs = 60000) {
                 }
                 return false;
             }
+
             console.log('   Case non cochée, tentative de clic...');
             await turnstileFrame.waitForSelector('body', { timeout: 5000 });
             await turnstileFrame.click('input[type="checkbox"]');
@@ -87,74 +89,49 @@ async function isLoggedIn(page) {
     return false;
 }
 
-// Diagnostic complet des boutons et clic sur le bon CLAIM
+// Clic sur le bon bouton CLAIM avec résolution préalable du Turnstile faucet
 async function clickCorrectClaimButton(page) {
-    console.log('🎯 Diagnostic des boutons de la page faucet...');
+    console.log('🎯 Accès à la page faucet et résolution du Turnstile...');
     await page.waitForNetworkIdle({ timeout: 15000 }).catch(() => {});
     await delay(3000);
 
-    // 1. Lister TOUS les boutons visibles avec leurs caractéristiques
+    // 1. Résoudre le Turnstile qui peut apparaître sur la page faucet
+    console.log('🛡️ Vérification Turnstile faucet...');
+    const faucetTurnstileResolved = await resolveTurnstile(page, 45000);
+    if (!faucetTurnstileResolved) {
+        console.log('⚠️ Turnstile faucet non résolu, on tente le clic quand même...');
+    }
+
+    // 2. Lister les boutons pour diagnostic (optionnel)
     const allButtons = await page.evaluate(() => {
         return Array.from(document.querySelectorAll('button, input[type="submit"], a, [role="button"]'))
             .filter(el => el.offsetParent !== null)
-            .map(el => {
-                const text = (el.textContent || el.value || '').trim();
-                return {
-                    tag: el.tagName,
-                    text: text,
-                    disabled: el.disabled || false,
-                    className: el.className,
-                    id: el.id,
-                    href: el.href || null,
-                    dataset: { ...el.dataset }
-                };
-            });
+            .map(el => ({
+                tag: el.tagName,
+                text: (el.textContent || el.value || '').trim(),
+                disabled: el.disabled || false,
+                id: el.id,
+                className: el.className
+            }));
     });
+    console.log(`📋 ${allButtons.length} boutons visibles sur faucet`);
 
-    console.log(`📋 ${allButtons.length} boutons visibles :`);
-    allButtons.forEach((b, i) => {
-        console.log(`   ${i+1}. [${b.tag}] "${b.text}" ${b.disabled ? '(DÉSACTIVÉ)' : ''} class="${b.className}" id="${b.id}"`);
-    });
-
-    // 2. Identifier le bon bouton CLAIM : celui dont le texte est exactement "CLAIM" (insensible casse)
-    //    et qui n'est PAS associé à des commissions (exclure ceux dont le contexte mentionne "commission" ou "balance")
-    const claimCandidates = allButtons.filter(b => b.text.toUpperCase() === 'CLAIM' && !b.disabled);
-    console.log(`🔍 Candidats CLAIM actifs : ${claimCandidates.length}`);
-
-    if (claimCandidates.length === 0) {
-        console.log('❌ Aucun bouton CLAIM actif trouvé');
-        return { success: false, message: 'Aucun bouton CLAIM actif' };
-    }
-
-    // Stratégie de sélection : on prend le premier candidat qui n'a pas de classe/id lié à "commission"
-    let targetButton = claimCandidates.find(b => 
-        !b.className.toLowerCase().includes('commission') && 
-        !b.className.toLowerCase().includes('balance') &&
-        !b.text.toLowerCase().includes('commission')
-    );
-    if (!targetButton) targetButton = claimCandidates[0]; // fallback
-
-    console.log(`🎯 Bouton cible : ${targetButton.tag} "${targetButton.text}" class="${targetButton.className}" id="${targetButton.id}"`);
-
-    // 3. Construire un sélecteur fiable
-    let selector;
-    if (targetButton.id) {
-        selector = `#${targetButton.id}`;
-    } else if (targetButton.className) {
-        const firstClass = targetButton.className.split(' ')[0];
-        selector = `${targetButton.tag}.${firstClass}`;
-    } else {
-        selector = targetButton.tag;
-    }
-
-    // 4. Attendre que le bouton soit cliquable et cliquer
+    // 3. Utiliser le sélecteur exact identifié précédemment
+    const claimSelector = '#process_claim_hourly_faucet';
     try {
-        await page.waitForSelector(selector, { timeout: 5000 });
-        console.log(`🖱️ Clic sur le sélecteur : ${selector}`);
-        await page.click(selector);
+        await page.waitForSelector(claimSelector, { timeout: 10000 });
+        const btn = await page.$(claimSelector);
+        const isEnabled = await btn.evaluate(el => !el.disabled && el.offsetParent !== null);
+        if (!isEnabled) {
+            console.log('❌ Bouton CLAIM désactivé (probablement timer en cours)');
+            return { success: false, message: 'Bouton CLAIM désactivé (timer)' };
+        }
+
+        console.log(`🖱️ Clic sur le sélecteur : ${claimSelector}`);
+        await btn.click();
         console.log('✅ Clic effectué');
     } catch (e) {
-        console.log(`⚠️ Clic via sélecteur échoué, tentative par texte exact...`);
+        console.log(`⚠️ Clic via sélecteur échoué, fallback par texte exact...`);
         const clicked = await page.evaluate(() => {
             const btns = [...document.querySelectorAll('button, input[type="submit"], a')];
             const target = btns.find(b => (b.textContent || b.value || '').trim().toUpperCase() === 'CLAIM' && !b.disabled && b.offsetParent !== null);
@@ -165,34 +142,35 @@ async function clickCorrectClaimButton(page) {
             }
             return false;
         });
-        if (!clicked) throw new Error('Impossible de cliquer sur le bouton CLAIM');
+        if (!clicked) throw new Error('Impossible de cliquer sur CLAIM');
         console.log('✅ Clic par texte exact réussi');
     }
 
-    // 5. Attendre et analyser la réponse
+    // 4. Attendre la réponse réseau et les messages
     console.log('⏳ Attente de la réponse...');
-    await page.waitForNetworkIdle({ timeout: 15000 }).catch(() => {});
+    await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
     await delay(5000);
 
-    // 6. Récupérer les messages DOM
+    // 5. Récupérer les messages DOM
     const messages = await page.evaluate(() => {
         return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [class*="message"], [role="alert"]'))
             .map(el => el.textContent.trim()).filter(t => t);
     });
     console.log('💬 Messages DOM après clic :', messages);
 
-    // 7. Vérifier si le bouton est désactivé (succès présumé)
+    // 6. Vérifier l'état du bouton
     const btnState = await page.evaluate(() => {
-        const b = [...document.querySelectorAll('button, input[type="submit"], a')].find(b => (b.textContent || b.value || '').trim().toUpperCase() === 'CLAIM');
+        const b = document.querySelector('#process_claim_hourly_faucet');
         return b ? { disabled: b.disabled, text: b.textContent.trim() } : null;
     });
     if (btnState) {
-        console.log(`📌 État du bouton CLAIM après clic : ${btnState.disabled ? 'DÉSACTIVÉ' : 'ACTIF'}`);
+        console.log(`📌 Bouton CLAIM après clic : ${btnState.disabled ? 'DÉSACTIVÉ' : 'ACTIF'}`);
     }
 
-    // 8. Déterminer le succès
-    const success = btnState?.disabled || messages.some(m => /success|claimed|reward|sent/i.test(m)) || false;
-    const message = messages[0] || (btnState?.disabled ? 'Bouton désactivé (succès présumé)' : 'Aucune réaction');
+    // 7. Déterminer le succès
+    const success = btnState?.disabled || messages.some(m => /success|claimed|reward|sent|congratulations/i.test(m)) || false;
+    const message = messages.find(m => /success|claimed|reward|error|invalid|try again|captcha/i.test(m)) 
+                    || (btnState?.disabled ? 'Bouton désactivé (succès présumé)' : 'Aucune réaction');
 
     return { success, message };
 }
@@ -226,7 +204,7 @@ async function clickCorrectClaimButton(page) {
         await delay(2000);
 
         const turnstileResolved = await resolveTurnstile(page, 45000);
-        if (!turnstileResolved) console.log('⚠️ Turnstile non résolu, on tente quand même...');
+        if (!turnstileResolved) console.log('⚠️ Turnstile login non résolu, on tente quand même...');
 
         console.log('🔐 Clic sur "Log in"...');
         const loginBtn = await page.evaluateHandle(() => {
@@ -258,7 +236,7 @@ async function clickCorrectClaimButton(page) {
             await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
             await delay(10000);
 
-            // --- CLAIM (ciblage précis) ---
+            // --- CLAIM (avec résolution Turnstile faucet) ---
             const claimResult = await clickCorrectClaimButton(page);
 
             status.success = claimResult.success;
