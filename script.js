@@ -42,39 +42,76 @@ async function fillField(page, selector, value, fieldName) {
     console.log(`✅ ${fieldName} rempli`);
 }
 
-// Gestion avancée de Turnstile (clic si nécessaire)
-async function resolveTurnstile(page, maxWaitMs = 60000) {
-    console.log('🔎 Résolution de Turnstile...');
+// Résolution renforcée de Turnstile (vérifie le token)
+async function resolveTurnstile(page, maxWaitMs = 90000) {
+    console.log('🔎 Résolution renforcée de Turnstile...');
     const start = Date.now();
+
+    // Boucle principale d'attente de l'iframe
     while (Date.now() - start < maxWaitMs) {
         const frames = page.frames();
         const turnstileFrame = frames.find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
+
         if (!turnstileFrame) {
+            // Vérifier si le token Turnstile est déjà présent dans la page (peut arriver si résolu précédemment)
+            const tokenExists = await page.evaluate(() => {
+                return !!document.querySelector('[name="cf-turnstile-response"]')?.value ||
+                       !!document.querySelector('[name="turnstile-token"]')?.value ||
+                       !!document.querySelector('input[name*="captcha"]')?.value;
+            });
+            if (tokenExists) {
+                console.log('✅ Token Turnstile déjà présent');
+                return true;
+            }
             console.log('✅ Iframe Turnstile disparue');
             return true;
         }
 
         try {
+            // Vérifier si la case est déjà cochée
             const isChecked = await turnstileFrame.$eval('input[type="checkbox"]', cb => cb.checked);
-            if (isChecked) {
-                console.log('   Case déjà cochée, attente validation...');
-                while (Date.now() - start < maxWaitMs) {
-                    if (!page.frames().some(f => f.url().includes('challenges.cloudflare.com/turnstile'))) {
-                        console.log('✅ Turnstile validé');
-                        return true;
-                    }
-                    await delay(1000);
-                }
-                return false;
+            if (!isChecked) {
+                console.log('   Case non cochée, tentative de clic...');
+                await turnstileFrame.waitForSelector('body', { timeout: 5000 });
+                await turnstileFrame.click('input[type="checkbox"]');
+                console.log('   Clic effectué, attente validation...');
+            } else {
+                console.log('   Case déjà cochée, attente du token...');
             }
+        } catch (e) {
+            // L'élément n'est peut-être pas encore prêt
+        }
 
-            console.log('   Case non cochée, tentative de clic...');
-            await turnstileFrame.waitForSelector('body', { timeout: 5000 });
-            await turnstileFrame.click('input[type="checkbox"]');
-            console.log('   Clic effectué, attente validation...');
-        } catch (e) {}
+        // Attendre que le token Turnstile apparaisse (max 10 secondes par itération)
+        const tokenAppeared = await page.evaluate(() => {
+            return new Promise(resolve => {
+                const start = Date.now();
+                const check = () => {
+                    const tokenInput = document.querySelector('[name="cf-turnstile-response"]') ||
+                                       document.querySelector('[name="turnstile-token"]') ||
+                                       document.querySelector('input[name*="captcha-response"]');
+                    if (tokenInput && tokenInput.value) {
+                        resolve(true);
+                    } else if (Date.now() - start < 10000) {
+                        setTimeout(check, 500);
+                    } else {
+                        resolve(false);
+                    }
+                };
+                check();
+            });
+        });
+
+        if (tokenAppeared) {
+            console.log('✅ Token Turnstile généré');
+            // Laisser un peu de temps pour que le site prenne en compte le token
+            await delay(2000);
+            return true;
+        }
+
         await delay(2000);
     }
+
     console.log('⚠️ Timeout Turnstile');
     return false;
 }
@@ -89,87 +126,69 @@ async function isLoggedIn(page) {
     return false;
 }
 
-// Clic sur le bon bouton CLAIM avec résolution préalable du Turnstile faucet
-async function clickCorrectClaimButton(page) {
-    console.log('🎯 Accès à la page faucet et résolution du Turnstile...');
+async function clickClaimButton(page) {
+    console.log('🎯 Résolution Turnstile faucet et clic sur Claim...');
     await page.waitForNetworkIdle({ timeout: 15000 }).catch(() => {});
     await delay(3000);
 
-    // 1. Résoudre le Turnstile qui peut apparaître sur la page faucet
-    console.log('🛡️ Vérification Turnstile faucet...');
-    const faucetTurnstileResolved = await resolveTurnstile(page, 45000);
+    // 1. Résoudre le Turnstile faucet avec la fonction renforcée
+    const faucetTurnstileResolved = await resolveTurnstile(page, 90000);
     if (!faucetTurnstileResolved) {
-        console.log('⚠️ Turnstile faucet non résolu, on tente le clic quand même...');
+        console.log('❌ Turnstile faucet non résolu');
+        return { success: false, message: 'Turnstile faucet non résolu' };
     }
 
-    // 2. Lister les boutons pour diagnostic (optionnel)
-    const allButtons = await page.evaluate(() => {
-        return Array.from(document.querySelectorAll('button, input[type="submit"], a, [role="button"]'))
-            .filter(el => el.offsetParent !== null)
-            .map(el => ({
-                tag: el.tagName,
-                text: (el.textContent || el.value || '').trim(),
-                disabled: el.disabled || false,
-                id: el.id,
-                className: el.className
-            }));
-    });
-    console.log(`📋 ${allButtons.length} boutons visibles sur faucet`);
+    // 2. Attendre un peu pour la stabilité
+    await delay(3000);
 
-    // 3. Utiliser le sélecteur exact identifié précédemment
+    // 3. Cliquer sur le bouton Claim
     const claimSelector = '#process_claim_hourly_faucet';
     try {
         await page.waitForSelector(claimSelector, { timeout: 10000 });
         const btn = await page.$(claimSelector);
         const isEnabled = await btn.evaluate(el => !el.disabled && el.offsetParent !== null);
         if (!isEnabled) {
-            console.log('❌ Bouton CLAIM désactivé (probablement timer en cours)');
+            console.log('❌ Bouton CLAIM désactivé (timer)');
             return { success: false, message: 'Bouton CLAIM désactivé (timer)' };
         }
 
-        console.log(`🖱️ Clic sur le sélecteur : ${claimSelector}`);
+        console.log(`🖱️ Clic sur ${claimSelector}`);
         await btn.click();
         console.log('✅ Clic effectué');
     } catch (e) {
-        console.log(`⚠️ Clic via sélecteur échoué, fallback par texte exact...`);
+        console.log('⚠️ Fallback par texte exact...');
         const clicked = await page.evaluate(() => {
-            const btns = [...document.querySelectorAll('button, input[type="submit"], a')];
-            const target = btns.find(b => (b.textContent || b.value || '').trim().toUpperCase() === 'CLAIM' && !b.disabled && b.offsetParent !== null);
+            const btns = [...document.querySelectorAll('button')];
+            const target = btns.find(b => b.textContent.trim().toUpperCase() === 'CLAIM' && !b.disabled && b.offsetParent !== null);
             if (target) {
-                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 target.click();
                 return true;
             }
             return false;
         });
         if (!clicked) throw new Error('Impossible de cliquer sur CLAIM');
-        console.log('✅ Clic par texte exact réussi');
+        console.log('✅ Clic fallback réussi');
     }
 
-    // 4. Attendre la réponse réseau et les messages
-    console.log('⏳ Attente de la réponse...');
+    // 4. Attendre réponse
+    console.log('⏳ Attente réponse...');
     await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
     await delay(5000);
 
-    // 5. Récupérer les messages DOM
+    // 5. Messages DOM
     const messages = await page.evaluate(() => {
         return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [class*="message"], [role="alert"]'))
             .map(el => el.textContent.trim()).filter(t => t);
     });
-    console.log('💬 Messages DOM après clic :', messages);
+    console.log('💬 Messages DOM :', messages);
 
-    // 6. Vérifier l'état du bouton
     const btnState = await page.evaluate(() => {
         const b = document.querySelector('#process_claim_hourly_faucet');
-        return b ? { disabled: b.disabled, text: b.textContent.trim() } : null;
+        return b ? { disabled: b.disabled } : null;
     });
-    if (btnState) {
-        console.log(`📌 Bouton CLAIM après clic : ${btnState.disabled ? 'DÉSACTIVÉ' : 'ACTIF'}`);
-    }
 
-    // 7. Déterminer le succès
-    const success = btnState?.disabled || messages.some(m => /success|claimed|reward|sent|congratulations/i.test(m)) || false;
-    const message = messages.find(m => /success|claimed|reward|error|invalid|try again|captcha/i.test(m)) 
+    const success = btnState?.disabled || messages.some(m => /success|claimed|reward|sent/i.test(m));
+    const message = messages.find(m => /success|claimed|error|invalid|captcha/i.test(m)) 
                     || (btnState?.disabled ? 'Bouton désactivé (succès présumé)' : 'Aucune réaction');
 
     return { success, message };
@@ -203,8 +222,8 @@ async function clickCorrectClaimButton(page) {
         await fillField(page, passSel, PASSWORD, 'password');
         await delay(2000);
 
-        const turnstileResolved = await resolveTurnstile(page, 45000);
-        if (!turnstileResolved) console.log('⚠️ Turnstile login non résolu, on tente quand même...');
+        const loginTurnstileResolved = await resolveTurnstile(page, 60000);
+        if (!loginTurnstileResolved) console.log('⚠️ Turnstile login non résolu');
 
         console.log('🔐 Clic sur "Log in"...');
         const loginBtn = await page.evaluateHandle(() => {
@@ -236,8 +255,8 @@ async function clickCorrectClaimButton(page) {
             await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
             await delay(10000);
 
-            // --- CLAIM (avec résolution Turnstile faucet) ---
-            const claimResult = await clickCorrectClaimButton(page);
+            // --- CLAIM ---
+            const claimResult = await clickClaimButton(page);
 
             status.success = claimResult.success;
             status.message = claimResult.success
