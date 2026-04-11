@@ -1,5 +1,5 @@
 {
-  "success": true,
-  "time": "2026-04-11T03:19:47.149Z",
-  "message": "✅ CLAIM réussi : ×Error!Invalid captcha code. Please try again!"
+  "success": false,
+  "time": "2026-04-11T03:28:04.050Z",
+  "message": "❌ CLAIM échoué : ×Error!Invalid captcha code. Please try again!"
 }
