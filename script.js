@@ -16,7 +16,7 @@ if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Mouvement de souris courbe (Bézier quadratique)
+// Mouvement de souris courbe
 async function humanMouseMove(page, targetX, targetY) {
     const start = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
     const steps = 25;
@@ -33,7 +33,7 @@ async function humanMouseMove(page, targetX, targetY) {
     }
 }
 
-// Saisie robuste (inchangée)
+// Saisie robuste
 async function fillField(page, selector, value, fieldName) {
     console.log(`⌨️ Remplissage ${fieldName}...`);
     await page.waitForSelector(selector, { timeout: 10000 });
@@ -87,7 +87,7 @@ async function isLoggedIn(page) {
     return false;
 }
 
-// Clic humain complet sur CLAIM avec analyse réseau et DOM
+// Clic humain complet + capture réseau exhaustive + scan DOM complet
 async function clickClaimButton(page) {
     console.log('🎯 Recherche du bouton CLAIM...');
     await page.waitForNetworkIdle({ timeout: 15000 }).catch(() => {});
@@ -99,7 +99,6 @@ async function clickClaimButton(page) {
     console.log('⏳ Pause de 10 secondes avant le clic...');
     await delay(10000);
 
-    // Récupérer les coordonnées et l'état du bouton
     const btnInfo = await page.evaluate(() => {
         const btn = [...document.querySelectorAll('button, input[type="submit"], a')].find(el => {
             const text = (el.textContent || el.value || '').trim().toUpperCase();
@@ -108,36 +107,33 @@ async function clickClaimButton(page) {
         if (!btn) return null;
         btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
         const rect = btn.getBoundingClientRect();
-        return {
-            x: rect.x + rect.width / 2,
-            y: rect.y + rect.height / 2,
-            tag: btn.tagName,
-            text: btn.textContent.trim(),
-            disabled: btn.disabled
-        };
+        return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, tag: btn.tagName, text: btn.textContent.trim() };
     });
 
     if (!btnInfo) {
-        console.log('❌ Bouton CLAIM non trouvé ou désactivé avant clic');
+        console.log('❌ Bouton CLAIM non trouvé ou désactivé');
         return { success: false, message: 'Bouton CLAIM introuvable ou désactivé' };
     }
 
     console.log(`📍 Bouton trouvé : ${btnInfo.tag} "${btnInfo.text}" à (${Math.round(btnInfo.x)}, ${Math.round(btnInfo.y)})`);
 
-    // Intercepter les réponses réseau
-    const responses = [];
-    const responseListener = async (response) => {
-        const req = response.request();
-        if (['xhr', 'fetch'].includes(req.resourceType())) {
-            try {
-                const text = await response.text().catch(() => '');
-                responses.push({ url: response.url(), status: response.status(), body: text.substring(0, 500) });
-            } catch (e) {}
+    // Capturer TOUTES les requêtes réseau (y compris WebSocket, EventSource, etc.)
+    const allRequests = [];
+    const requestListener = (req) => {
+        allRequests.push({ url: req.url(), method: req.method(), type: req.resourceType() });
+    };
+    page.on('request', requestListener);
+
+    // Capturer aussi les réponses WebSocket (via frame)
+    const wsFrames = [];
+    const frameListener = (frame) => {
+        if (frame.url().startsWith('ws://') || frame.url().startsWith('wss://')) {
+            wsFrames.push(frame.url());
         }
     };
-    page.on('response', responseListener);
+    page.on('frameattached', frameListener);
 
-    // Déplacer la souris et effectuer une séquence de clic complète
+    // Séquence de clic
     console.log('🖱️ Déplacement réaliste de la souris...');
     await humanMouseMove(page, btnInfo.x, btnInfo.y);
     await delay(250);
@@ -151,80 +147,70 @@ async function clickClaimButton(page) {
     await page.mouse.click(btnInfo.x, btnInfo.y);
     console.log('✅ Séquence de clic terminée');
 
-    // Attendre les réponses réseau et les éventuels messages
-    console.log('⏳ Attente des réponses (max 20s)...');
-    await page.waitForNetworkIdle({ timeout: 15000 }).catch(() => {});
+    // Attendre plus longtemps (25s) pour les notifications asynchrones
+    console.log('⏳ Attente prolongée (25s) pour capturer les notifications...');
+    await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
     await delay(5000);
 
-    page.off('response', responseListener);
+    // Arrêter les écoutes
+    page.off('request', requestListener);
+    page.off('frameattached', frameListener);
 
-    // Afficher les réponses réseau
-    console.log(`🌐 Réponses AJAX/Fetch (${responses.length}) :`);
-    responses.forEach((r, i) => {
-        console.log(`   ${i+1}. [${r.status}] ${r.url}`);
-        if (r.body) console.log(`       Body: ${r.body}`);
+    // Afficher toutes les requêtes capturées
+    console.log(`🌐 REQUÊTES RÉSEAU (${allRequests.length}) :`);
+    allRequests.forEach((r, i) => {
+        console.log(`   ${i+1}. [${r.type}] ${r.method} ${r.url}`);
     });
+    if (wsFrames.length) {
+        console.log(`🔌 WebSocket/EventSource : ${wsFrames.join(', ')}`);
+    }
 
-    // Détection étendue des messages DOM
-    const domFeedback = await page.evaluate(() => {
-        const msgSels = ['.alert', '.message', '.toast', '.notification', '.swal2-popup', '.modal', '[class*="success"]', '[class*="error"]', '[role="alert"]', '.fade.show'];
-        for (const s of msgSels) {
-            const el = document.querySelector(s);
-            if (el && el.offsetParent !== null && el.textContent.trim()) {
-                return { text: el.textContent.trim(), selector: s };
+    // Scan complet du DOM pour trouver tout texte de notification
+    const domSnapshot = await page.evaluate(() => {
+        const results = [];
+        // Sélecteurs très larges pour les notifications
+        const containers = document.querySelectorAll('div, span, p, [class*="toast"], [class*="alert"], [class*="message"], [class*="notification"], [class*="popup"], [role="alert"], [role="status"]');
+        for (const el of containers) {
+            if (el.offsetParent !== null) {
+                const text = el.textContent.trim();
+                if (text && text.length > 5 && text.length < 500) {
+                    // Éviter les doublons massifs
+                    if (!results.some(r => r.text === text)) {
+                        results.push({ tag: el.tagName, class: el.className, text });
+                    }
+                }
             }
         }
-        return null;
+        return results;
     });
 
-    // Vérifier l'état du bouton après clic
+    console.log(`📋 Notifications potentielles trouvées dans le DOM (${domSnapshot.length}) :`);
+    domSnapshot.slice(0, 10).forEach((item, i) => {
+        console.log(`   ${i+1}. [${item.tag}] ${item.class} → "${item.text.substring(0, 150)}"`);
+    });
+
+    // Vérifier l'état du bouton
     const btnAfter = await page.evaluate(() => {
-        const btn = [...document.querySelectorAll('button, input[type="submit"], a')].find(el => {
-            const text = (el.textContent || el.value || '').trim().toUpperCase();
-            return text === 'CLAIM';
-        });
+        const btn = [...document.querySelectorAll('button, input[type="submit"], a')].find(el => (el.textContent || el.value || '').trim().toUpperCase() === 'CLAIM');
         return btn ? { disabled: btn.disabled, text: btn.textContent.trim() } : null;
     });
 
+    // Déterminer le message final
     let finalMessage = '';
     let success = false;
 
-    // Analyser les réponses serveur
-    for (const r of responses) {
-        if (r.body) {
-            const b = r.body.toLowerCase();
-            if (b.includes('success') || b.includes('claimed') || b.includes('reward') || b.includes('ok')) {
-                success = true;
-                finalMessage = r.body;
-                break;
-            }
-            if (b.includes('wait') || b.includes('cooldown') || b.includes('already') || b.includes('too early') || b.includes('timer')) {
-                finalMessage = r.body;
-                break;
-            }
-        }
-    }
-
-    // Si aucun message serveur clair, utiliser le DOM ou l'état du bouton
-    if (!finalMessage) {
-        if (domFeedback) {
-            finalMessage = domFeedback.text;
-            if (domFeedback.text.toLowerCase().includes('success') || domFeedback.text.toLowerCase().includes('claim')) {
-                success = true;
-            }
-        } else if (btnAfter && btnAfter.disabled) {
-            finalMessage = 'Bouton désactivé après clic (succès présumé)';
-            success = true;
-        } else {
-            finalMessage = 'Aucune réaction détectée';
-        }
-    }
-
-    // Recherche de timer dans le texte de la page
-    const pageText = await page.evaluate(() => document.body.innerText);
-    const timerMatch = pageText.match(/next claim.*?(\d+)\s*(hour|minute|second)/i);
-    if (timerMatch) {
-        finalMessage += ` (Timer: ${timerMatch[0]})`;
+    // Chercher un message de succès ou timer dans les notifications
+    const notificationTexts = domSnapshot.map(d => d.text.toLowerCase()).join(' ');
+    if (notificationTexts.includes('success') || notificationTexts.includes('claimed') || notificationTexts.includes('reward')) {
+        success = true;
+        finalMessage = domSnapshot.find(d => d.text.toLowerCase().includes('success') || d.text.toLowerCase().includes('claimed'))?.text || 'Succès détecté dans notification';
+    } else if (notificationTexts.includes('wait') || notificationTexts.includes('cooldown') || notificationTexts.includes('already') || notificationTexts.includes('next claim')) {
+        finalMessage = domSnapshot.find(d => d.text.toLowerCase().includes('wait') || d.text.toLowerCase().includes('next'))?.text || 'Timer détecté';
+    } else if (btnAfter && btnAfter.disabled) {
+        success = true;
+        finalMessage = 'Bouton désactivé après clic (succès présumé)';
+    } else {
+        finalMessage = 'Aucune notification ou changement d\'état détecté';
     }
 
     console.log(`📌 Résultat final : ${success ? 'SUCCÈS' : 'ÉCHEC'} - ${finalMessage}`);
