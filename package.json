@@ -1,12 +1,14 @@
 {
   "name": "tronpick-faucet",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "description": "",
   "main": "script.js",
   "scripts": {
     "start": "node script.js"
   },
   "dependencies": {
-    "puppeteer-real-browser": "^1.0.0"
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "puppeteer": "^22.0.0"
   }
 }
