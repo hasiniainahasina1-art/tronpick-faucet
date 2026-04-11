@@ -16,7 +16,7 @@ if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Saisie robuste (inchangée)
+// Saisie robuste
 async function fillField(page, selector, value, fieldName) {
     console.log(`⌨️ Remplissage ${fieldName}...`);
     await page.waitForSelector(selector, { timeout: 10000 });
@@ -42,7 +42,7 @@ async function fillField(page, selector, value, fieldName) {
     console.log(`✅ ${fieldName} rempli`);
 }
 
-// Connexion
+// Connexion (inchangée)
 async function login(page) {
     console.log('🌐 Accès login...');
     await page.goto('https://tronpick.io/login.php', { waitUntil: 'networkidle2', timeout: 60000 });
@@ -74,11 +74,23 @@ async function login(page) {
     console.log('✅ Connecté');
 }
 
-// Résolution du Turnstile faucet avec clic sur "Verify you are human"
+// Résolution du Turnstile faucet avec actions de réveil
 async function resolveFaucetTurnstile(page) {
     console.log('🛡️ Résolution du Turnstile faucet...');
+
+    // Actions pour inciter Turnstile à apparaître
+    await page.evaluate(() => window.scrollBy(0, 300));
+    await delay(500);
+    await page.mouse.move(400, 300);
+    await page.mouse.click(400, 300);
+    await delay(1000);
+    await page.evaluate(() => window.scrollBy(0, -150));
+
     try {
-        const frame = await page.waitForFrame(f => f.url().includes('challenges.cloudflare.com/turnstile'), { timeout: 60000 });
+        const frame = await page.waitForFrame(
+            f => f.url().includes('challenges.cloudflare.com/turnstile'),
+            { timeout: 90000 } // 90 secondes
+        );
         console.log('✅ Iframe Turnstile faucet trouvée');
 
         await frame.waitForSelector('body', { timeout: 5000 });
@@ -93,6 +105,7 @@ async function resolveFaucetTurnstile(page) {
         });
         console.log('✅ Clic sur "Verify you are human"');
 
+        // Attendre que Turnstile se résolve (max 45s)
         const start = Date.now();
         while (Date.now() - start < 45000) {
             const isChecked = await frame.$eval('input[type="checkbox"]', cb => cb.checked).catch(() => false);
