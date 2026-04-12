@@ -20,8 +20,8 @@ if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Coordonnées fixes (résolution 1280x720)
-const TURNSTILE_CLICK = { x: 640, y: 193 };
-const CLAIM_CLICK = { x: 640, y: 223 };
+const TURNSTILE_COORDS = { x: 640, y: 195 };
+const CLAIM_COORDS = { x: 640, y: 223 };
 
 async function fillField(page, selector, value, fieldName) {
     console.log(`⌨️ Remplissage ${fieldName}...`);
@@ -101,7 +101,7 @@ async function humanScrollToClaim(page) {
     console.log('✅ Scroll terminé');
 }
 
-async function clickAtCoordinates(page, coords, label) {
+async function humanClickAt(page, coords, label) {
     console.log(`🖱️ Clic ${label} aux coordonnées (${coords.x}, ${coords.y})`);
     const start = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
     const steps = 20;
@@ -146,27 +146,17 @@ async function clickAtCoordinates(page, coords, label) {
 
         await humanScrollToClaim(page);
         await delay(2000);
-        await page.screenshot({ path: path.join(outputDir, '03_turnstile_appeared.png'), fullPage: true });
+        await page.screenshot({ path: path.join(outputDir, '03_turnstile_visible.png'), fullPage: true });
 
-        console.log('⏳ Attente de l\'apparition de l\'iframe Turnstile (max 10s)...');
-        const turnstileAppeared = await page.waitForFrame(
-            f => f.url().includes('challenges.cloudflare.com/turnstile'),
-            { timeout: 10000 }
-        ).catch(() => null);
-        
-        if (turnstileAppeared) {
-            console.log('✅ Iframe Turnstile détectée');
-        } else {
-            console.log('⚠️ Iframe Turnstile non détectée, on tente les clics quand même');
-        }
-
-        await clickAtCoordinates(page, TURNSTILE_CLICK, 'Turnstile 1/2');
+        // Premier clic Turnstile
+        await humanClickAt(page, TURNSTILE_COORDS, 'Turnstile 1/2');
         await page.screenshot({ path: path.join(outputDir, '04_after_first_turnstile_click.png'), fullPage: true });
 
         console.log('⏳ Attente de 10 secondes...');
         await delay(10000);
 
-        await clickAtCoordinates(page, TURNSTILE_CLICK, 'Turnstile 2/2');
+        // Deuxième clic Turnstile
+        await humanClickAt(page, TURNSTILE_COORDS, 'Turnstile 2/2');
         await page.screenshot({ path: path.join(outputDir, '05_after_second_turnstile_click.png'), fullPage: true });
 
         console.log('⏳ Attente de 10 secondes...');
@@ -176,7 +166,8 @@ async function clickAtCoordinates(page, coords, label) {
         await delay(10000);
         await page.screenshot({ path: path.join(outputDir, '06_before_claim.png'), fullPage: true });
 
-        await clickAtCoordinates(page, CLAIM_CLICK, 'CLAIM');
+        // Clic sur CLAIM
+        await humanClickAt(page, CLAIM_COORDS, 'CLAIM');
         await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
         await delay(5000);
         await page.screenshot({ path: path.join(outputDir, '07_after_claim.png'), fullPage: true });
