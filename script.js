@@ -19,9 +19,35 @@ if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Coordonnées fixes (résolution 1280x720)
+// Coordonnées à tester (modifiables)
 const TURNSTILE_COORDS = { x: 640, y: 195 };
 const CLAIM_COORDS = { x: 640, y: 223 };
+
+// Fonction pour dessiner un cercle rouge à l'écran (ne pas cliquer)
+async function drawRedDot(page, x, y) {
+    await page.evaluate((x, y) => {
+        const dot = document.createElement('div');
+        dot.id = 'puppeteer-debug-dot';
+        dot.style.position = 'fixed';
+        dot.style.left = (x - 5) + 'px';
+        dot.style.top = (y - 5) + 'px';
+        dot.style.width = '10px';
+        dot.style.height = '10px';
+        dot.style.backgroundColor = 'red';
+        dot.style.borderRadius = '50%';
+        dot.style.zIndex = '999999';
+        dot.style.border = '2px solid darkred';
+        document.body.appendChild(dot);
+    }, x, y);
+}
+
+// Fonction pour effacer le point rouge
+async function clearRedDot(page) {
+    await page.evaluate(() => {
+        const dot = document.getElementById('puppeteer-debug-dot');
+        if (dot) dot.remove();
+    });
+}
 
 async function fillField(page, selector, value, fieldName) {
     console.log(`⌨️ Remplissage ${fieldName}...`);
@@ -148,29 +174,35 @@ async function humanClickAt(page, coords, label) {
         await delay(2000);
         await page.screenshot({ path: path.join(outputDir, '03_turnstile_visible.png'), fullPage: true });
 
+        // --- DEBUG : dessiner un point rouge aux coordonnées Turnstile et capturer ---
+        await drawRedDot(page, TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
+        await page.screenshot({ path: path.join(outputDir, '04_turnstile_with_red_dot.png'), fullPage: true });
+        await clearRedDot(page);
+        // --------------------------------------------------------------------------
+
         // Premier clic Turnstile
         await humanClickAt(page, TURNSTILE_COORDS, 'Turnstile 1/2');
-        await page.screenshot({ path: path.join(outputDir, '04_after_first_turnstile_click.png'), fullPage: true });
+        await page.screenshot({ path: path.join(outputDir, '05_after_first_turnstile_click.png'), fullPage: true });
 
         console.log('⏳ Attente de 10 secondes...');
         await delay(10000);
 
         // Deuxième clic Turnstile
         await humanClickAt(page, TURNSTILE_COORDS, 'Turnstile 2/2');
-        await page.screenshot({ path: path.join(outputDir, '05_after_second_turnstile_click.png'), fullPage: true });
+        await page.screenshot({ path: path.join(outputDir, '06_after_second_turnstile_click.png'), fullPage: true });
 
         console.log('⏳ Attente de 10 secondes...');
         await delay(10000);
 
         console.log('⏳ Attente de 10 secondes avant le clic sur CLAIM...');
         await delay(10000);
-        await page.screenshot({ path: path.join(outputDir, '06_before_claim.png'), fullPage: true });
+        await page.screenshot({ path: path.join(outputDir, '07_before_claim.png'), fullPage: true });
 
         // Clic sur CLAIM
         await humanClickAt(page, CLAIM_COORDS, 'CLAIM');
         await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
         await delay(5000);
-        await page.screenshot({ path: path.join(outputDir, '07_after_claim.png'), fullPage: true });
+        await page.screenshot({ path: path.join(outputDir, '08_after_claim.png'), fullPage: true });
 
         const messages = await page.evaluate(() => {
             return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [role="alert"]'))
