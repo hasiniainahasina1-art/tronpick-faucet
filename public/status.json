@@ -1,5 +1,5 @@
 {
-  "success": true,
-  "time": "2026-04-12T04:27:01.256Z",
-  "message": "×Success!You got 0.001000 TRX!"
+  "success": false,
+  "time": "2026-04-12T04:46:50.938Z",
+  "message": "×Error!Please wait for 40 minutes, 16 seconds to the next faucet claim!"
 }
