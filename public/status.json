@@ -1,5 +1,5 @@
 {
-  "success": true,
-  "time": "2026-04-13T20:14:58.624Z",
-  "message": "×Success!You got 0.001000 TRX!"
+  "success": false,
+  "time": "2026-04-13T23:29:56.257Z",
+  "message": "×Error!Something went wrong! Please try again in 10 minutes!"
 }
