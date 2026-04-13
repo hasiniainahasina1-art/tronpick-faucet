@@ -20,7 +20,7 @@ if (!EMAIL || !PASSWORD || !PROXY_USERNAME || !PROXY_PASSWORD) {
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Coordonnées à tester (modifiables)
-const TURNSTILE_COORDS = { x: 640, y: 195 };
+const TURNSTILE_COORDS = { x: 640, y: 163 };
 const CLAIM_COORDS = { x: 640, y: 223 };
 
 // Fonction pour dessiner un cercle rouge à l'écran (ne pas cliquer)
