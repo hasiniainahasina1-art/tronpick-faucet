@@ -40,7 +40,6 @@ export default async function handler(req, res) {
     if (req.method === 'OPTIONS') return res.status(200).end();
     if (req.method !== 'POST') return res.status(405).json({ error: 'Méthode non autorisée' });
 
-    // Timeout global de 55 secondes (max Vercel = 60s)
     const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Timeout global dépassé (55s)')), 55000)
     );
@@ -53,7 +52,12 @@ export default async function handler(req, res) {
         res.status(200).json(result);
     } catch (error) {
         console.error('❌ Erreur globale:', error);
-        res.status(500).json({ error: error.message || 'Erreur inconnue' });
+        // Si l'erreur contient une capture, on la renvoie
+        if (error.screenshot) {
+            res.status(500).json({ error: error.message, screenshot: error.screenshot });
+        } else {
+            res.status(500).json({ error: error.message || 'Erreur inconnue' });
+        }
     }
 }
 
@@ -88,7 +92,6 @@ async function handleLogin({ email, password, platform, proxy }) {
 
     let browser;
     try {
-        // Connexion à Browserless
         console.log('🔗 Connexion à Browserless...');
         browser = await puppeteer.connect({
             browserWSEndpoint: `wss://chrome.browserless.io?token=${BROWSERLESS_TOKEN}`
@@ -139,11 +142,15 @@ async function handleLogin({ email, password, platform, proxy }) {
         console.log(`📍 URL après login : ${currentUrl}`);
 
         if (currentUrl.includes('login.php')) {
+            // Capturer l'écran pour diagnostic
+            const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
             const errorMsg = await page.evaluate(() => {
                 const el = document.querySelector('.alert-danger, .error, .message-error');
                 return el ? el.textContent.trim() : null;
             });
-            throw new Error(errorMsg || 'Identifiants invalides');
+            const err = new Error(errorMsg || 'Identifiants invalides ou captcha non résolu');
+            err.screenshot = screenshot;
+            throw err;
         }
 
         const cookies = await page.cookies();
