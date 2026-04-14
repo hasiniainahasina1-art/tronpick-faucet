@@ -1,12 +1,11 @@
 {
   "functions": {
     "api/login.js": {
-      "runtime": "nodejs20.x",
       "maxDuration": 60,
       "memory": 2048
     },
     "api/accounts.js": {
-      "runtime": "nodejs20.x"
+      "maxDuration": 30
     }
   }
 }
