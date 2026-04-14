@@ -1,14 +1,15 @@
-
 // api/login.js
-const { connect } = require('puppeteer-real-browser');
+const puppeteer = require('puppeteer-core');
 
-// Configuration du proxy par défaut
 const DEFAULT_PROXY_HOST = '31.59.20.176';
 const DEFAULT_PROXY_PORT = '6754';
 const DEFAULT_PROXY_USERNAME = process.env.PROXY_USERNAME || '';
 const DEFAULT_PROXY_PASSWORD = process.env.PROXY_PASSWORD || '';
 
-const TURNSTILE_COORDS = { x: 640, y: 195 };
+const BROWSERLESS_TOKEN = process.env.BROWSERLESS_TOKEN;
+if (!BROWSERLESS_TOKEN) {
+    console.error('❌ BROWSERLESS_TOKEN manquant');
+}
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -35,32 +36,16 @@ async function fillField(page, selector, value, fieldName) {
     if (actual !== value) throw new Error(`Impossible de remplir ${fieldName}`);
 }
 
-async function humanClickAt(page, coords) {
-    const start = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
-    const steps = 20;
-    for (let i = 1; i <= steps; i++) {
-        const t = i / steps;
-        const cp = { x: start.x + (Math.random() - 0.5) * 100, y: start.y + (Math.random() - 0.5) * 100 };
-        const x = Math.pow(1 - t, 2) * start.x + 2 * (1 - t) * t * cp.x + Math.pow(t, 2) * coords.x;
-        const y = Math.pow(1 - t, 2) * start.y + 2 * (1 - t) * t * cp.y + Math.pow(t, 2) * coords.y;
-        await page.mouse.move(x, y);
-        await delay(15);
-    }
-    await page.mouse.click(coords.x, coords.y);
-}
-
 export default async function handler(req, res) {
-    // CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
+    if (req.method === 'OPTIONS') return res.status(200).end();
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Méthode non autorisée' });
 
-    if (req.method !== 'POST') {
-        return res.status(405).json({ error: 'Méthode non autorisée' });
+    if (!BROWSERLESS_TOKEN) {
+        return res.status(500).json({ error: 'Configuration Browserless manquante' });
     }
 
     const { email, password, platform, proxy } = req.body;
@@ -76,37 +61,24 @@ export default async function handler(req, res) {
         binpick: 'https://binpick.io/login.php'
     };
     const loginUrl = siteUrls[platform];
-    if (!loginUrl) {
-        return res.status(400).json({ error: 'Plateforme inconnue' });
-    }
+    if (!loginUrl) return res.status(400).json({ error: 'Plateforme inconnue' });
 
-    // Configurer le proxy
     let proxyConfig = null;
     if (proxy) {
         const parts = proxy.split(':');
-        if (parts.length === 2) {
-            proxyConfig = { host: parts[0], port: parts[1] };
-        } else if (parts.length === 4) {
-            proxyConfig = { host: parts[0], port: parts[1], username: parts[2], password: parts[3] };
-        }
+        if (parts.length === 2) proxyConfig = { host: parts[0], port: parts[1] };
+        else if (parts.length === 4) proxyConfig = { host: parts[0], port: parts[1], username: parts[2], password: parts[3] };
     } else {
-        proxyConfig = {
-            host: DEFAULT_PROXY_HOST,
-            port: DEFAULT_PROXY_PORT,
-            username: DEFAULT_PROXY_USERNAME,
-            password: DEFAULT_PROXY_PASSWORD
-        };
+        proxyConfig = { host: DEFAULT_PROXY_HOST, port: DEFAULT_PROXY_PORT, username: DEFAULT_PROXY_USERNAME, password: DEFAULT_PROXY_PASSWORD };
     }
 
     let browser;
     try {
-        const { browser: br, page } = await connect({
-            headless: false,
-            turnstile: true,
-            proxy: proxyConfig
+        browser = await puppeteer.connect({
+            browserWSEndpoint: `wss://chrome.browserless.io?token=${BROWSERLESS_TOKEN}`
         });
-        browser = br;
 
+        const page = await browser.newPage();
         if (proxyConfig && proxyConfig.username) {
             await page.authenticate({ username: proxyConfig.username, password: proxyConfig.password });
         }
@@ -118,16 +90,12 @@ export default async function handler(req, res) {
         await fillField(page, 'input[type="password"]', password, 'password');
         await delay(2000);
 
-        // Turnstile login
         try {
             const frame = await page.waitForFrame(f => f.url().includes('challenges.cloudflare.com/turnstile'), { timeout: 15000 });
             await frame.click('input[type="checkbox"]');
             await delay(5000);
-        } catch (e) {
-            // Pas de Turnstile ou non trouvé
-        }
+        } catch (e) {}
 
-        // Clic sur Log in
         const loginClicked = await page.evaluate(() => {
             const btns = [...document.querySelectorAll('button')];
             const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
@@ -139,13 +107,12 @@ export default async function handler(req, res) {
         await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
         await delay(5000);
 
-        const currentUrl = page.url();
-        if (currentUrl.includes('login.php')) {
+        if (page.url().includes('login.php')) {
             const errorMsg = await page.evaluate(() => {
                 const el = document.querySelector('.alert-danger, .error, .message-error');
                 return el ? el.textContent.trim() : null;
             });
-            throw new Error(errorMsg || 'Échec de connexion (identifiants invalides ou captcha)');
+            throw new Error(errorMsg || 'Identifiants invalides');
         }
 
         const cookies = await page.cookies();
