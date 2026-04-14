@@ -33,27 +33,36 @@ async function fillField(page, selector, value, fieldName) {
 }
 
 export default async function handler(req, res) {
-    // CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
-    if (req.method !== 'POST') {
-        return res.status(405).json({ error: 'Méthode non autorisée' });
-    }
+    if (req.method === 'OPTIONS') return res.status(200).end();
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Méthode non autorisée' });
 
-    // Vérification immédiate du token Browserless
+    // Timeout global de 55 secondes (max Vercel = 60s)
+    const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Timeout global dépassé (55s)')), 55000)
+    );
+
+    try {
+        const result = await Promise.race([
+            handleLogin(req.body),
+            timeoutPromise
+        ]);
+        res.status(200).json(result);
+    } catch (error) {
+        console.error('❌ Erreur globale:', error);
+        res.status(500).json({ error: error.message || 'Erreur inconnue' });
+    }
+}
+
+async function handleLogin({ email, password, platform, proxy }) {
     if (!BROWSERLESS_TOKEN) {
-        console.error('BROWSERLESS_TOKEN manquant');
-        return res.status(500).json({ error: 'Configuration serveur : BROWSERLESS_TOKEN manquant' });
+        throw new Error('Configuration serveur : BROWSERLESS_TOKEN manquant');
     }
-
-    const { email, password, platform, proxy } = req.body;
     if (!email || !password || !platform) {
-        return res.status(400).json({ error: 'Champs manquants' });
+        throw new Error('Champs manquants');
     }
 
     const siteUrls = {
@@ -64,59 +73,36 @@ export default async function handler(req, res) {
         binpick: 'https://binpick.io/login.php'
     };
     const loginUrl = siteUrls[platform];
-    if (!loginUrl) {
-        return res.status(400).json({ error: 'Plateforme inconnue' });
-    }
+    if (!loginUrl) throw new Error('Plateforme inconnue');
 
-    // Configuration du proxy
     let proxyConfig = null;
     if (proxy) {
         const parts = proxy.split(':');
-        if (parts.length === 2) {
-            proxyConfig = { host: parts[0], port: parts[1] };
-        } else if (parts.length === 4) {
-            proxyConfig = { host: parts[0], port: parts[1], username: parts[2], password: parts[3] };
-        }
+        if (parts.length === 2) proxyConfig = { host: parts[0], port: parts[1] };
+        else if (parts.length === 4) proxyConfig = { host: parts[0], port: parts[1], username: parts[2], password: parts[3] };
     } else {
-        proxyConfig = {
-            host: DEFAULT_PROXY_HOST,
-            port: DEFAULT_PROXY_PORT,
-            username: PROXY_USERNAME,
-            password: PROXY_PASSWORD
-        };
+        proxyConfig = { host: DEFAULT_PROXY_HOST, port: DEFAULT_PROXY_PORT, username: PROXY_USERNAME, password: PROXY_PASSWORD };
     }
 
     console.log(`🚀 Début login pour ${email} sur ${platform}`);
 
     let browser;
     try {
-        // Connexion à Browserless (avec retry)
-        let retries = 2;
-        while (retries > 0) {
-            try {
-                browser = await puppeteer.connect({
-                    browserWSEndpoint: `wss://chrome.browserless.io?token=${BROWSERLESS_TOKEN}`
-                });
-                console.log('✅ Connecté à Browserless');
-                break;
-            } catch (e) {
-                retries--;
-                if (retries === 0) throw new Error(`Browserless connection failed: ${e.message}`);
-                console.log(`⚠️ Retry Browserless (${retries} restants)`);
-                await delay(2000);
-            }
-        }
+        // Connexion à Browserless
+        console.log('🔗 Connexion à Browserless...');
+        browser = await puppeteer.connect({
+            browserWSEndpoint: `wss://chrome.browserless.io?token=${BROWSERLESS_TOKEN}`
+        });
+        console.log('✅ Connecté à Browserless');
 
         const page = await browser.newPage();
-
-        // Authentification proxy
         if (proxyConfig && proxyConfig.username) {
             await page.authenticate({ username: proxyConfig.username, password: proxyConfig.password });
         }
 
         await page.setViewport({ width: 1280, height: 720 });
 
-        console.log(`🌐 Goto ${loginUrl}`);
+        console.log(`🌐 Navigation vers ${loginUrl}`);
         await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 60000 });
 
         console.log('⌨️ Remplissage email/password');
@@ -141,10 +127,7 @@ export default async function handler(req, res) {
         const loginClicked = await page.evaluate(() => {
             const btns = [...document.querySelectorAll('button')];
             const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
-            if (loginBtn) {
-                loginBtn.click();
-                return true;
-            }
+            if (loginBtn) { loginBtn.click(); return true; }
             return false;
         });
         if (!loginClicked) throw new Error('Bouton Log in introuvable');
@@ -167,12 +150,11 @@ export default async function handler(req, res) {
         console.log(`✅ ${cookies.length} cookies capturés`);
 
         await browser.close();
-        res.status(200).json({ success: true, cookies });
+        return { success: true, cookies };
 
     } catch (error) {
-        console.error('❌ Erreur dans api/login:', error);
+        console.error('❌ Erreur dans handleLogin:', error);
         if (browser) await browser.close().catch(() => {});
-        // Renvoyer TOUJOURS du JSON, même si l'erreur est étrange
-        res.status(500).json({ error: error.message || 'Erreur inconnue' });
+        throw error;
     }
 }
