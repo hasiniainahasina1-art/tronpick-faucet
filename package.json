@@ -1,13 +1,17 @@
 {
   "name": "tronpick-faucet",
   "version": "3.0.0",
-  "description": "",
+  "description": "Auto claim multi-comptes Tronpick et autres faucets",
   "main": "script.js",
   "scripts": {
     "start": "node script.js"
   },
   "dependencies": {
     "@octokit/rest": "^20.0.2",
+    "puppeteer-core": "^21.11.0",
     "puppeteer-real-browser": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
