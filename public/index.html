@@ -5,34 +5,145 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Finoana Auto Claim - Dashboard</title>
     <style>
-        body { font-family: 'Segoe UI', Arial, sans-serif; background:#f4f9ff; margin: 20px; }
-        .container { max-width: 1100px; margin: 0 auto; }
-        h1, h2 { color: #1e293b; }
-        .card { background: white; border-radius: 12px; padding: 20px; margin-bottom: 25px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-        form { display: flex; flex-direction: column; gap: 12px; }
-        .form-row { display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end; }
-        .form-group { flex: 1 1 200px; }
-        label { display: block; font-weight: 600; margin-bottom: 5px; color: #334155; }
-        input, select { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
-        button { padding: 10px 20px; background: #2563eb; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
-        button:hover { background: #1d4ed8; }
-        button.secondary { background: #64748b; }
-        button.secondary:hover { background: #475569; }
-        button.danger { background: #dc2626; }
-        button.danger:hover { background: #b91c1c; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { text-align: left; padding: 12px 8px; border-bottom: 1px solid #e2e8f0; }
-        th { background: #f8fafc; font-weight: 600; color: #0f172a; }
-        .status-badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
-        .status-active { background: #dcfce7; color: #166534; }
-        .status-inactive { background: #fee2e2; color: #991b1b; }
-        .actions { display: flex; gap: 8px; }
-        .actions button { padding: 5px 10px; font-size: 12px; }
-        .message { padding: 12px; border-radius: 6px; margin-bottom: 15px; }
-        .success { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
-        .error { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
-        .hidden { display: none; }
-        .inline-hint { font-size: 12px; color: #64748b; margin-top: 4px; }
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f9ff;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+        h1, h2 {
+            color: #1e293b;
+            text-align: center;
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .form-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: flex-end;
+        }
+        .form-group {
+            flex: 1 1 200px;
+        }
+        label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #334155;
+            text-align: left;
+        }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        button {
+            padding: 12px 25px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #218838;
+        }
+        button.secondary {
+            background: #6c757d;
+        }
+        button.secondary:hover {
+            background: #5a6268;
+        }
+        button.danger {
+            background: #dc3545;
+        }
+        button.danger:hover {
+            background: #c82333;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            text-align: left;
+            padding: 12px 8px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        th {
+            background: #f8f9fa;
+            font-weight: bold;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status-active {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status-inactive {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .actions {
+            display: flex;
+            gap: 8px;
+        }
+        .actions button {
+            padding: 5px 10px;
+            font-size: 12px;
+        }
+        .message {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .hidden {
+            display: none;
+        }
+        .inline-hint {
+            font-size: 12px;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+        .text-center {
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -40,7 +151,7 @@
     <h1>⚙️ Finoana Auto Claim - Dashboard</h1>
 
     <!-- Configuration GitHub -->
-    <div class="card" id="githubConfig">
+    <div class="card">
         <h2>🔐 Configuration GitHub</h2>
         <div class="form-row">
             <div class="form-group">
@@ -106,7 +217,9 @@
     <div class="card">
         <h2>📋 Comptes configurés</h2>
         <div id="messageArea"></div>
-        <button id="refreshBtn" class="secondary">🔄 Rafraîchir</button>
+        <div class="text-center">
+            <button id="refreshBtn" class="secondary">🔄 Rafraîchir</button>
+        </div>
         <table id="accountsTable">
             <thead>
                 <tr>
@@ -151,7 +264,7 @@
             storage.setItem('gh_token', ghToken);
             storage.setItem('gh_username', ghUsername);
             storage.setItem('gh_repo', ghRepo);
-            showMessage('Configuration GitHub enregistrée.', 'success');
+            showMessage('✅ Configuration GitHub enregistrée.', 'success');
             loadAccounts();
         });
 
@@ -233,6 +346,10 @@
         function renderAccounts() {
             const tbody = accountsBody;
             tbody.innerHTML = '';
+            if (currentAccounts.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Aucun compte configuré</td></tr>';
+                return;
+            }
             currentAccounts.forEach((acc, idx) => {
                 const row = tbody.insertRow();
                 row.innerHTML = `
@@ -265,7 +382,7 @@
                 currentAccounts = await loadAccountsFromGitHub();
                 renderAccounts();
             } catch (e) {
-                showMessage(`Erreur chargement: ${e.message}`, 'error');
+                showMessage(`❌ Erreur chargement: ${e.message}`, 'error');
             }
         }
 
