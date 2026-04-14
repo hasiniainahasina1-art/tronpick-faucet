@@ -5,16 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Finoana Auto Claim</title>
     <style>
-        /* Styles identiques à la version précédente */
         body { font-family: Arial, sans-serif; background: #f4f9ff; margin: 20px; }
-        .container { max-width: 1000px; margin: 0 auto; }
+        .container { max-width: 1200px; margin: 0 auto; }
         h1, h2 { color: #1e293b; text-align: center; }
         .card { background: white; border-radius: 12px; padding: 25px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
         .form-row { display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end; }
         .form-group { flex: 1 1 200px; }
         label { display: block; font-weight: bold; margin-bottom: 5px; color: #334155; text-align: left; }
         input, select { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
-        button { padding: 12px 25px; background: #28a745; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
+        button { padding: 12px 25px; background: #28a745; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
         button:hover { background: #218838; }
         button.secondary { background: #6c757d; }
         button.danger { background: #dc3545; }
@@ -24,30 +23,35 @@
         .status-badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; }
         .status-active { background: #d4edda; color: #155724; }
         .status-inactive { background: #f8d7da; color: #721c24; }
-        .cookie-status { font-size: 12px; margin-left: 5px; }
-        .cookie-ok { color: #28a745; }
-        .cookie-pending { color: #ffc107; }
+        .cookie-status { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 20px; font-size: 12px; font-weight: bold; }
+        .cookie-pending { background: #fff3cd; color: #856404; }
+        .cookie-valid   { background: #d4edda; color: #155724; }
+        .cookie-expired { background: #f8d7da; color: #721c24; }
+        .cookie-failed  { background: #f8d7da; color: #721c24; }
         .actions { display: flex; gap: 8px; }
+        .actions button { padding: 5px 10px; font-size: 12px; }
         .countdown { font-weight: bold; color: #2563eb; }
         .message { padding: 12px; border-radius: 6px; margin-bottom: 20px; }
         .success { background: #d4edda; color: #155724; }
         .error { background: #f8d7da; color: #721c24; }
         .hidden { display: none; }
         .text-center { text-align: center; }
+        .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #28a745; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; display: inline-block; margin-left: 10px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 <div class="container">
     <h1>⚙️ Finoana Auto Claim</h1>
 
-    <!-- Formulaire d'ajout -->
+    <!-- Formulaire d'ajout / modification -->
     <div class="card">
         <h2 id="formTitle">➕ Ajouter un compte</h2>
         <form id="accountForm">
             <input type="hidden" id="accountIndex" value="">
             <div class="form-row">
-                <div class="form-group"><label>Email *</label><input type="email" id="email" required></div>
-                <div class="form-group"><label>Mot de passe *</label><input type="password" id="password" required></div>
+                <div class="form-group"><label>Email *</label><input type="email" id="email" placeholder="compte@example.com" required></div>
+                <div class="form-group"><label>Mot de passe *</label><input type="password" id="password" placeholder="••••••••" required></div>
             </div>
             <div class="form-row">
                 <div class="form-group"><label>Intervalle (minutes) *</label><input type="number" id="timer" min="1" value="60" required></div>
@@ -58,11 +62,12 @@
                     <option value="solpick">SolPick</option>
                     <option value="binpick">BinPick</option>
                 </select></div>
-                <div class="form-group"><label>Proxy (optionnel)</label><input type="text" id="proxy" placeholder="ip:port:user:pass"></div>
+                <div class="form-group"><label>Proxy (optionnel)</label><input type="text" id="proxy" placeholder="ip:port ou ip:port:user:pass"></div>
             </div>
             <div class="form-row">
                 <button type="submit" id="saveBtn">💾 Ajouter</button>
                 <button type="button" id="cancelBtn" class="secondary hidden">Annuler</button>
+                <div id="loginSpinner" class="spinner hidden"></div>
             </div>
         </form>
     </div>
@@ -105,12 +110,20 @@
         const proxyInput = document.getElementById('proxy');
         const saveBtn = document.getElementById('saveBtn');
         const cancelBtn = document.getElementById('cancelBtn');
+        const loginSpinner = document.getElementById('loginSpinner');
         const accountsBody = document.getElementById('accountsBody');
         const messageArea = document.getElementById('messageArea');
         const refreshBtn = document.getElementById('refreshBtn');
 
         let currentAccounts = [];
         let countdownIntervals = [];
+
+        const cookiesStatusMap = {
+            pending: { icon: '⏳', text: 'En attente', class: 'cookie-pending' },
+            valid:   { icon: '✅', text: 'Valides', class: 'cookie-valid' },
+            expired: { icon: '⚠️', text: 'Expirés', class: 'cookie-expired' },
+            failed:  { icon: '❌', text: 'Échec', class: 'cookie-failed' }
+        };
 
         function showMessage(text, type) {
             messageArea.innerHTML = `<div class="message ${type}">${text}</div>`;
@@ -140,16 +153,19 @@
             const tbody = accountsBody;
             tbody.innerHTML = '';
             if (!currentAccounts.length) {
-                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">Aucun compte</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">Aucun compte configuré</td></tr>';
                 return;
             }
             currentAccounts.forEach((acc, idx) => {
                 const row = tbody.insertRow();
                 const rem = getRemainingSeconds(acc);
-                const hasCookies = acc.cookies && acc.cookies.length > 0;
+                const st = cookiesStatusMap[acc.cookiesStatus || 'pending'] || cookiesStatusMap.pending;
                 row.innerHTML = `
-                    <td>${acc.email}</td><td>${acc.timer || 60} min</td><td>${acc.platform}</td><td>${acc.proxy || 'Défaut'}</td>
-                    <td><span class="cookie-status ${hasCookies ? 'cookie-ok' : 'cookie-pending'}">${hasCookies ? '✅' : '⏳'}</span></td>
+                    <td>${acc.email}</td>
+                    <td>${acc.timer || 60} min</td>
+                    <td>${acc.platform || 'tronpick'}</td>
+                    <td>${acc.proxy || 'Défaut'}</td>
+                    <td><span class="cookie-status ${st.class}">${st.icon} ${st.text}</span></td>
                     <td><span class="countdown" id="cd-${idx}">${formatTime(rem)}</span></td>
                     <td><span class="status-badge ${acc.enabled !== false ? 'status-active' : 'status-inactive'}">${acc.enabled !== false ? 'Actif' : 'Inactif'}</span></td>
                     <td class="actions">
@@ -180,14 +196,15 @@
         }
 
         async function saveAccounts(accounts) {
-            try { await saveAccountsToAPI(accounts); showMessage('✅ Sauvegardé.', 'success'); await loadAccounts(); }
+            try { await saveAccountsToAPI(accounts); showMessage('✅ Comptes sauvegardés.', 'success'); await loadAccounts(); }
             catch (e) { showMessage(`❌ ${e.message}`, 'error'); }
         }
 
         function resetForm() {
-            form.reset(); accountIndexInput.value = ''; 
+            form.reset(); accountIndexInput.value = '';
             document.getElementById('formTitle').textContent = '➕ Ajouter un compte';
             saveBtn.textContent = '💾 Ajouter'; cancelBtn.classList.add('hidden');
+            loginSpinner.classList.add('hidden');
         }
 
         function editAccount(index) {
@@ -209,28 +226,50 @@
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const newAccount = {
-                email: emailInput.value.trim(),
-                password: passwordInput.value,
-                timer: parseInt(timerInput.value) || 60,
-                platform: platformSelect.value,
-                proxy: proxyInput.value.trim() || null,
-                enabled: true,
-                lastClaim: 0,
-                cookies: null  // sera rempli par le script périodique
-            };
-            let accounts = [...currentAccounts];
-            const idx = accountIndexInput.value;
-            if (idx !== '') {
-                newAccount.lastClaim = accounts[idx].lastClaim || 0;
-                newAccount.cookies = accounts[idx].cookies; // conserver les cookies existants
-                accounts[idx] = newAccount;
-            } else {
-                accounts.push(newAccount);
+            const email = emailInput.value.trim();
+            const password = passwordInput.value;
+            const timer = parseInt(timerInput.value) || 60;
+            const platform = platformSelect.value;
+            const proxy = proxyInput.value.trim() || null;
+
+            saveBtn.disabled = true;
+            loginSpinner.classList.remove('hidden');
+            showMessage('⏳ Vérification des identifiants...', 'success');
+
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password, platform, proxy })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Échec de connexion');
+
+                const newAccount = {
+                    email, password, timer, platform, proxy,
+                    cookies: data.cookies,
+                    cookiesStatus: 'valid',
+                    enabled: true,
+                    lastClaim: 0
+                };
+
+                let accounts = [...currentAccounts];
+                const idx = accountIndexInput.value;
+                if (idx !== '') {
+                    newAccount.lastClaim = accounts[idx].lastClaim || 0;
+                    accounts[idx] = newAccount;
+                } else {
+                    accounts.push(newAccount);
+                }
+                await saveAccounts(accounts);
+                resetForm();
+                showMessage('✅ Compte ajouté avec succès ! Cookies valides.', 'success');
+            } catch (error) {
+                showMessage(`❌ ${error.message}`, 'error');
+            } finally {
+                saveBtn.disabled = false;
+                loginSpinner.classList.add('hidden');
             }
-            await saveAccounts(accounts);
-            resetForm();
-            showMessage('✅ Compte ajouté. Les cookies seront capturés à la prochaine exécution.', 'success');
         });
 
         cancelBtn.addEventListener('click', resetForm);
