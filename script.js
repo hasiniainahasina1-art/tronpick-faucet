@@ -10,6 +10,11 @@ const GH_REPO = process.env.GH_REPO;
 const GH_BRANCH = process.env.GH_BRANCH || 'main';
 const GH_FILE_PATH = process.env.GH_FILE_PATH || 'accounts.json';
 
+if (!GH_TOKEN || !GH_USERNAME || !GH_REPO) {
+    console.error('❌ Variables GitHub manquantes');
+    process.exit(1);
+}
+
 const octokit = new Octokit({ auth: GH_TOKEN });
 
 const DEFAULT_PROXY_HOST = '31.59.20.176';
@@ -22,13 +27,74 @@ const CLAIM_COORDS = { x: 640, y: 223 };
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// --- Fonctions utilitaires (fillField, humanScrollToClaim, humanClickAt) inchangées ---
-// (Recopiez-les depuis les versions précédentes)
+// --- Fonctions de saisie et d'interaction (inchangées) ---
+async function fillField(page, selector, value, fieldName) {
+    console.log(`⌨️ Remplissage ${fieldName}...`);
+    await page.waitForSelector(selector, { timeout: 10000 });
+    await page.click(selector, { clickCount: 3 });
+    await page.keyboard.press('Backspace');
+    await delay(100);
+    await page.evaluate((sel, val) => {
+        const el = document.querySelector(sel);
+        el.value = val;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new Event('blur', { bubbles: true }));
+    }, selector, value);
+    await delay(300);
+    let actual = await page.$eval(selector, el => el.value);
+    if (actual !== value) {
+        await page.click(selector, { clickCount: 3 });
+        await page.keyboard.press('Backspace');
+        for (const char of value) await page.keyboard.type(char, { delay: 30 });
+        actual = await page.$eval(selector, el => el.value);
+    }
+    if (actual !== value) throw new Error(`Impossible de remplir ${fieldName}`);
+    console.log(`✅ ${fieldName} rempli`);
+}
 
-// --- Login et capture des cookies ---
+async function humanScrollToClaim(page) {
+    console.log('📜 Scroll progressif vers le bouton CLAIM...');
+    const coords = await page.evaluate(() => {
+        const btn = document.querySelector('#process_claim_hourly_faucet');
+        if (!btn) return null;
+        const rect = btn.getBoundingClientRect();
+        return { y: rect.y + window.scrollY };
+    });
+    if (!coords) throw new Error('Bouton CLAIM introuvable pour le scroll');
+
+    const startY = await page.evaluate(() => window.scrollY);
+    const targetY = Math.max(0, coords.y - 200);
+    const steps = 20;
+    for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        const currentY = startY + (targetY - startY) * t;
+        await page.evaluate((y) => window.scrollTo(0, y), currentY);
+        await delay(50 + Math.random() * 100);
+    }
+    console.log('✅ Scroll terminé');
+}
+
+async function humanClickAt(page, coords, label) {
+    console.log(`🖱️ Clic ${label} aux coordonnées (${coords.x}, ${coords.y})`);
+    const start = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
+    const steps = 20;
+    for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        const cp = { x: start.x + (Math.random() - 0.5) * 100, y: start.y + (Math.random() - 0.5) * 100 };
+        const x = Math.pow(1 - t, 2) * start.x + 2 * (1 - t) * t * cp.x + Math.pow(t, 2) * coords.x;
+        const y = Math.pow(1 - t, 2) * start.y + 2 * (1 - t) * t * cp.y + Math.pow(t, 2) * coords.y;
+        await page.mouse.move(x, y);
+        await delay(15);
+    }
+    await page.mouse.click(coords.x, coords.y);
+    console.log(`✅ Clic ${label} effectué`);
+}
+
+// --- Login et capture des cookies (avec gestion d'erreur améliorée) ---
 async function performLoginAndCaptureCookies(browser, account) {
     const { email, password, platform, proxy } = account;
-    console.log(`🔐 Login pour ${email}...`);
+    console.log(`🔐 Tentative de login pour ${email}...`);
 
     const siteUrls = {
         tronpick: 'https://tronpick.io/login.php',
@@ -38,6 +104,7 @@ async function performLoginAndCaptureCookies(browser, account) {
         binpick: 'https://binpick.io/login.php'
     };
     const loginUrl = siteUrls[platform];
+    if (!loginUrl) throw new Error('Plateforme inconnue');
 
     let proxyConfig = null;
     if (proxy) {
@@ -88,18 +155,87 @@ async function performLoginAndCaptureCookies(browser, account) {
         }
 
         const cookies = await page.cookies();
-        return cookies;
+        return { success: true, cookies };
+    } catch (error) {
+        return { success: false, error: error.message };
     } finally {
         await context.close();
     }
 }
 
-// --- Claim avec cookies (identique à avant) ---
-async function claimWithCookies(browser, account) {
-    // ... (fonction existante, retourne { success, message })
+// --- Claim avec cookies (retourne aussi le statut pour mise à jour) ---
+async function claimWithCookies(browser, account, accountsList) {
+    const { email, cookies, platform, proxy } = account;
+    console.log(`🍪 Claim pour ${email} via cookies`);
+
+    const siteUrls = {
+        tronpick: 'https://tronpick.io/faucet.php',
+        litepick: 'https://litepick.io/faucet.php',
+        dogepick: 'https://dogepick.io/faucet.php',
+        solpick: 'https://solpick.io/faucet.php',
+        binpick: 'https://binpick.io/faucet.php'
+    };
+    const faucetUrl = siteUrls[platform] || 'https://tronpick.io/faucet.php';
+
+    let proxyConfig = null;
+    if (proxy) {
+        const parts = proxy.split(':');
+        if (parts.length === 2) proxyConfig = { host: parts[0], port: parts[1] };
+        else if (parts.length === 4) proxyConfig = { host: parts[0], port: parts[1], username: parts[2], password: parts[3] };
+    } else {
+        proxyConfig = { host: DEFAULT_PROXY_HOST, port: DEFAULT_PROXY_PORT, username: DEFAULT_PROXY_USERNAME, password: DEFAULT_PROXY_PASSWORD };
+    }
+
+    const context = await browser.createIncognitoBrowserContext();
+    const page = await context.newPage();
+    if (proxyConfig && proxyConfig.username) {
+        await page.authenticate({ username: proxyConfig.username, password: proxyConfig.password });
+    }
+
+    try {
+        await page.setCookie(...cookies);
+        await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+        await delay(5000);
+
+        if (page.url().includes('login.php')) {
+            // Cookies expirés : on met à jour le compte dans la liste principale
+            const acc = accountsList.find(a => a.email === email);
+            if (acc) {
+                acc.cookiesStatus = 'expired';
+                acc.cookies = null;
+            }
+            throw new Error('Cookies expirés');
+        }
+
+        await humanScrollToClaim(page);
+        await delay(2000);
+
+        await humanClickAt(page, TURNSTILE_COORDS, 'Turnstile 1/2');
+        await delay(10000);
+        await humanClickAt(page, TURNSTILE_COORDS, 'Turnstile 2/2');
+        await delay(10000);
+        await delay(10000);
+
+        await humanClickAt(page, CLAIM_COORDS, 'CLAIM');
+        await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
+        await delay(5000);
+
+        const messages = await page.evaluate(() => {
+            return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [role="alert"]'))
+                .map(el => el.textContent.trim()).filter(t => t);
+        });
+        const btnDisabled = await page.evaluate(() => {
+            return document.querySelector('#process_claim_hourly_faucet')?.disabled || false;
+        });
+        const success = btnDisabled || messages.some(m => /success|claimed|reward|sent/i.test(m));
+
+        return { success, message: messages[0] || (btnDisabled ? 'Bouton désactivé' : 'Aucune réaction') };
+    } finally {
+        await context.close();
+    }
 }
 
-// --- Sauvegarde des comptes sur GitHub ---
+// --- Gestion GitHub ---
 async function loadAccounts() {
     try {
         const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH });
@@ -128,35 +264,50 @@ async function saveAccounts(accounts) {
     let browser;
     try {
         let accounts = await loadAccounts();
-        if (!accounts.length) return;
+        if (!accounts.length) {
+            console.log('Aucun compte.');
+            return;
+        }
 
-        // 1. Login pour les comptes sans cookies
-        const accountsWithoutCookies = accounts.filter(acc => acc.enabled && !acc.cookies);
-        if (accountsWithoutCookies.length > 0) {
-            console.log(`🍪 Capture des cookies pour ${accountsWithoutCookies.length} compte(s)...`);
+        const now = Date.now();
+        let needsSave = false;
+
+        // 1. Capturer les cookies pour les comptes sans cookies ou avec statut 'failed'
+        const needLogin = accounts.filter(acc => acc.enabled && (!acc.cookies || acc.cookiesStatus === 'failed' || acc.cookiesStatus === 'expired'));
+        if (needLogin.length > 0) {
+            console.log(`🍪 Capture des cookies pour ${needLogin.length} compte(s)...`);
             const { browser: br } = await connect({
                 headless: false, turnstile: true,
                 proxy: { host: DEFAULT_PROXY_HOST, port: DEFAULT_PROXY_PORT, username: DEFAULT_PROXY_USERNAME, password: DEFAULT_PROXY_PASSWORD }
             });
             browser = br;
 
-            for (const acc of accountsWithoutCookies) {
-                try {
-                    const cookies = await performLoginAndCaptureCookies(browser, acc);
-                    acc.cookies = cookies;
-                    console.log(`✅ Cookies capturés pour ${acc.email}`);
-                } catch (e) {
-                    console.error(`❌ Échec login ${acc.email}:`, e.message);
+            for (const acc of needLogin) {
+                const result = await performLoginAndCaptureCookies(browser, acc);
+                acc.lastLoginAttempt = now;
+                if (result.success) {
+                    acc.cookies = result.cookies;
+                    acc.cookiesStatus = 'valid';
+                    console.log(`✅ Cookies OK pour ${acc.email}`);
+                } else {
+                    acc.cookiesStatus = 'failed';
+                    console.log(`❌ Échec login ${acc.email}: ${result.error}`);
                 }
+                needsSave = true;
                 await delay(5000);
             }
-            await saveAccounts(accounts);
-            if (browser) await browser.close();
+            await browser.close();
+            browser = null;
         }
 
-        // 2. Claim pour les comptes avec cookies et éligibles
-        const now = Date.now();
-        const eligible = accounts.filter(acc => acc.enabled && acc.cookies && (now - (acc.lastClaim||0)) >= (acc.timer||60)*60000);
+        // 2. Claim pour les comptes avec cookies valides et éligibles
+        const eligible = accounts.filter(acc => {
+            if (!acc.enabled || !acc.cookies || acc.cookiesStatus !== 'valid') return false;
+            const last = acc.lastClaim || 0;
+            const interval = (acc.timer || 60) * 60 * 1000;
+            return (now - last) >= interval;
+        });
+
         if (eligible.length > 0) {
             console.log(`🚀 Claim pour ${eligible.length} compte(s)...`);
             const { browser: br } = await connect({
@@ -166,17 +317,39 @@ async function saveAccounts(accounts) {
             browser = br;
 
             for (const acc of eligible) {
-                const result = await claimWithCookies(browser, acc);
-                if (result.success) {
-                    acc.lastClaim = now;
-                    console.log(`✅ Claim réussi pour ${acc.email}`);
-                } else {
-                    console.log(`❌ Claim échoué pour ${acc.email}: ${result.message}`);
+                try {
+                    const result = await claimWithCookies(browser, acc, accounts);
+                    if (result.success) {
+                        acc.lastClaim = now;
+                        console.log(`✅ Claim réussi pour ${acc.email}`);
+                    } else {
+                        console.log(`❌ Claim échoué pour ${acc.email}: ${result.message}`);
+                    }
+                    needsSave = true;
+                } catch (e) {
+                    console.error(`❌ Erreur claim ${acc.email}:`, e.message);
+                    // Si cookies expirés, le statut a déjà été mis à jour dans claimWithCookies
+                    needsSave = true;
                 }
                 await delay(5000);
             }
-            await saveAccounts(accounts);
+            await browser.close();
         }
+
+        if (needsSave) {
+            await saveAccounts(accounts);
+            console.log('💾 Comptes sauvegardés.');
+        }
+
+        // Sauvegarde du statut pour Vercel
+        const statusPath = path.join(__dirname, 'public', 'status.json');
+        const summary = accounts.map(acc => ({
+            email: acc.email,
+            cookiesStatus: acc.cookiesStatus || 'pending',
+            lastClaim: acc.lastClaim,
+            nextClaim: (acc.lastClaim || 0) + (acc.timer || 60) * 60 * 1000
+        }));
+        fs.writeFileSync(statusPath, JSON.stringify(summary, null, 2));
 
     } catch (e) {
         console.error('Erreur fatale:', e);
