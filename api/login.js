@@ -3,9 +3,8 @@ const puppeteer = require('puppeteer-core');
 
 const DEFAULT_PROXY_HOST = '31.59.20.176';
 const DEFAULT_PROXY_PORT = '6754';
-const DEFAULT_PROXY_USERNAME = process.env.PROXY_USERNAME || '';
-const DEFAULT_PROXY_PASSWORD = process.env.PROXY_PASSWORD || '';
-
+const PROXY_USERNAME = process.env.PROXY_USERNAME || '';
+const PROXY_PASSWORD = process.env.PROXY_PASSWORD || '';
 const BROWSERLESS_TOKEN = process.env.BROWSERLESS_TOKEN;
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -42,9 +41,8 @@ export default async function handler(req, res) {
     if (req.method === 'OPTIONS') return res.status(200).end();
     if (req.method !== 'POST') return res.status(405).json({ error: 'Méthode non autorisée' });
 
-    // Vérification du token Browserless
     if (!BROWSERLESS_TOKEN) {
-        console.error('BROWSERLESS_TOKEN manquant');
+        console.error('❌ BROWSERLESS_TOKEN manquant');
         return res.status(500).json({ error: 'Configuration serveur incomplète (BROWSERLESS_TOKEN)' });
     }
 
@@ -63,26 +61,37 @@ export default async function handler(req, res) {
     const loginUrl = siteUrls[platform];
     if (!loginUrl) return res.status(400).json({ error: 'Plateforme inconnue' });
 
-    // Configuration du proxy
     let proxyConfig = null;
     if (proxy) {
         const parts = proxy.split(':');
         if (parts.length === 2) proxyConfig = { host: parts[0], port: parts[1] };
         else if (parts.length === 4) proxyConfig = { host: parts[0], port: parts[1], username: parts[2], password: parts[3] };
     } else {
-        proxyConfig = { host: DEFAULT_PROXY_HOST, port: DEFAULT_PROXY_PORT, username: DEFAULT_PROXY_USERNAME, password: DEFAULT_PROXY_PASSWORD };
+        proxyConfig = { host: DEFAULT_PROXY_HOST, port: DEFAULT_PROXY_PORT, username: PROXY_USERNAME, password: PROXY_PASSWORD };
     }
+
+    console.log(`🚀 Tentative de connexion pour ${email} sur ${platform}`);
 
     let browser;
     try {
-        // Connexion à Browserless
-        browser = await puppeteer.connect({
-            browserWSEndpoint: `wss://chrome.browserless.io?token=${BROWSERLESS_TOKEN}`
-        });
+        // Connexion à Browserless avec retry
+        let retries = 2;
+        while (retries > 0) {
+            try {
+                browser = await puppeteer.connect({
+                    browserWSEndpoint: `wss://chrome.browserless.io?token=${BROWSERLESS_TOKEN}`
+                });
+                break;
+            } catch (e) {
+                retries--;
+                if (retries === 0) throw e;
+                await delay(2000);
+            }
+        }
 
         const page = await browser.newPage();
         
-        // Authentification proxy si nécessaire
+        // Authentification proxy
         if (proxyConfig && proxyConfig.username) {
             await page.authenticate({ username: proxyConfig.username, password: proxyConfig.password });
         }
@@ -92,18 +101,19 @@ export default async function handler(req, res) {
         console.log(`🌐 Navigation vers ${loginUrl}`);
         await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 60000 });
 
-        console.log('⌨️ Remplissage du formulaire');
+        console.log('⌨️ Remplissage formulaire');
         await fillField(page, 'input[type="email"], input[name="email"]', email, 'email');
         await fillField(page, 'input[type="password"]', password, 'password');
         await delay(2000);
 
-        // Gestion Turnstile
+        // Turnstile
         try {
             const frame = await page.waitForFrame(f => f.url().includes('challenges.cloudflare.com/turnstile'), { timeout: 15000 });
             await frame.click('input[type="checkbox"]');
             await delay(5000);
+            console.log('✅ Turnstile cliqué');
         } catch (e) {
-            console.log('Turnstile non trouvé ou déjà résolu');
+            console.log('ℹ️ Turnstile non trouvé');
         }
 
         console.log('🔐 Clic sur Log in');
@@ -119,7 +129,7 @@ export default async function handler(req, res) {
         await delay(5000);
 
         const currentUrl = page.url();
-        console.log(`📍 URL après login : ${currentUrl}`);
+        console.log(`📍 URL finale : ${currentUrl}`);
 
         if (currentUrl.includes('login.php')) {
             const errorMsg = await page.evaluate(() => {
@@ -130,14 +140,15 @@ export default async function handler(req, res) {
         }
 
         const cookies = await page.cookies();
-        await browser.close();
+        console.log(`✅ ${cookies.length} cookies capturés`);
 
+        await browser.close();
         res.status(200).json({ success: true, cookies });
 
     } catch (error) {
         console.error('❌ Erreur login:', error);
         if (browser) await browser.close();
-        // Toujours renvoyer du JSON, même en cas d'erreur
+        // Toujours renvoyer du JSON
         res.status(500).json({ error: error.message });
     }
 }
