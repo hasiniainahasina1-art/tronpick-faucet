@@ -38,12 +38,17 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-    if (req.method === 'OPTIONS') return res.status(200).end();
-    if (req.method !== 'POST') return res.status(405).json({ error: 'Méthode non autorisée' });
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
+    if (req.method !== 'POST') {
+        return res.status(405).json({ error: 'Méthode non autorisée' });
+    }
 
+    // Vérification immédiate du token Browserless
     if (!BROWSERLESS_TOKEN) {
-        console.error('❌ BROWSERLESS_TOKEN manquant');
-        return res.status(500).json({ error: 'Configuration serveur incomplète (BROWSERLESS_TOKEN)' });
+        console.error('BROWSERLESS_TOKEN manquant');
+        return res.status(500).json({ error: 'Configuration serveur : BROWSERLESS_TOKEN manquant' });
     }
 
     const { email, password, platform, proxy } = req.body;
@@ -59,38 +64,51 @@ export default async function handler(req, res) {
         binpick: 'https://binpick.io/login.php'
     };
     const loginUrl = siteUrls[platform];
-    if (!loginUrl) return res.status(400).json({ error: 'Plateforme inconnue' });
+    if (!loginUrl) {
+        return res.status(400).json({ error: 'Plateforme inconnue' });
+    }
 
+    // Configuration du proxy
     let proxyConfig = null;
     if (proxy) {
         const parts = proxy.split(':');
-        if (parts.length === 2) proxyConfig = { host: parts[0], port: parts[1] };
-        else if (parts.length === 4) proxyConfig = { host: parts[0], port: parts[1], username: parts[2], password: parts[3] };
+        if (parts.length === 2) {
+            proxyConfig = { host: parts[0], port: parts[1] };
+        } else if (parts.length === 4) {
+            proxyConfig = { host: parts[0], port: parts[1], username: parts[2], password: parts[3] };
+        }
     } else {
-        proxyConfig = { host: DEFAULT_PROXY_HOST, port: DEFAULT_PROXY_PORT, username: PROXY_USERNAME, password: PROXY_PASSWORD };
+        proxyConfig = {
+            host: DEFAULT_PROXY_HOST,
+            port: DEFAULT_PROXY_PORT,
+            username: PROXY_USERNAME,
+            password: PROXY_PASSWORD
+        };
     }
 
-    console.log(`🚀 Tentative de connexion pour ${email} sur ${platform}`);
+    console.log(`🚀 Début login pour ${email} sur ${platform}`);
 
     let browser;
     try {
-        // Connexion à Browserless avec retry
+        // Connexion à Browserless (avec retry)
         let retries = 2;
         while (retries > 0) {
             try {
                 browser = await puppeteer.connect({
                     browserWSEndpoint: `wss://chrome.browserless.io?token=${BROWSERLESS_TOKEN}`
                 });
+                console.log('✅ Connecté à Browserless');
                 break;
             } catch (e) {
                 retries--;
-                if (retries === 0) throw e;
+                if (retries === 0) throw new Error(`Browserless connection failed: ${e.message}`);
+                console.log(`⚠️ Retry Browserless (${retries} restants)`);
                 await delay(2000);
             }
         }
 
         const page = await browser.newPage();
-        
+
         // Authentification proxy
         if (proxyConfig && proxyConfig.username) {
             await page.authenticate({ username: proxyConfig.username, password: proxyConfig.password });
@@ -98,17 +116,20 @@ export default async function handler(req, res) {
 
         await page.setViewport({ width: 1280, height: 720 });
 
-        console.log(`🌐 Navigation vers ${loginUrl}`);
+        console.log(`🌐 Goto ${loginUrl}`);
         await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 60000 });
 
-        console.log('⌨️ Remplissage formulaire');
+        console.log('⌨️ Remplissage email/password');
         await fillField(page, 'input[type="email"], input[name="email"]', email, 'email');
         await fillField(page, 'input[type="password"]', password, 'password');
         await delay(2000);
 
         // Turnstile
         try {
-            const frame = await page.waitForFrame(f => f.url().includes('challenges.cloudflare.com/turnstile'), { timeout: 15000 });
+            const frame = await page.waitForFrame(
+                f => f.url().includes('challenges.cloudflare.com/turnstile'),
+                { timeout: 15000 }
+            );
             await frame.click('input[type="checkbox"]');
             await delay(5000);
             console.log('✅ Turnstile cliqué');
@@ -120,7 +141,10 @@ export default async function handler(req, res) {
         const loginClicked = await page.evaluate(() => {
             const btns = [...document.querySelectorAll('button')];
             const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
-            if (loginBtn) { loginBtn.click(); return true; }
+            if (loginBtn) {
+                loginBtn.click();
+                return true;
+            }
             return false;
         });
         if (!loginClicked) throw new Error('Bouton Log in introuvable');
@@ -129,7 +153,7 @@ export default async function handler(req, res) {
         await delay(5000);
 
         const currentUrl = page.url();
-        console.log(`📍 URL finale : ${currentUrl}`);
+        console.log(`📍 URL après login : ${currentUrl}`);
 
         if (currentUrl.includes('login.php')) {
             const errorMsg = await page.evaluate(() => {
@@ -146,9 +170,9 @@ export default async function handler(req, res) {
         res.status(200).json({ success: true, cookies });
 
     } catch (error) {
-        console.error('❌ Erreur login:', error);
-        if (browser) await browser.close();
-        // Toujours renvoyer du JSON
-        res.status(500).json({ error: error.message });
+        console.error('❌ Erreur dans api/login:', error);
+        if (browser) await browser.close().catch(() => {});
+        // Renvoyer TOUJOURS du JSON, même si l'erreur est étrange
+        res.status(500).json({ error: error.message || 'Erreur inconnue' });
     }
 }
