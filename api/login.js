@@ -7,9 +7,6 @@ const DEFAULT_PROXY_USERNAME = process.env.PROXY_USERNAME || '';
 const DEFAULT_PROXY_PASSWORD = process.env.PROXY_PASSWORD || '';
 
 const BROWSERLESS_TOKEN = process.env.BROWSERLESS_TOKEN;
-if (!BROWSERLESS_TOKEN) {
-    console.error('❌ BROWSERLESS_TOKEN manquant');
-}
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -37,6 +34,7 @@ async function fillField(page, selector, value, fieldName) {
 }
 
 export default async function handler(req, res) {
+    // CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -44,8 +42,10 @@ export default async function handler(req, res) {
     if (req.method === 'OPTIONS') return res.status(200).end();
     if (req.method !== 'POST') return res.status(405).json({ error: 'Méthode non autorisée' });
 
+    // Vérification du token Browserless
     if (!BROWSERLESS_TOKEN) {
-        return res.status(500).json({ error: 'Configuration Browserless manquante' });
+        console.error('BROWSERLESS_TOKEN manquant');
+        return res.status(500).json({ error: 'Configuration serveur incomplète (BROWSERLESS_TOKEN)' });
     }
 
     const { email, password, platform, proxy } = req.body;
@@ -63,6 +63,7 @@ export default async function handler(req, res) {
     const loginUrl = siteUrls[platform];
     if (!loginUrl) return res.status(400).json({ error: 'Plateforme inconnue' });
 
+    // Configuration du proxy
     let proxyConfig = null;
     if (proxy) {
         const parts = proxy.split(':');
@@ -74,28 +75,38 @@ export default async function handler(req, res) {
 
     let browser;
     try {
+        // Connexion à Browserless
         browser = await puppeteer.connect({
             browserWSEndpoint: `wss://chrome.browserless.io?token=${BROWSERLESS_TOKEN}`
         });
 
         const page = await browser.newPage();
+        
+        // Authentification proxy si nécessaire
         if (proxyConfig && proxyConfig.username) {
             await page.authenticate({ username: proxyConfig.username, password: proxyConfig.password });
         }
 
         await page.setViewport({ width: 1280, height: 720 });
+
+        console.log(`🌐 Navigation vers ${loginUrl}`);
         await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 60000 });
 
+        console.log('⌨️ Remplissage du formulaire');
         await fillField(page, 'input[type="email"], input[name="email"]', email, 'email');
         await fillField(page, 'input[type="password"]', password, 'password');
         await delay(2000);
 
+        // Gestion Turnstile
         try {
             const frame = await page.waitForFrame(f => f.url().includes('challenges.cloudflare.com/turnstile'), { timeout: 15000 });
             await frame.click('input[type="checkbox"]');
             await delay(5000);
-        } catch (e) {}
+        } catch (e) {
+            console.log('Turnstile non trouvé ou déjà résolu');
+        }
 
+        console.log('🔐 Clic sur Log in');
         const loginClicked = await page.evaluate(() => {
             const btns = [...document.querySelectorAll('button')];
             const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
@@ -107,7 +118,10 @@ export default async function handler(req, res) {
         await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
         await delay(5000);
 
-        if (page.url().includes('login.php')) {
+        const currentUrl = page.url();
+        console.log(`📍 URL après login : ${currentUrl}`);
+
+        if (currentUrl.includes('login.php')) {
             const errorMsg = await page.evaluate(() => {
                 const el = document.querySelector('.alert-danger, .error, .message-error');
                 return el ? el.textContent.trim() : null;
@@ -121,8 +135,9 @@ export default async function handler(req, res) {
         res.status(200).json({ success: true, cookies });
 
     } catch (error) {
-        console.error('Erreur login:', error);
+        console.error('❌ Erreur login:', error);
         if (browser) await browser.close();
+        // Toujours renvoyer du JSON, même en cas d'erreur
         res.status(500).json({ error: error.message });
     }
 }
