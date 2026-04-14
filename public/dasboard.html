@@ -1,1 +1,349 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Finoana Auto Claim - Dashboard</title>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; background:#f4f9ff; margin: 20px; }
+        .container { max-width: 1100px; margin: 0 auto; }
+        h1, h2 { color: #1e293b; }
+        .card { background: white; border-radius: 12px; padding: 20px; margin-bottom: 25px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+        form { display: flex; flex-direction: column; gap: 12px; }
+        .form-row { display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end; }
+        .form-group { flex: 1 1 200px; }
+        label { display: block; font-weight: 600; margin-bottom: 5px; color: #334155; }
+        input, select { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
+        button { padding: 10px 20px; background: #2563eb; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        button:hover { background: #1d4ed8; }
+        button.secondary { background: #64748b; }
+        button.secondary:hover { background: #475569; }
+        button.danger { background: #dc2626; }
+        button.danger:hover { background: #b91c1c; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { text-align: left; padding: 12px 8px; border-bottom: 1px solid #e2e8f0; }
+        th { background: #f8fafc; font-weight: 600; color: #0f172a; }
+        .status-badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        .status-active { background: #dcfce7; color: #166534; }
+        .status-inactive { background: #fee2e2; color: #991b1b; }
+        .actions { display: flex; gap: 8px; }
+        .actions button { padding: 5px 10px; font-size: 12px; }
+        .message { padding: 12px; border-radius: 6px; margin-bottom: 15px; }
+        .success { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+        .error { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+        .hidden { display: none; }
+        .inline-hint { font-size: 12px; color: #64748b; margin-top: 4px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>⚙️ Finoana Auto Claim - Dashboard</h1>
 
+    <!-- Configuration GitHub -->
+    <div class="card" id="githubConfig">
+        <h2>🔐 Configuration GitHub</h2>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Token GitHub (scope 'repo')</label>
+                <input type="password" id="ghToken" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx">
+            </div>
+            <div class="form-group">
+                <label>Nom d'utilisateur GitHub</label>
+                <input type="text" id="ghUsername" placeholder="hasiniainahasina1-art">
+            </div>
+            <div class="form-group">
+                <label>Nom du dépôt</label>
+                <input type="text" id="ghRepo" placeholder="tronpick-faucet">
+            </div>
+            <button id="saveGhConfig">💾 Enregistrer</button>
+        </div>
+        <div class="inline-hint">Le token est stocké localement dans votre navigateur.</div>
+    </div>
+
+    <!-- Formulaire d'ajout / modification -->
+    <div class="card">
+        <h2 id="formTitle">➕ Ajouter un compte</h2>
+        <form id="accountForm">
+            <input type="hidden" id="accountIndex" value="">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Email *</label>
+                    <input type="email" id="email" placeholder="compte@example.com" required>
+                </div>
+                <div class="form-group">
+                    <label>Mot de passe *</label>
+                    <input type="password" id="password" placeholder="••••••••" required>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Intervalle (minutes) *</label>
+                    <input type="number" id="timer" min="1" value="60" required>
+                </div>
+                <div class="form-group">
+                    <label>Plateforme *</label>
+                    <select id="platform" required>
+                        <option value="tronpick">TronPick</option>
+                        <option value="litepick">LitePick</option>
+                        <option value="dogepick">DogePick</option>
+                        <option value="solpick">SolPick</option>
+                        <option value="binpick">BinPick</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Proxy (optionnel)</label>
+                    <input type="text" id="proxy" placeholder="ip:port ou ip:port:user:pass">
+                </div>
+            </div>
+            <div class="form-row">
+                <button type="submit" id="saveBtn">💾 Ajouter</button>
+                <button type="button" id="cancelBtn" class="secondary hidden">Annuler</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Liste des comptes -->
+    <div class="card">
+        <h2>📋 Comptes configurés</h2>
+        <div id="messageArea"></div>
+        <button id="refreshBtn" class="secondary">🔄 Rafraîchir</button>
+        <table id="accountsTable">
+            <thead>
+                <tr>
+                    <th>Email</th>
+                    <th>Intervalle</th>
+                    <th>Plateforme</th>
+                    <th>Proxy</th>
+                    <th>Statut</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="accountsBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    (function() {
+        // --- Gestion de la configuration GitHub (localStorage) ---
+        const storage = window.localStorage;
+        let ghToken = storage.getItem('gh_token') || '';
+        let ghUsername = storage.getItem('gh_username') || '';
+        let ghRepo = storage.getItem('gh_repo') || 'tronpick-faucet';
+
+        const tokenInput = document.getElementById('ghToken');
+        const usernameInput = document.getElementById('ghUsername');
+        const repoInput = document.getElementById('ghRepo');
+        const saveGhBtn = document.getElementById('saveGhConfig');
+
+        tokenInput.value = ghToken;
+        usernameInput.value = ghUsername;
+        repoInput.value = ghRepo;
+
+        saveGhBtn.addEventListener('click', () => {
+            ghToken = tokenInput.value.trim();
+            ghUsername = usernameInput.value.trim();
+            ghRepo = repoInput.value.trim();
+            if (!ghToken || !ghUsername || !ghRepo) {
+                alert('Veuillez remplir tous les champs GitHub.');
+                return;
+            }
+            storage.setItem('gh_token', ghToken);
+            storage.setItem('gh_username', ghUsername);
+            storage.setItem('gh_repo', ghRepo);
+            showMessage('Configuration GitHub enregistrée.', 'success');
+            loadAccounts();
+        });
+
+        // --- Fonctions d'appel à l'API GitHub ---
+        const BRANCH = 'main';
+        const FILE_PATH = 'accounts.json';
+
+        async function githubApi(method = 'GET', body = null) {
+            if (!ghToken || !ghUsername || !ghRepo) {
+                throw new Error('Configuration GitHub manquante.');
+            }
+            const url = `https://api.github.com/repos/${ghUsername}/${ghRepo}/contents/${FILE_PATH}`;
+            const headers = {
+                'Authorization': `token ${ghToken}`,
+                'Accept': 'application/vnd.github.v3+json'
+            };
+            const options = { method, headers };
+            if (body) {
+                options.body = JSON.stringify(body);
+                headers['Content-Type'] = 'application/json';
+            }
+            const response = await fetch(url, options);
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.message || `HTTP ${response.status}`);
+            }
+            return response.json();
+        }
+
+        async function loadAccountsFromGitHub() {
+            try {
+                const data = await githubApi('GET');
+                const content = atob(data.content);
+                return JSON.parse(content);
+            } catch (e) {
+                if (e.message.includes('404')) return [];
+                throw e;
+            }
+        }
+
+        async function saveAccountsToGitHub(accounts) {
+            let sha = null;
+            try {
+                const data = await githubApi('GET');
+                sha = data.sha;
+            } catch (e) {}
+            const content = btoa(unescape(encodeURIComponent(JSON.stringify(accounts, null, 2))));
+            const body = {
+                message: 'Mise à jour des comptes via dashboard',
+                content: content,
+                branch: BRANCH
+            };
+            if (sha) body.sha = sha;
+            return githubApi('PUT', body);
+        }
+
+        // --- Gestion du formulaire et de la liste ---
+        const form = document.getElementById('accountForm');
+        const accountIndexInput = document.getElementById('accountIndex');
+        const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
+        const timerInput = document.getElementById('timer');
+        const platformSelect = document.getElementById('platform');
+        const proxyInput = document.getElementById('proxy');
+        const saveBtn = document.getElementById('saveBtn');
+        const cancelBtn = document.getElementById('cancelBtn');
+        const formTitle = document.getElementById('formTitle');
+        const accountsBody = document.getElementById('accountsBody');
+        const messageArea = document.getElementById('messageArea');
+        const refreshBtn = document.getElementById('refreshBtn');
+
+        let currentAccounts = [];
+
+        function showMessage(text, type) {
+            messageArea.innerHTML = `<div class="message ${type}">${text}</div>`;
+            setTimeout(() => messageArea.innerHTML = '', 5000);
+        }
+
+        function renderAccounts() {
+            const tbody = accountsBody;
+            tbody.innerHTML = '';
+            currentAccounts.forEach((acc, idx) => {
+                const row = tbody.insertRow();
+                row.innerHTML = `
+                    <td>${acc.email}</td>
+                    <td>${acc.timer || 60} min</td>
+                    <td>${acc.platform || 'tronpick'}</td>
+                    <td>${acc.proxy || 'Défaut'}</td>
+                    <td><span class="status-badge ${acc.enabled !== false ? 'status-active' : 'status-inactive'}">${acc.enabled !== false ? 'Actif' : 'Inactif'}</span></td>
+                    <td class="actions">
+                        <button class="secondary" data-index="${idx}" data-action="edit">✏️</button>
+                        <button class="danger" data-index="${idx}" data-action="delete">🗑️</button>
+                        <button class="secondary" data-index="${idx}" data-action="toggle">${acc.enabled !== false ? '⏸️' : '▶️'}</button>
+                    </td>
+                `;
+            });
+            // Attacher les événements
+            document.querySelectorAll('[data-action="edit"]').forEach(btn => {
+                btn.addEventListener('click', (e) => editAccount(e.target.dataset.index));
+            });
+            document.querySelectorAll('[data-action="delete"]').forEach(btn => {
+                btn.addEventListener('click', (e) => deleteAccount(e.target.dataset.index));
+            });
+            document.querySelectorAll('[data-action="toggle"]').forEach(btn => {
+                btn.addEventListener('click', (e) => toggleAccount(e.target.dataset.index));
+            });
+        }
+
+        async function loadAccounts() {
+            try {
+                currentAccounts = await loadAccountsFromGitHub();
+                renderAccounts();
+            } catch (e) {
+                showMessage(`Erreur chargement: ${e.message}`, 'error');
+            }
+        }
+
+        async function saveAccounts(accounts) {
+            try {
+                await saveAccountsToGitHub(accounts);
+                showMessage('✅ Comptes sauvegardés avec succès.', 'success');
+                await loadAccounts();
+            } catch (e) {
+                showMessage(`❌ Erreur sauvegarde: ${e.message}`, 'error');
+            }
+        }
+
+        function resetForm() {
+            form.reset();
+            accountIndexInput.value = '';
+            formTitle.textContent = '➕ Ajouter un compte';
+            saveBtn.textContent = '💾 Ajouter';
+            cancelBtn.classList.add('hidden');
+        }
+
+        function editAccount(index) {
+            const acc = currentAccounts[index];
+            accountIndexInput.value = index;
+            emailInput.value = acc.email;
+            passwordInput.value = acc.password;
+            timerInput.value = acc.timer || 60;
+            platformSelect.value = acc.platform || 'tronpick';
+            proxyInput.value = acc.proxy || '';
+            formTitle.textContent = `✏️ Modifier ${acc.email}`;
+            saveBtn.textContent = '💾 Mettre à jour';
+            cancelBtn.classList.remove('hidden');
+        }
+
+        async function deleteAccount(index) {
+            if (!confirm('Supprimer définitivement ce compte ?')) return;
+            const newAccounts = [...currentAccounts];
+            newAccounts.splice(index, 1);
+            await saveAccounts(newAccounts);
+        }
+
+        async function toggleAccount(index) {
+            const newAccounts = [...currentAccounts];
+            newAccounts[index].enabled = !(newAccounts[index].enabled !== false);
+            await saveAccounts(newAccounts);
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const index = accountIndexInput.value;
+            const newAccount = {
+                email: emailInput.value.trim(),
+                password: passwordInput.value,
+                timer: parseInt(timerInput.value) || 60,
+                platform: platformSelect.value,
+                proxy: proxyInput.value.trim() || null,
+                enabled: true
+            };
+            let accounts = [...currentAccounts];
+            if (index !== '') {
+                accounts[index] = newAccount;
+            } else {
+                accounts.push(newAccount);
+            }
+            await saveAccounts(accounts);
+            resetForm();
+        });
+
+        cancelBtn.addEventListener('click', resetForm);
+        refreshBtn.addEventListener('click', loadAccounts);
+
+        // Initialisation
+        if (ghToken && ghUsername && ghRepo) {
+            loadAccounts();
+        } else {
+            showMessage('Veuillez d\'abord configurer vos identifiants GitHub.', 'error');
+        }
+    })();
+</script>
+</body>
+</html>
