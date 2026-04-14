@@ -1,23 +1,40 @@
 const { connect } = require('puppeteer-real-browser');
 const fs = require('fs');
 const path = require('path');
+const { Octokit } = require('@octokit/rest');
 
-// --- Paramètres par défaut du proxy (utilisé si aucun proxy spécifique) ---
+// --- Configuration GitHub (via variables d'environnement) ---
+const GH_TOKEN = process.env.GH_TOKEN;
+const GH_USERNAME = process.env.GH_USERNAME;
+const GH_REPO = process.env.GH_REPO;
+const GH_BRANCH = process.env.GH_BRANCH || 'main';
+const GH_FILE_PATH = process.env.GH_FILE_PATH || 'accounts.json';
+
+if (!GH_TOKEN || !GH_USERNAME || !GH_REPO) {
+    console.error('❌ Variables GitHub manquantes dans l\'environnement.');
+    process.exit(1);
+}
+
+const octokit = new Octokit({ auth: GH_TOKEN });
+
+// --- Proxy par défaut (utilisé si aucun proxy spécifique n'est fourni) ---
 const DEFAULT_PROXY_HOST = '31.59.20.176';
 const DEFAULT_PROXY_PORT = '6754';
 const DEFAULT_PROXY_USERNAME = process.env.PROXY_USERNAME || '';
 const DEFAULT_PROXY_PASSWORD = process.env.PROXY_PASSWORD || '';
 
-// Coordonnées fixes (résolution 1280x720)
-const TURNSTILE_COORDS = { x: 640, y: 158 };
+// --- Coordonnées fixes (résolution 1280x720) ---
+const TURNSTILE_COORDS = { x: 640, y: 195 };
 const CLAIM_COORDS = { x: 640, y: 223 };
 
+// --- Dossier des captures (optionnel) ---
 const outputDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
+// --- Utilitaires de délai ---
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// --- Fonctions utilitaires (inchangées) ---
+// --- Fonctions de saisie et d'interaction (éprouvées) ---
 async function fillField(page, selector, value, fieldName) {
     console.log(`⌨️ Remplissage ${fieldName}...`);
     await page.waitForSelector(selector, { timeout: 10000 });
@@ -81,35 +98,63 @@ async function humanClickAt(page, coords, label) {
     console.log(`✅ Clic ${label} effectué`);
 }
 
-// --- Traitement d'un compte ---
-async function processAccount(browser, account, index) {
-    const { email, password, timer, platform, proxy, enabled, lastClaim } = account;
-    if (enabled === false) {
-        console.log(`⏭️ Compte ${email} désactivé, ignoré.`);
-        return { email, success: false, message: 'Désactivé', lastClaim };
+// --- Gestion du stockage GitHub ---
+async function loadAccountsFromGitHub() {
+    try {
+        const response = await octokit.repos.getContent({
+            owner: GH_USERNAME,
+            repo: GH_REPO,
+            path: GH_FILE_PATH,
+            ref: GH_BRANCH
+        });
+        const content = Buffer.from(response.data.content, 'base64').toString('utf8');
+        return JSON.parse(content);
+    } catch (error) {
+        if (error.status === 404) return [];
+        throw error;
+    }
+}
+
+async function saveAccountsToGitHub(accounts) {
+    let sha = null;
+    try {
+        const response = await octokit.repos.getContent({
+            owner: GH_USERNAME,
+            repo: GH_REPO,
+            path: GH_FILE_PATH,
+            ref: GH_BRANCH
+        });
+        sha = response.data.sha;
+    } catch (error) {
+        // Le fichier n'existe pas encore, sha reste null
     }
 
-    const now = Date.now();
-    const intervalMs = (timer || 60) * 60 * 1000;
-    if (now - (lastClaim || 0) < intervalMs) {
-        const remaining = Math.ceil((intervalMs - (now - lastClaim)) / 60000);
-        console.log(`⏳ Compte ${email} : prochain claim dans ${remaining} minutes.`);
-        return { email, success: false, message: `Prochain claim dans ${remaining} min`, lastClaim };
-    }
+    const content = Buffer.from(JSON.stringify(accounts, null, 2)).toString('base64');
+    await octokit.repos.createOrUpdateFileContents({
+        owner: GH_USERNAME,
+        repo: GH_REPO,
+        path: GH_FILE_PATH,
+        message: 'Mise à jour automatique des comptes',
+        content,
+        branch: GH_BRANCH,
+        sha
+    });
+}
 
-    console.log(`\n===== 🤖 Traitement du compte ${index + 1} : ${email} (${platform}) =====`);
+// --- Traitement d'un compte avec cookies ---
+async function claimWithCookies(browser, account, index) {
+    const { email, cookies, platform, proxy, timer } = account;
+    console.log(`\n===== 🍪 Traitement du compte ${index + 1} : ${email} (${platform}) via cookies =====`);
 
-    // Déterminer les URLs
+    // Déterminer l'URL du faucet selon la plateforme
     const siteUrls = {
-        tronpick: 'https://tronpick.io',
-        litepick: 'https://litepick.io',
-        dogepick: 'https://dogepick.io',
-        solpick: 'https://solpick.io',
-        binpick: 'https://binpick.io'
+        tronpick: 'https://tronpick.io/faucet.php',
+        litepick: 'https://litepick.io/faucet.php',
+        dogepick: 'https://dogepick.io/faucet.php',
+        solpick: 'https://solpick.io/faucet.php',
+        binpick: 'https://binpick.io/faucet.php'
     };
-    const baseUrl = siteUrls[platform] || 'https://tronpick.io';
-    const loginUrl = baseUrl + '/login.php';
-    const faucetUrl = baseUrl + '/faucet.php';
+    const faucetUrl = siteUrls[platform] || 'https://tronpick.io/faucet.php';
 
     // Configurer le proxy
     let proxyConfig = null;
@@ -120,6 +165,13 @@ async function processAccount(browser, account, index) {
         } else if (parts.length === 4) {
             proxyConfig = { host: parts[0], port: parts[1], username: parts[2], password: parts[3] };
         }
+    } else {
+        proxyConfig = {
+            host: DEFAULT_PROXY_HOST,
+            port: DEFAULT_PROXY_PORT,
+            username: DEFAULT_PROXY_USERNAME,
+            password: DEFAULT_PROXY_PASSWORD
+        };
     }
 
     const context = await browser.createIncognitoBrowserContext();
@@ -129,42 +181,22 @@ async function processAccount(browser, account, index) {
     }
 
     try {
-        // --- LOGIN ---
-        console.log(`🌐 Accès login ${platform}...`);
-        await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 60000 });
-        await fillField(page, 'input[type="email"], input[name="email"]', email, 'email');
-        await fillField(page, 'input[type="password"]', password, 'password');
-        await delay(2000);
+        // Injecter les cookies
+        await page.setCookie(...cookies);
+        console.log('✅ Cookies injectés');
 
-        try {
-            const frame = await page.waitForFrame(f => f.url().includes('challenges.cloudflare.com/turnstile'), { timeout: 30000 });
-            console.log('✅ Turnstile login présent, clic...');
-            await frame.click('input[type="checkbox"]');
-            await delay(5000);
-        } catch (e) {}
-
-        console.log('🔐 Clic sur "Log in"...');
-        const loginClicked = await page.evaluate(() => {
-            const btns = [...document.querySelectorAll('button')];
-            const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
-            if (loginBtn) { loginBtn.click(); return true; }
-            return false;
-        });
-        if (!loginClicked) throw new Error('Bouton Log in introuvable');
-
-        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 90000 }).catch(() => {});
-        await delay(5000);
-        if (page.url().includes('login.php')) throw new Error('Échec connexion');
-        console.log('✅ Connecté');
-
-        // --- FAUCET ---
-        console.log(`🚰 Accès faucet...`);
         await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-        await delay(10000);
+        await delay(5000);
+
+        // Vérifier si redirigé vers login (cookies expirés)
+        if (page.url().includes('login.php')) {
+            throw new Error('Cookies expirés');
+        }
 
         await humanScrollToClaim(page);
         await delay(2000);
 
+        // Clics Turnstile (parfois encore nécessaire même avec cookies)
         await humanClickAt(page, TURNSTILE_COORDS, 'Turnstile 1/2');
         await delay(10000);
         await humanClickAt(page, TURNSTILE_COORDS, 'Turnstile 2/2');
@@ -184,12 +216,12 @@ async function processAccount(browser, account, index) {
         });
         const success = btnDisabled || messages.some(m => /success|claimed|reward|sent/i.test(m));
 
-        const newLastClaim = success ? now : lastClaim;
-        return { email, success, message: messages[0] || (btnDisabled ? 'Bouton désactivé' : 'Aucune réaction'), lastClaim: newLastClaim };
+        const resultMessage = messages[0] || (btnDisabled ? 'Bouton désactivé (succès présumé)' : 'Aucune réaction');
+        return { email, success, message: resultMessage };
 
     } catch (error) {
         console.error(`❌ Erreur pour ${email}:`, error);
-        return { email, success: false, message: error.message, lastClaim };
+        return { email, success: false, message: error.message };
     } finally {
         await context.close();
     }
@@ -200,19 +232,36 @@ async function processAccount(browser, account, index) {
     let browser;
     const results = [];
     try {
-        const accountsPath = path.join(__dirname, 'accounts.json');
-        if (!fs.existsSync(accountsPath)) {
-            console.log('❌ Fichier accounts.json introuvable.');
-            return;
-        }
-        const accounts = JSON.parse(fs.readFileSync(accountsPath, 'utf8'));
+        // Charger les comptes
+        const accounts = await loadAccountsFromGitHub();
         if (accounts.length === 0) {
             console.log('ℹ️ Aucun compte configuré.');
             return;
         }
 
-        console.log(`🚀 Lancement pour ${accounts.length} compte(s)`);
+        // Filtrer les comptes actifs ayant des cookies
+        const activeAccounts = accounts.filter(acc => acc.enabled !== false && acc.cookies);
+        if (activeAccounts.length === 0) {
+            console.log('ℹ️ Aucun compte actif avec cookies.');
+            return;
+        }
 
+        // Déterminer les comptes éligibles (compte à rebours écoulé)
+        const now = Date.now();
+        const eligibleAccounts = activeAccounts.filter(acc => {
+            const lastClaim = acc.lastClaim || 0;
+            const intervalMs = (acc.timer || 60) * 60 * 1000;
+            return (now - lastClaim) >= intervalMs;
+        });
+
+        if (eligibleAccounts.length === 0) {
+            console.log('⏳ Aucun compte éligible pour le moment.');
+            return;
+        }
+
+        console.log(`🚀 Lancement pour ${eligibleAccounts.length} compte(s) éligible(s)`);
+
+        // Lancer un navigateur avec le proxy par défaut
         const { browser: br } = await connect({
             headless: false,
             turnstile: true,
@@ -229,28 +278,36 @@ async function processAccount(browser, account, index) {
         browser = br;
 
         let needsSave = false;
-        for (let i = 0; i < accounts.length; i++) {
-            const result = await processAccount(browser, accounts[i], i);
+        for (let i = 0; i < eligibleAccounts.length; i++) {
+            const acc = eligibleAccounts[i];
+            const result = await claimWithCookies(browser, acc, i);
             results.push(result);
-            if (result.lastClaim !== accounts[i].lastClaim) {
-                accounts[i].lastClaim = result.lastClaim;
-                needsSave = true;
+
+            // Mettre à jour lastClaim si succès
+            if (result.success) {
+                const originalAccount = accounts.find(a => a.email === acc.email);
+                if (originalAccount) {
+                    originalAccount.lastClaim = now;
+                    needsSave = true;
+                }
             }
             await delay(5000);
         }
 
         console.log('📊 Résultats finaux :', results);
 
+        // Sauvegarder les modifications dans GitHub
         if (needsSave) {
-            fs.writeFileSync(accountsPath, JSON.stringify(accounts, null, 2));
-            console.log('💾 Timestamps mis à jour dans accounts.json');
+            await saveAccountsToGitHub(accounts);
+            console.log('💾 Timestamps mis à jour dans GitHub.');
         }
 
+        // Sauvegarder les résultats pour le dashboard
         const statusPath = path.join(__dirname, 'public', 'status.json');
         fs.writeFileSync(statusPath, JSON.stringify(results, null, 2));
 
-    } catch (e) {
-        console.error('❌ Erreur fatale :', e);
+    } catch (error) {
+        console.error('❌ Erreur fatale :', error);
     } finally {
         if (browser) await browser.close();
     }
