@@ -33,6 +33,7 @@ async function fillField(page, selector, value, fieldName) {
 }
 
 export default async function handler(req, res) {
+    // CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -40,6 +41,7 @@ export default async function handler(req, res) {
     if (req.method === 'OPTIONS') return res.status(200).end();
     if (req.method !== 'POST') return res.status(405).json({ error: 'Méthode non autorisée' });
 
+    // Timeout global (55 secondes, marge de 5s)
     const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Timeout global dépassé (55s)')), 55000)
     );
@@ -52,12 +54,9 @@ export default async function handler(req, res) {
         res.status(200).json(result);
     } catch (error) {
         console.error('❌ Erreur globale:', error);
-        // Si l'erreur contient une capture, on la renvoie
-        if (error.screenshot) {
-            res.status(500).json({ error: error.message, screenshot: error.screenshot });
-        } else {
-            res.status(500).json({ error: error.message || 'Erreur inconnue' });
-        }
+        const response = { error: error.message || 'Erreur inconnue' };
+        if (error.screenshot) response.screenshot = error.screenshot;
+        res.status(500).json(response);
     }
 }
 
@@ -85,7 +84,12 @@ async function handleLogin({ email, password, platform, proxy }) {
         if (parts.length === 2) proxyConfig = { host: parts[0], port: parts[1] };
         else if (parts.length === 4) proxyConfig = { host: parts[0], port: parts[1], username: parts[2], password: parts[3] };
     } else {
-        proxyConfig = { host: DEFAULT_PROXY_HOST, port: DEFAULT_PROXY_PORT, username: PROXY_USERNAME, password: PROXY_PASSWORD };
+        proxyConfig = {
+            host: DEFAULT_PROXY_HOST,
+            port: DEFAULT_PROXY_PORT,
+            username: PROXY_USERNAME,
+            password: PROXY_PASSWORD
+        };
     }
 
     console.log(`🚀 Début login pour ${email} sur ${platform}`);
@@ -161,7 +165,21 @@ async function handleLogin({ email, password, platform, proxy }) {
 
     } catch (error) {
         console.error('❌ Erreur dans handleLogin:', error);
-        if (browser) await browser.close().catch(() => {});
+        if (browser) {
+            try {
+                // Si pas déjà de capture, on essaie d'en prendre une
+                if (!error.screenshot) {
+                    const pages = await browser.pages();
+                    if (pages.length > 0) {
+                        const screenshot = await pages[0].screenshot({ encoding: 'base64', fullPage: true });
+                        error.screenshot = screenshot;
+                    }
+                }
+            } catch (e) {
+                console.error('Impossible de prendre une capture:', e);
+            }
+            await browser.close().catch(() => {});
+        }
         throw error;
     }
 }
