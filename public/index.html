@@ -12,7 +12,7 @@
             padding: 20px;
         }
         .container {
-            max-width: 1100px;
+            max-width: 1200px;
             margin: 0 auto;
         }
         h1, h2 {
@@ -136,13 +136,17 @@
         .hidden {
             display: none;
         }
+        .text-center {
+            text-align: center;
+        }
+        .countdown {
+            font-weight: bold;
+            color: #2563eb;
+        }
         .inline-hint {
             font-size: 12px;
             color: #6c757d;
             margin-top: 5px;
-        }
-        .text-center {
-            text-align: center;
         }
     </style>
 </head>
@@ -227,6 +231,7 @@
                     <th>Intervalle</th>
                     <th>Plateforme</th>
                     <th>Proxy</th>
+                    <th>Prochain claim</th>
                     <th>Statut</th>
                     <th>Actions</th>
                 </tr>
@@ -337,26 +342,57 @@
         const refreshBtn = document.getElementById('refreshBtn');
 
         let currentAccounts = [];
+        let countdownIntervals = [];
 
         function showMessage(text, type) {
             messageArea.innerHTML = `<div class="message ${type}">${text}</div>`;
             setTimeout(() => messageArea.innerHTML = '', 5000);
         }
 
+        // Calcule le temps restant en secondes
+        function getRemainingSeconds(account) {
+            const now = Date.now();
+            const lastClaim = account.lastClaim || 0;
+            const intervalMs = (account.timer || 60) * 60 * 1000;
+            const nextClaimTime = lastClaim + intervalMs;
+            const remainingMs = Math.max(0, nextClaimTime - now);
+            return Math.floor(remainingMs / 1000);
+        }
+
+        // Formate les secondes en HH:MM:SS ou MM:SS
+        function formatTime(seconds) {
+            if (seconds <= 0) return '0:00';
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = seconds % 60;
+            if (h > 0) {
+                return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+            }
+            return `${m}:${s.toString().padStart(2, '0')}`;
+        }
+
         function renderAccounts() {
+            // Nettoyer les anciens intervalles
+            countdownIntervals.forEach(clearInterval);
+            countdownIntervals = [];
+
             const tbody = accountsBody;
             tbody.innerHTML = '';
             if (currentAccounts.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Aucun compte configuré</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Aucun compte configuré</td></tr>';
                 return;
             }
+
             currentAccounts.forEach((acc, idx) => {
                 const row = tbody.insertRow();
+                const remainingSeconds = getRemainingSeconds(acc);
+                
                 row.innerHTML = `
                     <td>${acc.email}</td>
                     <td>${acc.timer || 60} min</td>
                     <td>${acc.platform || 'tronpick'}</td>
                     <td>${acc.proxy || 'Défaut'}</td>
+                    <td><span class="countdown" id="countdown-${idx}">${formatTime(remainingSeconds)}</span></td>
                     <td><span class="status-badge ${acc.enabled !== false ? 'status-active' : 'status-inactive'}">${acc.enabled !== false ? 'Actif' : 'Inactif'}</span></td>
                     <td class="actions">
                         <button class="secondary" data-index="${idx}" data-action="edit">✏️</button>
@@ -364,7 +400,25 @@
                         <button class="secondary" data-index="${idx}" data-action="toggle">${acc.enabled !== false ? '⏸️' : '▶️'}</button>
                     </td>
                 `;
+
+                // Mettre à jour le compte à rebours chaque seconde
+                const countdownEl = document.getElementById(`countdown-${idx}`);
+                if (countdownEl) {
+                    let remaining = remainingSeconds;
+                    const interval = setInterval(() => {
+                        remaining--;
+                        if (remaining < 0) remaining = 0;
+                        countdownEl.textContent = formatTime(remaining);
+                        if (remaining === 0) {
+                            countdownEl.style.color = '#dc3545';
+                        } else {
+                            countdownEl.style.color = '#2563eb';
+                        }
+                    }, 1000);
+                    countdownIntervals.push(interval);
+                }
             });
+
             // Attacher les événements
             document.querySelectorAll('[data-action="edit"]').forEach(btn => {
                 btn.addEventListener('click', (e) => editAccount(e.target.dataset.index));
@@ -439,10 +493,13 @@
                 timer: parseInt(timerInput.value) || 60,
                 platform: platformSelect.value,
                 proxy: proxyInput.value.trim() || null,
-                enabled: true
+                enabled: true,
+                lastClaim: 0
             };
             let accounts = [...currentAccounts];
             if (index !== '') {
+                // Conserver le lastClaim existant si modification
+                newAccount.lastClaim = accounts[index].lastClaim || 0;
                 accounts[index] = newAccount;
             } else {
                 accounts.push(newAccount);
@@ -460,6 +517,11 @@
         } else {
             showMessage('Veuillez d\'abord configurer vos identifiants GitHub.', 'error');
         }
+
+        // Nettoyer les intervalles lors du rechargement
+        window.addEventListener('beforeunload', () => {
+            countdownIntervals.forEach(clearInterval);
+        });
     })();
 </script>
 </body>
