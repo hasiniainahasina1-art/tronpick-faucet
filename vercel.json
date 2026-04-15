@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "api/accounts.js": {
+      "env": {
+        "GH_TOKEN": "@gh_token",
+        "GH_USERNAME": "@gh_username",
+        "GH_REPO": "@gh_repo",
+        "GH_BRANCH": "@gh_branch",
+        "GH_FILE_PATH": "@gh_file_path"
+      }
+    }
+  }
+}
