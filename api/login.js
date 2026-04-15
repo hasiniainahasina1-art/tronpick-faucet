@@ -59,20 +59,19 @@ export default async function handler(req, res) {
         await page.keyboard.press('Backspace');
         await page.type('input[type="password"]', password, { delay: 10 });
 
-        // --- STRATÉGIE EXACTE DU SCRIPT.JS POUR LE LOGIN ---
+        // --- GESTION TURNSTILE ---
         console.log('🛡️ Attente iframe Turnstile...');
         const frame = await page.waitForFrame(
             f => f.url().includes('challenges.cloudflare.com/turnstile'),
-            { timeout: 10000 }
+            { timeout: 8000 }
         ).catch(() => null);
 
         if (frame) {
             console.log('✅ Iframe trouvée, clic checkbox');
             await frame.click('input[type="checkbox"]');
-            await delay(5000); // 5 secondes comme dans script.js
+            await delay(5000); // Attente validation
         } else {
-            // Fallback : coordonnées validées (si l'iframe n'apparaît pas)
-            console.log('⚠️ Iframe non trouvée, fallback coordonné');
+            console.log('⚠️ Iframe non trouvée, clic coordonné');
             await page.mouse.click(640, 615);
             await delay(5000);
         }
@@ -89,12 +88,15 @@ export default async function handler(req, res) {
         console.log(`📍 URL finale: ${currentUrl}`);
 
         if (currentUrl.includes('login.php')) {
+            // Capture d'écran en cas d'échec
             const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
             const errorMsg = await page.evaluate(() => {
                 const el = document.querySelector('.alert-danger, .error');
                 return el ? el.textContent.trim() : null;
             });
-            throw Object.assign(new Error(errorMsg || 'Échec connexion'), { screenshot });
+            const err = new Error(errorMsg || 'Échec de connexion');
+            err.screenshot = screenshot;
+            throw err;
         }
 
         const cookies = await page.cookies();
@@ -106,7 +108,9 @@ export default async function handler(req, res) {
         if (browser) {
             try {
                 const pages = await browser.pages();
-                if (pages.length > 0) error.screenshot = await pages[0].screenshot({ encoding: 'base64', fullPage: true });
+                if (pages.length > 0 && !error.screenshot) {
+                    error.screenshot = await pages[0].screenshot({ encoding: 'base64', fullPage: true });
+                }
             } catch (e) {}
             await browser.close();
         }
