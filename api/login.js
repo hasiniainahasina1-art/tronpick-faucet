@@ -5,7 +5,9 @@ const BROWSERLESS_TOKEN = process.env.BROWSERLESS_TOKEN;
 const PROXY_USERNAME = process.env.PROXY_USERNAME || '';
 const PROXY_PASSWORD = process.env.PROXY_PASSWORD || '';
 
+// Coordonnées exactes du Turnstile sur la page de login (1280x720)
 const TURNSTILE_COORDS = { x: 640, y: 615 };
+
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function drawRedDot(page, x, y) {
@@ -33,7 +35,6 @@ async function removeRedDot(page) {
 }
 
 export default async function handler(req, res) {
-    // CORS + méthode
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -63,18 +64,20 @@ export default async function handler(req, res) {
         proxyAuth = { username: PROXY_USERNAME, password: PROXY_PASSWORD };
     }
 
-    const screenshots = []; // tableau d'objets { label, base64 }
-
+    const screenshots = [];
     let browser;
+
     try {
         browser = await puppeteer.connect({ browserWSEndpoint: `wss://chrome.browserless.io?token=${BROWSERLESS_TOKEN}` });
         const page = await browser.newPage();
         if (proxyAuth) await page.authenticate(proxyAuth);
         await page.setViewport({ width: 1280, height: 720 });
 
+        console.log(`🌐 Navigation vers ${loginUrl}`);
         await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
 
         // Remplissage
+        console.log('⌨️ Remplissage formulaire');
         await page.waitForSelector('input[type="email"], input[name="email"]', { timeout: 5000 });
         await page.click('input[type="email"], input[name="email"]', { clickCount: 3 });
         await page.keyboard.press('Backspace');
@@ -87,43 +90,49 @@ export default async function handler(req, res) {
 
         await delay(500);
 
-        // 1. Dessiner point rouge et capture
+        // --- PREMIER CLIC TURNSTILE ---
         await drawRedDot(page, TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
-        screenshots.push({
-            label: 'withRedDot',
-            base64: await page.screenshot({ encoding: 'base64', fullPage: true })
-        });
+        screenshots.push({ label: '1_before_first_click', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
+        console.log('📸 Capture avec point rouge avant 1er clic');
 
-        // 2. Clic Turnstile et capture (point encore présent)
         await page.mouse.click(TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
         await delay(500);
-        screenshots.push({
-            label: 'afterTurnstileClick',
-            base64: await page.screenshot({ encoding: 'base64', fullPage: true })
-        });
+        screenshots.push({ label: '2_after_first_click', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
+        console.log('📸 Capture après 1er clic (point toujours présent)');
 
-        // 3. Supprimer le point
+        // Attendre 10 secondes
+        console.log('⏳ Attente 10 secondes après 1er clic...');
+        await delay(10000);
+        screenshots.push({ label: '3_after_10s_wait', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
+        console.log('📸 Capture après 10s d\'attente');
+
+        // --- DEUXIÈME CLIC TURNSTILE ---
+        await page.mouse.click(TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
+        await delay(500);
+        screenshots.push({ label: '4_after_second_click', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
+        console.log('📸 Capture après 2e clic');
+
         await removeRedDot(page);
 
-        // 4. Attendre 10s et capture
+        // Attendre encore 10 secondes
+        console.log('⏳ Attente 10 secondes après 2e clic...');
         await delay(10000);
-        screenshots.push({
-            label: 'afterWait',
-            base64: await page.screenshot({ encoding: 'base64', fullPage: true })
-        });
+        screenshots.push({ label: '5_after_second_10s_wait', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
+        console.log('📸 Capture après 2e attente 10s');
 
-        // 5. Clic "Log in"
+        // --- CLIQUER SUR "LOG IN" ---
+        console.log('🔐 Clic sur "Log in"');
         const loginBtn = await page.waitForXPath("//button[contains(text(), 'Log in')]", { timeout: 5000 });
         await loginBtn.click();
+
         await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
         await delay(2000);
 
         const currentUrl = page.url();
+        console.log(`📍 URL finale: ${currentUrl}`);
+
         if (currentUrl.includes('login.php')) {
-            screenshots.push({
-                label: 'final',
-                base64: await page.screenshot({ encoding: 'base64', fullPage: true })
-            });
+            screenshots.push({ label: '6_final_error', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
             const errorMsg = await page.evaluate(() => {
                 const el = document.querySelector('.alert-danger, .error');
                 return el ? el.textContent.trim() : null;
@@ -134,6 +143,7 @@ export default async function handler(req, res) {
         }
 
         const cookies = await page.cookies();
+        console.log(`✅ ${cookies.length} cookies capturés`);
         await browser.close();
         res.status(200).json({ success: true, cookies });
 
@@ -142,11 +152,8 @@ export default async function handler(req, res) {
         if (browser) {
             try {
                 const pages = await browser.pages();
-                if (pages.length > 0 && !error.screenshots) {
-                    screenshots.push({
-                        label: 'final_error',
-                        base64: await pages[0].screenshot({ encoding: 'base64', fullPage: true })
-                    });
+                if (pages.length > 0) {
+                    screenshots.push({ label: 'final_crash', base64: await pages[0].screenshot({ encoding: 'base64', fullPage: true }) });
                 }
             } catch (e) {}
             await browser.close();
