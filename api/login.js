@@ -1,72 +1,22 @@
-// api/login.js
 const puppeteer = require('puppeteer-core');
 
-const DEFAULT_PROXY_HOST = '31.59.20.176';
-const DEFAULT_PROXY_PORT = '6754';
+const BROWSERLESS_TOKEN = process.env.BROWSERLESS_TOKEN;
 const PROXY_USERNAME = process.env.PROXY_USERNAME || '';
 const PROXY_PASSWORD = process.env.PROXY_PASSWORD || '';
-const BROWSERLESS_TOKEN = process.env.BROWSERLESS_TOKEN;
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-async function fillField(page, selector, value, fieldName) {
-    await page.waitForSelector(selector, { timeout: 10000 });
-    await page.click(selector, { clickCount: 3 });
-    await page.keyboard.press('Backspace');
-    await delay(100);
-    await page.evaluate((sel, val) => {
-        const el = document.querySelector(sel);
-        el.value = val;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        el.dispatchEvent(new Event('blur', { bubbles: true }));
-    }, selector, value);
-    await delay(300);
-    let actual = await page.$eval(selector, el => el.value);
-    if (actual !== value) {
-        await page.click(selector, { clickCount: 3 });
-        await page.keyboard.press('Backspace');
-        for (const char of value) await page.keyboard.type(char, { delay: 30 });
-        actual = await page.$eval(selector, el => el.value);
-    }
-    if (actual !== value) throw new Error(`Impossible de remplir ${fieldName}`);
-}
-
 export default async function handler(req, res) {
-    // CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
     if (req.method === 'OPTIONS') return res.status(200).end();
     if (req.method !== 'POST') return res.status(405).json({ error: 'Méthode non autorisée' });
 
-    // Timeout global (55 secondes, marge de 5s)
-    const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Timeout global dépassé (55s)')), 55000)
-    );
+    if (!BROWSERLESS_TOKEN) return res.status(500).json({ error: 'BROWSERLESS_TOKEN manquant' });
 
-    try {
-        const result = await Promise.race([
-            handleLogin(req.body),
-            timeoutPromise
-        ]);
-        res.status(200).json(result);
-    } catch (error) {
-        console.error('❌ Erreur globale:', error);
-        const response = { error: error.message || 'Erreur inconnue' };
-        if (error.screenshot) response.screenshot = error.screenshot;
-        res.status(500).json(response);
-    }
-}
-
-async function handleLogin({ email, password, platform, proxy }) {
-    if (!BROWSERLESS_TOKEN) {
-        throw new Error('Configuration serveur : BROWSERLESS_TOKEN manquant');
-    }
-    if (!email || !password || !platform) {
-        throw new Error('Champs manquants');
-    }
+    const { email, password, platform, proxy } = req.body;
+    if (!email || !password || !platform) return res.status(400).json({ error: 'Champs manquants' });
 
     const siteUrls = {
         tronpick: 'https://tronpick.io/login.php',
@@ -76,110 +26,64 @@ async function handleLogin({ email, password, platform, proxy }) {
         binpick: 'https://binpick.io/login.php'
     };
     const loginUrl = siteUrls[platform];
-    if (!loginUrl) throw new Error('Plateforme inconnue');
+    if (!loginUrl) return res.status(400).json({ error: 'Plateforme inconnue' });
 
-    let proxyConfig = null;
+    let proxyAuth = null;
     if (proxy) {
         const parts = proxy.split(':');
-        if (parts.length === 2) proxyConfig = { host: parts[0], port: parts[1] };
-        else if (parts.length === 4) proxyConfig = { host: parts[0], port: parts[1], username: parts[2], password: parts[3] };
-    } else {
-        proxyConfig = {
-            host: DEFAULT_PROXY_HOST,
-            port: DEFAULT_PROXY_PORT,
-            username: PROXY_USERNAME,
-            password: PROXY_PASSWORD
-        };
+        if (parts.length === 4) proxyAuth = { username: parts[2], password: parts[3] };
+    } else if (PROXY_USERNAME) {
+        proxyAuth = { username: PROXY_USERNAME, password: PROXY_PASSWORD };
     }
-
-    console.log(`🚀 Début login pour ${email} sur ${platform}`);
 
     let browser;
     try {
-        console.log('🔗 Connexion à Browserless...');
-        browser = await puppeteer.connect({
-            browserWSEndpoint: `wss://chrome.browserless.io?token=${BROWSERLESS_TOKEN}`
-        });
-        console.log('✅ Connecté à Browserless');
-
+        browser = await puppeteer.connect({ browserWSEndpoint: `wss://chrome.browserless.io?token=${BROWSERLESS_TOKEN}` });
         const page = await browser.newPage();
-        if (proxyConfig && proxyConfig.username) {
-            await page.authenticate({ username: proxyConfig.username, password: proxyConfig.password });
-        }
-
+        if (proxyAuth) await page.authenticate(proxyAuth);
         await page.setViewport({ width: 1280, height: 720 });
 
-        console.log(`🌐 Navigation vers ${loginUrl}`);
-        await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+        await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
 
-        console.log('⌨️ Remplissage email/password');
-        await fillField(page, 'input[type="email"], input[name="email"]', email, 'email');
-        await fillField(page, 'input[type="password"]', password, 'password');
-        await delay(2000);
+        // Remplissage
+        await page.waitForSelector('input[type="email"], input[name="email"]', { timeout: 5000 });
+        await page.click('input[type="email"], input[name="email"]', { clickCount: 3 });
+        await page.keyboard.press('Backspace');
+        await page.type('input[type="email"], input[name="email"]', email, { delay: 20 });
 
-        // Turnstile
-        try {
-            const frame = await page.waitForFrame(
-                f => f.url().includes('challenges.cloudflare.com/turnstile'),
-                { timeout: 15000 }
-            );
-            await frame.click('input[type="checkbox"]');
-            await delay(5000);
-            console.log('✅ Turnstile cliqué');
-        } catch (e) {
-            console.log('ℹ️ Turnstile non trouvé');
-        }
+        await page.waitForSelector('input[type="password"]', { timeout: 5000 });
+        await page.click('input[type="password"]', { clickCount: 3 });
+        await page.keyboard.press('Backspace');
+        await page.type('input[type="password"]', password, { delay: 20 });
 
-        console.log('🔐 Clic sur Log in');
-        const loginClicked = await page.evaluate(() => {
-            const btns = [...document.querySelectorAll('button')];
-            const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
-            if (loginBtn) { loginBtn.click(); return true; }
-            return false;
-        });
-        if (!loginClicked) throw new Error('Bouton Log in introuvable');
+        await delay(500);
 
-        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
+        // Turnstile : clic coordonné
+        await page.mouse.click(640, 450);
         await delay(5000);
 
-        const currentUrl = page.url();
-        console.log(`📍 URL après login : ${currentUrl}`);
+        // Clic "Log in"
+        const btn = await page.waitForXPath("//button[contains(text(), 'Log in')]", { timeout: 5000 });
+        await btn.click();
 
-        if (currentUrl.includes('login.php')) {
-            // Capturer l'écran pour diagnostic
+        await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
+        await delay(2000);
+
+        if (page.url().includes('login.php')) {
             const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
-            const errorMsg = await page.evaluate(() => {
-                const el = document.querySelector('.alert-danger, .error, .message-error');
-                return el ? el.textContent.trim() : null;
-            });
-            const err = new Error(errorMsg || 'Identifiants invalides ou captcha non résolu');
-            err.screenshot = screenshot;
-            throw err;
+            throw Object.assign(new Error('Identifiants invalides ou captcha'), { screenshot });
         }
 
         const cookies = await page.cookies();
-        console.log(`✅ ${cookies.length} cookies capturés`);
-
         await browser.close();
-        return { success: true, cookies };
+        res.status(200).json({ success: true, cookies });
 
     } catch (error) {
-        console.error('❌ Erreur dans handleLogin:', error);
         if (browser) {
-            try {
-                // Si pas déjà de capture, on essaie d'en prendre une
-                if (!error.screenshot) {
-                    const pages = await browser.pages();
-                    if (pages.length > 0) {
-                        const screenshot = await pages[0].screenshot({ encoding: 'base64', fullPage: true });
-                        error.screenshot = screenshot;
-                    }
-                }
-            } catch (e) {
-                console.error('Impossible de prendre une capture:', e);
-            }
-            await browser.close().catch(() => {});
+            try { if (!error.screenshot) error.screenshot = await browser.pages().then(p => p[0]?.screenshot({ encoding: 'base64' })); } catch {}
+            await browser.close();
         }
-        throw error;
+        console.error(error);
+        res.status(500).json({ error: error.message, screenshot: error.screenshot });
     }
 }
