@@ -5,11 +5,13 @@ const BROWSERLESS_TOKEN = process.env.BROWSERLESS_TOKEN;
 const PROXY_USERNAME = process.env.PROXY_USERNAME || '';
 const PROXY_PASSWORD = process.env.PROXY_PASSWORD || '';
 
+// Coordonnées exactes du Turnstile (validées par votre script)
 const TURNSTILE_COORDS = { x: 640, y: 615 };
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 export default async function handler(req, res) {
+    // CORS et méthode
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -39,9 +41,7 @@ export default async function handler(req, res) {
         proxyAuth = { username: PROXY_USERNAME, password: PROXY_PASSWORD };
     }
 
-    const screenshots = [];
     let browser;
-
     try {
         // Connexion rapide à Browserless
         browser = await puppeteer.connect({ browserWSEndpoint: `wss://chrome.browserless.io?token=${BROWSERLESS_TOKEN}` });
@@ -49,10 +49,10 @@ export default async function handler(req, res) {
         if (proxyAuth) await page.authenticate(proxyAuth);
         await page.setViewport({ width: 1280, height: 720 });
 
-        // Navigation avec 'commit' (très rapide)
-        await page.goto(loginUrl, { waitUntil: 'commit', timeout: 15000 });
+        // Navigation rapide (waitUntil: 'domcontentloaded' est un bon compromis)
+        await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
 
-        // Remplissage ultra-rapide
+        // Remplissage ultra-rapide (identique à votre script)
         await page.waitForSelector('input[type="email"], input[name="email"]', { timeout: 3000 });
         await page.click('input[type="email"], input[name="email"]', { clickCount: 3 });
         await page.keyboard.press('Backspace');
@@ -63,32 +63,14 @@ export default async function handler(req, res) {
         await page.keyboard.press('Backspace');
         await page.type('input[type="password"]', password, { delay: 10 });
 
-        screenshots.push({ label: 'after_fill', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
+        // --- STRATÉGIE TURNSTILE (identique à votre script.js) ---
+        // Double clic avec délai réduit mais suffisant
+        await page.mouse.click(TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
+        await delay(4000); // 4 secondes (au lieu de 10) pour gagner du temps
+        await page.mouse.click(TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
+        await delay(4000);
 
-        // --- TURNSTILE : double clic (iframe prioritaire) ---
-        const turnstileFrame = page.frames().find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
-        
-        if (turnstileFrame) {
-            // Double clic dans l'iframe
-            await turnstileFrame.click('input[type="checkbox"]');
-            await delay(4000); // Attente réduite
-            screenshots.push({ label: 'after_first_iframe', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
-            
-            await turnstileFrame.click('input[type="checkbox"]');
-            await delay(4000);
-            screenshots.push({ label: 'after_second_iframe', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
-        } else {
-            // Fallback coordonné
-            await page.mouse.click(TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
-            await delay(4000);
-            screenshots.push({ label: 'after_first_coord', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
-            
-            await page.mouse.click(TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
-            await delay(4000);
-            screenshots.push({ label: 'after_second_coord', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
-        }
-
-        // Attente token (max 5s)
+        // Attendre le token (max 5s)
         await page.waitForFunction(
             () => {
                 const inp = document.querySelector('[name="cf-turnstile-response"]');
@@ -97,23 +79,22 @@ export default async function handler(req, res) {
             { timeout: 5000 }
         ).catch(() => console.log('⚠️ Token non généré, on tente quand même'));
 
-        // Clic "Log in"
+        // Clic sur "Log in"
         const loginBtn = await page.waitForXPath("//button[contains(text(), 'Log in')]", { timeout: 3000 });
         await loginBtn.click();
 
-        await page.waitForNavigation({ waitUntil: 'commit', timeout: 10000 }).catch(() => {});
+        // Navigation finale (timeout court)
+        await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 }).catch(() => {});
         await delay(1000);
 
         const currentUrl = page.url();
         if (currentUrl.includes('login.php')) {
-            screenshots.push({ label: 'login_failed', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
+            const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
             const errorMsg = await page.evaluate(() => {
                 const el = document.querySelector('.alert-danger, .error');
                 return el ? el.textContent.trim() : null;
             });
-            const err = new Error(errorMsg || 'Échec connexion');
-            err.screenshots = screenshots;
-            throw err;
+            throw Object.assign(new Error(errorMsg || 'Échec connexion'), { screenshot });
         }
 
         const cookies = await page.cookies();
@@ -125,12 +106,10 @@ export default async function handler(req, res) {
         if (browser) {
             try {
                 const pages = await browser.pages();
-                if (pages.length > 0) {
-                    screenshots.push({ label: 'crash', base64: await pages[0].screenshot({ encoding: 'base64', fullPage: true }) });
-                }
+                if (pages.length > 0) error.screenshot = await pages[0].screenshot({ encoding: 'base64', fullPage: true });
             } catch (e) {}
             await browser.close();
         }
-        res.status(500).json({ error: error.message, screenshots });
+        res.status(500).json({ error: error.message, screenshot: error.screenshot });
     }
 }
