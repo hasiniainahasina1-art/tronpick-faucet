@@ -5,12 +5,9 @@ const BROWSERLESS_TOKEN = process.env.BROWSERLESS_TOKEN;
 const PROXY_USERNAME = process.env.PROXY_USERNAME || '';
 const PROXY_PASSWORD = process.env.PROXY_PASSWORD || '';
 
-// Coordonnées du Turnstile sur la page de login (1280x720)
 const TURNSTILE_COORDS = { x: 640, y: 450 };
-
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Ajoute un point rouge aux coordonnées données
 async function drawRedDot(page, x, y) {
     await page.evaluate((x, y) => {
         const dot = document.createElement('div');
@@ -28,7 +25,6 @@ async function drawRedDot(page, x, y) {
     }, x, y);
 }
 
-// Supprime le point rouge
 async function removeRedDot(page) {
     await page.evaluate(() => {
         const dot = document.getElementById('puppeteer-red-dot');
@@ -37,21 +33,17 @@ async function removeRedDot(page) {
 }
 
 export default async function handler(req, res) {
+    // CORS + méthode
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
     if (req.method === 'OPTIONS') return res.status(200).end();
     if (req.method !== 'POST') return res.status(405).json({ error: 'Méthode non autorisée' });
 
-    if (!BROWSERLESS_TOKEN) {
-        return res.status(500).json({ error: 'BROWSERLESS_TOKEN manquant' });
-    }
+    if (!BROWSERLESS_TOKEN) return res.status(500).json({ error: 'BROWSERLESS_TOKEN manquant' });
 
     const { email, password, platform, proxy } = req.body;
-    if (!email || !password || !platform) {
-        return res.status(400).json({ error: 'Champs manquants' });
-    }
+    if (!email || !password || !platform) return res.status(400).json({ error: 'Champs manquants' });
 
     const siteUrls = {
         tronpick: 'https://tronpick.io/login.php',
@@ -71,22 +63,18 @@ export default async function handler(req, res) {
         proxyAuth = { username: PROXY_USERNAME, password: PROXY_PASSWORD };
     }
 
-    let browser;
-    const screenshots = {};
+    const screenshots = []; // tableau d'objets { label, base64 }
 
+    let browser;
     try {
-        browser = await puppeteer.connect({
-            browserWSEndpoint: `wss://chrome.browserless.io?token=${BROWSERLESS_TOKEN}`
-        });
+        browser = await puppeteer.connect({ browserWSEndpoint: `wss://chrome.browserless.io?token=${BROWSERLESS_TOKEN}` });
         const page = await browser.newPage();
         if (proxyAuth) await page.authenticate(proxyAuth);
         await page.setViewport({ width: 1280, height: 720 });
 
-        console.log(`🌐 Navigation vers ${loginUrl}`);
         await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
 
         // Remplissage
-        console.log('⌨️ Remplissage formulaire');
         await page.waitForSelector('input[type="email"], input[name="email"]', { timeout: 5000 });
         await page.click('input[type="email"], input[name="email"]', { clickCount: 3 });
         await page.keyboard.press('Backspace');
@@ -99,40 +87,43 @@ export default async function handler(req, res) {
 
         await delay(500);
 
-        // === DESSINER POINT ROUGE ET CAPTURE AVEC POINT ===
+        // 1. Dessiner point rouge et capture
         await drawRedDot(page, TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
-        screenshots.withRedDot = await page.screenshot({ encoding: 'base64', fullPage: true });
-        console.log('📸 Capture avec point rouge sur Turnstile');
+        screenshots.push({
+            label: 'withRedDot',
+            base64: await page.screenshot({ encoding: 'base64', fullPage: true })
+        });
 
-        // === CLIQUER SUR LE TURNSTILE (point toujours visible) ===
-        console.log('🖱️ Clic sur Turnstile');
+        // 2. Clic Turnstile et capture (point encore présent)
         await page.mouse.click(TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
-        await delay(500); // laisser le temps au clic de faire effet
-        screenshots.afterTurnstileClick = await page.screenshot({ encoding: 'base64', fullPage: true });
-        console.log('📸 Capture APRÈS clic Turnstile (point encore présent)');
+        await delay(500);
+        screenshots.push({
+            label: 'afterTurnstileClick',
+            base64: await page.screenshot({ encoding: 'base64', fullPage: true })
+        });
 
-        // === SUPPRIMER LE POINT ROUGE ===
+        // 3. Supprimer le point
         await removeRedDot(page);
 
-        // === ATTENDRE 10 SECONDES ===
-        console.log('⏳ Attente de 10 secondes...');
+        // 4. Attendre 10s et capture
         await delay(10000);
-        screenshots.afterWait = await page.screenshot({ encoding: 'base64', fullPage: true });
-        console.log('📸 Capture après 10s d\'attente (sans point)');
+        screenshots.push({
+            label: 'afterWait',
+            base64: await page.screenshot({ encoding: 'base64', fullPage: true })
+        });
 
-        // === CLIQUER SUR "LOG IN" ===
-        console.log('🔐 Clic sur "Log in"');
+        // 5. Clic "Log in"
         const loginBtn = await page.waitForXPath("//button[contains(text(), 'Log in')]", { timeout: 5000 });
         await loginBtn.click();
-
         await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
         await delay(2000);
 
         const currentUrl = page.url();
-        console.log(`📍 URL finale: ${currentUrl}`);
-
         if (currentUrl.includes('login.php')) {
-            screenshots.final = await page.screenshot({ encoding: 'base64', fullPage: true });
+            screenshots.push({
+                label: 'final',
+                base64: await page.screenshot({ encoding: 'base64', fullPage: true })
+            });
             const errorMsg = await page.evaluate(() => {
                 const el = document.querySelector('.alert-danger, .error');
                 return el ? el.textContent.trim() : null;
@@ -143,7 +134,6 @@ export default async function handler(req, res) {
         }
 
         const cookies = await page.cookies();
-        console.log(`✅ ${cookies.length} cookies capturés`);
         await browser.close();
         res.status(200).json({ success: true, cookies });
 
@@ -151,15 +141,16 @@ export default async function handler(req, res) {
         console.error('❌ Erreur:', error);
         if (browser) {
             try {
-                if (!error.screenshots) {
-                    const pages = await browser.pages();
-                    if (pages.length > 0) {
-                        error.screenshots = { ...screenshots, final: await pages[0].screenshot({ encoding: 'base64', fullPage: true }) };
-                    }
+                const pages = await browser.pages();
+                if (pages.length > 0 && !error.screenshots) {
+                    screenshots.push({
+                        label: 'final_error',
+                        base64: await pages[0].screenshot({ encoding: 'base64', fullPage: true })
+                    });
                 }
             } catch (e) {}
             await browser.close();
         }
-        res.status(500).json({ error: error.message, screenshots: error.screenshots || screenshots });
+        res.status(500).json({ error: error.message, screenshots });
     }
 }
