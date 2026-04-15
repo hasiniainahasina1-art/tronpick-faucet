@@ -11,7 +11,6 @@ const LOGIN_TURNSTILE_COORDS = { x: 640, y: 450 };
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 export default async function handler(req, res) {
-    // CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -58,7 +57,7 @@ export default async function handler(req, res) {
         console.log(`🌐 Navigation vers ${loginUrl}`);
         await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
 
-        // Remplissage rapide
+        // Remplissage
         console.log('⌨️ Remplissage formulaire');
         await page.waitForSelector('input[type="email"], input[name="email"]', { timeout: 5000 });
         await page.click('input[type="email"], input[name="email"]', { clickCount: 3 });
@@ -72,30 +71,39 @@ export default async function handler(req, res) {
 
         await delay(500);
 
-        // === GESTION TURNSTILE AVEC DOUBLE CLIC ===
-        console.log('🛡️ Gestion Turnstile (double clic)');
+        // === CAPTURE AVANT PREMIER CLIC ===
+        const screenshotBefore = await page.screenshot({ encoding: 'base64', fullPage: true });
+        console.log('📸 Capture AVANT premier clic prise');
+
         // Premier clic
+        console.log('🛡️ Premier clic Turnstile');
         await page.mouse.click(LOGIN_TURNSTILE_COORDS.x, LOGIN_TURNSTILE_COORDS.y);
-        console.log('   Premier clic effectué');
-        await delay(10000); // Attendre 10s que Turnstile se résolve partiellement
+        await delay(2000); // Laisser le widget réagir
+
+        // === CAPTURE APRÈS PREMIER CLIC ===
+        const screenshotAfterFirst = await page.screenshot({ encoding: 'base64', fullPage: true });
+        console.log('📸 Capture APRÈS premier clic prise');
+
+        // Attendre 8 secondes au total depuis le premier clic (déjà attendu 2s)
+        await delay(6000);
 
         // Deuxième clic
+        console.log('🛡️ Second clic Turnstile');
         await page.mouse.click(LOGIN_TURNSTILE_COORDS.x, LOGIN_TURNSTILE_COORDS.y);
-        console.log('   Second clic effectué');
 
-        // Attendre que le token Turnstile soit généré (max 10s)
-        console.log('⏳ Attente génération token...');
+        // Attendre génération token
+        console.log('⏳ Attente token Turnstile...');
         await page.waitForFunction(
             () => {
                 const inp = document.querySelector('[name="cf-turnstile-response"]');
                 return inp && inp.value.length > 10;
             },
-            { timeout: 10000 }
-        ).catch(() => console.log('⚠️ Token non généré, on tente quand même'));
+            { timeout: 8000 }
+        ).catch(() => console.log('⚠️ Token non généré, on continue'));
 
-        await delay(2000);
+        await delay(1000);
 
-        // Clic sur "Log in"
+        // Clic "Log in"
         console.log('🔐 Clic sur Log in');
         const btn = await page.waitForXPath("//button[contains(text(), 'Log in')]", { timeout: 5000 });
         await btn.click();
@@ -107,12 +115,18 @@ export default async function handler(req, res) {
         console.log(`📍 URL finale: ${currentUrl}`);
 
         if (currentUrl.includes('login.php')) {
-            const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
+            const screenshotFinal = await page.screenshot({ encoding: 'base64', fullPage: true });
             const errorMsg = await page.evaluate(() => {
                 const el = document.querySelector('.alert-danger, .error');
                 return el ? el.textContent.trim() : null;
             });
-            throw Object.assign(new Error(errorMsg || 'Identifiants invalides ou captcha'), { screenshot });
+            const err = new Error(errorMsg || 'Identifiants invalides ou captcha');
+            err.screenshots = {
+                beforeFirstClick: screenshotBefore,
+                afterFirstClick: screenshotAfterFirst,
+                final: screenshotFinal
+            };
+            throw err;
         }
 
         const cookies = await page.cookies();
@@ -124,15 +138,19 @@ export default async function handler(req, res) {
         console.error('❌ Erreur:', error);
         if (browser) {
             try {
-                if (!error.screenshot) {
+                if (!error.screenshots) {
                     const pages = await browser.pages();
                     if (pages.length > 0) {
-                        error.screenshot = await pages[0].screenshot({ encoding: 'base64', fullPage: true });
+                        error.screenshots = { final: await pages[0].screenshot({ encoding: 'base64', fullPage: true }) };
                     }
                 }
             } catch (e) {}
             await browser.close();
         }
-        res.status(500).json({ error: error.message, screenshot: error.screenshot });
+        // Envoyer les captures dans la réponse d'erreur
+        res.status(500).json({
+            error: error.message,
+            screenshots: error.screenshots || null
+        });
     }
 }
