@@ -1,126 +1,158 @@
-// api/login.js
-const puppeteer = require('puppeteer-core');
+const { connect } = require('puppeteer-real-browser');
+const fs = require('fs');
+const path = require('path');
+const { Octokit } = require('@octokit/rest');
 
+// Configuration GitHub (via variables d'environnement)
+const GH_TOKEN = process.env.GH_TOKEN;
+const GH_USERNAME = process.env.GH_USERNAME;
+const GH_REPO = process.env.GH_REPO;
+const GH_BRANCH = process.env.GH_BRANCH || 'main';
+const GH_FILE_PATH = process.env.GH_FILE_PATH || 'accounts.json';
+
+if (!GH_TOKEN || !GH_USERNAME || !GH_REPO) {
+    console.error('❌ Variables GitHub manquantes');
+    process.exit(1);
+}
+
+const octokit = new Octokit({ auth: GH_TOKEN });
+
+// Proxy par défaut
 const DEFAULT_PROXY_HOST = '31.59.20.176';
 const DEFAULT_PROXY_PORT = '6754';
+const DEFAULT_PROXY_USERNAME = process.env.PROXY_USERNAME || '';
+const DEFAULT_PROXY_PASSWORD = process.env.PROXY_PASSWORD || '';
 
-const BROWSERLESS_TOKEN = process.env.BROWSERLESS_TOKEN;
-const PROXY_USERNAME = process.env.PROXY_USERNAME || '';
-const PROXY_PASSWORD = process.env.PROXY_PASSWORD || '';
+// Coordonnées fixes
+const TURNSTILE_COORDS = { x: 640, y: 615 };
+const CLAIM_COORDS = { x: 640, y: 223 };
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-async function fillField(page, selector, value, fieldName) {
-    await page.waitForSelector(selector, { timeout: 10000 });
-    await page.click(selector, { clickCount: 3 });
-    await page.keyboard.press('Backspace');
-    await delay(100);
-    await page.evaluate((sel, val) => {
-        const el = document.querySelector(sel);
-        el.value = val;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        el.dispatchEvent(new Event('blur', { bubbles: true }));
-    }, selector, value);
-    await delay(300);
-    let actual = await page.$eval(selector, el => el.value);
-    if (actual !== value) {
-        await page.click(selector, { clickCount: 3 });
-        await page.keyboard.press('Backspace');
-        for (const char of value) await page.keyboard.type(char, { delay: 30 });
-        actual = await page.$eval(selector, el => el.value);
+// --- Fonctions utilitaires (fillField, humanScrollToClaim, humanClickAt, etc.) ---
+// (Recopiez-les depuis votre script.js existant, elles sont parfaites)
+
+// --- Gestion GitHub ---
+async function loadAccounts() {
+    try {
+        const res = await octokit.repos.getContent({
+            owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH
+        });
+        return JSON.parse(Buffer.from(res.data.content, 'base64').toString('utf8'));
+    } catch (e) {
+        if (e.status === 404) return [];
+        throw e;
     }
-    if (actual !== value) throw new Error(`Impossible de remplir ${fieldName}`);
 }
 
-export default async function handler(req, res) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+async function saveAccounts(accounts) {
+    let sha = null;
+    try {
+        const res = await octokit.repos.getContent({
+            owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH
+        });
+        sha = res.data.sha;
+    } catch (e) {}
+    const content = Buffer.from(JSON.stringify(accounts, null, 2)).toString('base64');
+    await octokit.repos.createOrUpdateFileContents({
+        owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH,
+        message: 'Mise à jour automatique', content, branch: GH_BRANCH, sha
+    });
+}
 
-    if (req.method === 'OPTIONS') return res.status(200).end();
-    if (req.method !== 'POST') return res.status(405).json({ error: 'Méthode non autorisée' });
+// --- Login et capture cookies ---
+async function performLoginAndCaptureCookies(browser, account) {
+    // ... (reprendre exactement la logique de votre script.js pour le login)
+    // Utiliser `browser.createIncognitoBrowserContext()` pour isoler les sessions.
+}
 
-    if (!BROWSERLESS_TOKEN) {
-        console.error('❌ BROWSERLESS_TOKEN manquant');
-        return res.status(500).json({ error: 'Configuration serveur incomplète (BROWSERLESS_TOKEN)' });
-    }
+// --- Claim avec cookies ---
+async function claimWithCookies(browser, account) {
+    // ... (reprendre exactement la logique de votre script.js pour le claim)
+}
 
-    const { email, password, platform, proxy } = req.body;
-    if (!email || !password || !platform) {
-        return res.status(400).json({ error: 'Champs manquants' });
-    }
-
-    const siteUrls = {
-        tronpick: 'https://tronpick.io/login.php',
-        litepick: 'https://litepick.io/login.php',
-        dogepick: 'https://dogepick.io/login.php',
-        solpick: 'https://solpick.io/login.php',
-        binpick: 'https://binpick.io/login.php'
-    };
-    const loginUrl = siteUrls[platform];
-    if (!loginUrl) return res.status(400).json({ error: 'Plateforme inconnue' });
-
-    let proxyConfig = null;
-    if (proxy) {
-        const parts = proxy.split(':');
-        if (parts.length === 2) proxyConfig = { host: parts[0], port: parts[1] };
-        else if (parts.length === 4) proxyConfig = { host: parts[0], port: parts[1], username: parts[2], password: parts[3] };
-    } else {
-        proxyConfig = { host: DEFAULT_PROXY_HOST, port: DEFAULT_PROXY_PORT, username: PROXY_USERNAME, password: PROXY_PASSWORD };
-    }
-
+// --- Principal ---
+(async () => {
     let browser;
     try {
-        browser = await puppeteer.connect({
-            browserWSEndpoint: `wss://chrome.browserless.io?token=${BROWSERLESS_TOKEN}`
-        });
+        let accounts = await loadAccounts();
+        if (!accounts.length) return;
 
-        const page = await browser.newPage();
-        if (proxyConfig && proxyConfig.username) {
-            await page.authenticate({ username: proxyConfig.username, password: proxyConfig.password });
-        }
+        const now = Date.now();
+        let needsSave = false;
 
-        await page.setViewport({ width: 1280, height: 720 });
-        await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 60000 });
-
-        await fillField(page, 'input[type="email"], input[name="email"]', email, 'email');
-        await fillField(page, 'input[type="password"]', password, 'password');
-        await delay(2000);
-
-        try {
-            const frame = await page.waitForFrame(f => f.url().includes('challenges.cloudflare.com/turnstile'), { timeout: 15000 });
-            await frame.click('input[type="checkbox"]');
-            await delay(5000);
-        } catch (e) {}
-
-        const loginClicked = await page.evaluate(() => {
-            const btns = [...document.querySelectorAll('button')];
-            const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
-            if (loginBtn) { loginBtn.click(); return true; }
-            return false;
-        });
-        if (!loginClicked) throw new Error('Bouton Log in introuvable');
-
-        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
-        await delay(5000);
-
-        if (page.url().includes('login.php')) {
-            const errorMsg = await page.evaluate(() => {
-                const el = document.querySelector('.alert-danger, .error, .message-error');
-                return el ? el.textContent.trim() : null;
+        // 1. Traiter les comptes sans cookies (pending)
+        const pending = accounts.filter(acc => acc.enabled && !acc.cookies);
+        if (pending.length) {
+            console.log(`🍪 Capture cookies pour ${pending.length} compte(s)...`);
+            const { browser: br } = await connect({
+                headless: false, turnstile: true,
+                proxy: { host: DEFAULT_PROXY_HOST, port: DEFAULT_PROXY_PORT, username: DEFAULT_PROXY_USERNAME, password: DEFAULT_PROXY_PASSWORD }
             });
-            throw new Error(errorMsg || 'Identifiants invalides');
+            browser = br;
+
+            for (const acc of pending) {
+                try {
+                    const cookies = await performLoginAndCaptureCookies(browser, acc);
+                    acc.cookies = cookies;
+                    acc.cookiesStatus = 'valid';
+                    console.log(`✅ Cookies OK pour ${acc.email}`);
+                } catch (e) {
+                    acc.cookiesStatus = 'failed';
+                    console.log(`❌ Échec login ${acc.email}: ${e.message}`);
+                }
+                needsSave = true;
+                await delay(5000);
+            }
+            await browser.close();
+            browser = null;
         }
 
-        const cookies = await page.cookies();
-        await browser.close();
+        // 2. Claim pour les comptes avec cookies valides
+        const eligible = accounts.filter(acc => {
+            if (!acc.enabled || !acc.cookies || acc.cookiesStatus !== 'valid') return false;
+            const last = acc.lastClaim || 0;
+            return (now - last) >= (acc.timer || 60) * 60 * 1000;
+        });
 
-        res.status(200).json({ success: true, cookies });
+        if (eligible.length) {
+            console.log(`🚀 Claim pour ${eligible.length} compte(s)...`);
+            const { browser: br } = await connect({
+                headless: false, turnstile: true,
+                proxy: { host: DEFAULT_PROXY_HOST, port: DEFAULT_PROXY_PORT, username: DEFAULT_PROXY_USERNAME, password: DEFAULT_PROXY_PASSWORD }
+            });
+            browser = br;
 
-    } catch (error) {
-        console.error('Erreur login:', error);
+            for (const acc of eligible) {
+                try {
+                    const result = await claimWithCookies(browser, acc);
+                    if (result.success) {
+                        acc.lastClaim = now;
+                        console.log(`✅ Claim réussi pour ${acc.email}`);
+                    } else {
+                        console.log(`❌ Claim échoué pour ${acc.email}: ${result.message}`);
+                    }
+                } catch (e) {
+                    console.error(`❌ Erreur claim ${acc.email}:`, e.message);
+                    if (e.message.includes('expir')) {
+                        acc.cookies = null;
+                        acc.cookiesStatus = 'expired';
+                    }
+                }
+                needsSave = true;
+                await delay(5000);
+            }
+            await browser.close();
+        }
+
+        if (needsSave) {
+            await saveAccounts(accounts);
+            console.log('💾 Comptes sauvegardés.');
+        }
+
+    } catch (e) {
+        console.error('Erreur fatale:', e);
+    } finally {
         if (browser) await browser.close();
-        res.status(500).json({ error: error.message });
     }
-}
+})();
