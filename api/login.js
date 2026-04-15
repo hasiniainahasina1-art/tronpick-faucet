@@ -5,10 +5,36 @@ const BROWSERLESS_TOKEN = process.env.BROWSERLESS_TOKEN;
 const PROXY_USERNAME = process.env.PROXY_USERNAME || '';
 const PROXY_PASSWORD = process.env.PROXY_PASSWORD || '';
 
-// Coordonnées du Turnstile (au cas où)
+// Coordonnées du Turnstile sur la page de login (1280x720)
 const TURNSTILE_COORDS = { x: 640, y: 450 };
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Ajoute un point rouge aux coordonnées données
+async function drawRedDot(page, x, y) {
+    await page.evaluate((x, y) => {
+        const dot = document.createElement('div');
+        dot.id = 'puppeteer-red-dot';
+        dot.style.position = 'fixed';
+        dot.style.left = (x - 6) + 'px';
+        dot.style.top = (y - 6) + 'px';
+        dot.style.width = '12px';
+        dot.style.height = '12px';
+        dot.style.backgroundColor = 'red';
+        dot.style.border = '2px solid darkred';
+        dot.style.borderRadius = '50%';
+        dot.style.zIndex = '999999';
+        document.body.appendChild(dot);
+    }, x, y);
+}
+
+// Supprime le point rouge
+async function removeRedDot(page) {
+    await page.evaluate(() => {
+        const dot = document.getElementById('puppeteer-red-dot');
+        if (dot) dot.remove();
+    });
+}
 
 export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -73,50 +99,31 @@ export default async function handler(req, res) {
 
         await delay(500);
 
-        // === CAPTURE 1 : AVANT TOUT CLIC ===
-        screenshots.beforeAnyClick = await page.screenshot({ encoding: 'base64', fullPage: true });
-        console.log('📸 Capture AVANT TOUT CLIC');
+        // === DESSINER POINT ROUGE ET CAPTURE ===
+        await drawRedDot(page, TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
+        screenshots.withRedDot = await page.screenshot({ encoding: 'base64', fullPage: true });
+        console.log('📸 Capture avec point rouge sur Turnstile');
+        await removeRedDot(page);
 
-        // === PREMIER CLIC SUR "LOG IN" ===
-        console.log('🔐 Premier clic sur "Log in"');
-        const loginBtn1 = await page.waitForXPath("//button[contains(text(), 'Log in')]", { timeout: 5000 });
-        await loginBtn1.click();
-        await delay(2000);
-        screenshots.afterFirstLoginClick = await page.screenshot({ encoding: 'base64', fullPage: true });
-        console.log('📸 Capture APRÈS PREMIER CLIC LOGIN');
+        // === CLIQUER SUR LE TURNSTILE ===
+        console.log('🖱️ Clic sur Turnstile');
+        await page.mouse.click(TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
+        screenshots.afterTurnstileClick = await page.screenshot({ encoding: 'base64', fullPage: true });
+        console.log('📸 Capture après clic Turnstile');
 
-        // === ATTENTE 10 SECONDES ===
+        // === ATTENDRE 10 SECONDES ===
         console.log('⏳ Attente de 10 secondes...');
         await delay(10000);
         screenshots.afterWait = await page.screenshot({ encoding: 'base64', fullPage: true });
-        console.log('📸 Capture APRÈS 10s D\'ATTENTE');
+        console.log('📸 Capture après 10s d\'attente');
 
-        // === VÉRIFIER SI TURNSTILE EST APPARU ET LE CLIQUER SI NÉCESSAIRE ===
-        const turnstileFrame = page.frames().find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
-        if (turnstileFrame) {
-            console.log('🛡️ Turnstile détecté, tentative de clic...');
-            try {
-                await turnstileFrame.click('input[type="checkbox"]');
-                console.log('   Clic sur checkbox Turnstile');
-            } catch (e) {
-                console.log('   Clic checkbox échoué, tentative coordonnées');
-                await page.mouse.click(TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
-            }
-            await delay(5000);
-            screenshots.afterTurnstileClick = await page.screenshot({ encoding: 'base64', fullPage: true });
-        }
+        // === CLIQUER SUR "LOG IN" ===
+        console.log('🔐 Clic sur "Log in"');
+        const loginBtn = await page.waitForXPath("//button[contains(text(), 'Log in')]", { timeout: 5000 });
+        await loginBtn.click();
 
-        // === DEUXIÈME CLIC SUR "LOG IN" (au cas où) ===
-        console.log('🔐 Deuxième clic sur "Log in" (si nécessaire)');
-        const loginBtn2 = await page.waitForXPath("//button[contains(text(), 'Log in')]", { timeout: 5000 }).catch(() => null);
-        if (loginBtn2) {
-            await loginBtn2.click();
-            await delay(2000);
-            screenshots.afterSecondLoginClick = await page.screenshot({ encoding: 'base64', fullPage: true });
-        }
-
-        // Attendre navigation éventuelle
         await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
+        await delay(2000);
 
         const currentUrl = page.url();
         console.log(`📍 URL finale: ${currentUrl}`);
@@ -152,4 +159,4 @@ export default async function handler(req, res) {
         }
         res.status(500).json({ error: error.message, screenshots: error.screenshots || screenshots });
     }
-}
+        }
