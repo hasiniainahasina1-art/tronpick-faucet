@@ -5,13 +5,9 @@ const BROWSERLESS_TOKEN = process.env.BROWSERLESS_TOKEN;
 const PROXY_USERNAME = process.env.PROXY_USERNAME || '';
 const PROXY_PASSWORD = process.env.PROXY_PASSWORD || '';
 
-// Coordonnées exactes du Turnstile (validées par votre script)
-const TURNSTILE_COORDS = { x: 640, y: 615 };
-
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 export default async function handler(req, res) {
-    // CORS et méthode
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -43,16 +39,16 @@ export default async function handler(req, res) {
 
     let browser;
     try {
-        // Connexion rapide à Browserless
         browser = await puppeteer.connect({ browserWSEndpoint: `wss://chrome.browserless.io?token=${BROWSERLESS_TOKEN}` });
         const page = await browser.newPage();
         if (proxyAuth) await page.authenticate(proxyAuth);
         await page.setViewport({ width: 1280, height: 720 });
 
-        // Navigation rapide (waitUntil: 'domcontentloaded' est un bon compromis)
+        console.log(`🌐 Navigation vers ${loginUrl}`);
         await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
 
-        // Remplissage ultra-rapide (identique à votre script)
+        // Remplissage
+        console.log('⌨️ Remplissage');
         await page.waitForSelector('input[type="email"], input[name="email"]', { timeout: 3000 });
         await page.click('input[type="email"], input[name="email"]', { clickCount: 3 });
         await page.keyboard.press('Backspace');
@@ -63,31 +59,35 @@ export default async function handler(req, res) {
         await page.keyboard.press('Backspace');
         await page.type('input[type="password"]', password, { delay: 10 });
 
-        // --- STRATÉGIE TURNSTILE (identique à votre script.js) ---
-        // Double clic avec délai réduit mais suffisant
-        await page.mouse.click(TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
-        await delay(4000); // 4 secondes (au lieu de 10) pour gagner du temps
-        await page.mouse.click(TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
-        await delay(4000);
+        // --- STRATÉGIE EXACTE DU SCRIPT.JS POUR LE LOGIN ---
+        console.log('🛡️ Attente iframe Turnstile...');
+        const frame = await page.waitForFrame(
+            f => f.url().includes('challenges.cloudflare.com/turnstile'),
+            { timeout: 10000 }
+        ).catch(() => null);
 
-        // Attendre le token (max 5s)
-        await page.waitForFunction(
-            () => {
-                const inp = document.querySelector('[name="cf-turnstile-response"]');
-                return inp && inp.value.length > 10;
-            },
-            { timeout: 5000 }
-        ).catch(() => console.log('⚠️ Token non généré, on tente quand même'));
+        if (frame) {
+            console.log('✅ Iframe trouvée, clic checkbox');
+            await frame.click('input[type="checkbox"]');
+            await delay(5000); // 5 secondes comme dans script.js
+        } else {
+            // Fallback : coordonnées validées (si l'iframe n'apparaît pas)
+            console.log('⚠️ Iframe non trouvée, fallback coordonné');
+            await page.mouse.click(640, 615);
+            await delay(5000);
+        }
 
         // Clic sur "Log in"
+        console.log('🔐 Clic sur "Log in"');
         const loginBtn = await page.waitForXPath("//button[contains(text(), 'Log in')]", { timeout: 3000 });
         await loginBtn.click();
 
-        // Navigation finale (timeout court)
         await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 }).catch(() => {});
-        await delay(1000);
+        await delay(2000);
 
         const currentUrl = page.url();
+        console.log(`📍 URL finale: ${currentUrl}`);
+
         if (currentUrl.includes('login.php')) {
             const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
             const errorMsg = await page.evaluate(() => {
