@@ -5,34 +5,10 @@ const BROWSERLESS_TOKEN = process.env.BROWSERLESS_TOKEN;
 const PROXY_USERNAME = process.env.PROXY_USERNAME || '';
 const PROXY_PASSWORD = process.env.PROXY_PASSWORD || '';
 
-// Coordonnées exactes du Turnstile sur la page de login (1280x720)
+// Coordonnées de secours (si l'iframe n'est pas trouvée)
 const TURNSTILE_COORDS = { x: 640, y: 615 };
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-async function drawRedDot(page, x, y) {
-    await page.evaluate((x, y) => {
-        const dot = document.createElement('div');
-        dot.id = 'puppeteer-red-dot';
-        dot.style.position = 'fixed';
-        dot.style.left = (x - 6) + 'px';
-        dot.style.top = (y - 6) + 'px';
-        dot.style.width = '12px';
-        dot.style.height = '12px';
-        dot.style.backgroundColor = 'red';
-        dot.style.border = '2px solid darkred';
-        dot.style.borderRadius = '50%';
-        dot.style.zIndex = '999999';
-        document.body.appendChild(dot);
-    }, x, y);
-}
-
-async function removeRedDot(page) {
-    await page.evaluate(() => {
-        const dot = document.getElementById('puppeteer-red-dot');
-        if (dot) dot.remove();
-    });
-}
 
 export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -90,37 +66,53 @@ export default async function handler(req, res) {
 
         await delay(500);
 
-        // --- PREMIER CLIC TURNSTILE ---
-        await drawRedDot(page, TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
-        screenshots.push({ label: '1_before_first_click', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
-        console.log('📸 Capture avec point rouge avant 1er clic');
+        // Capture avant toute action
+        screenshots.push({ label: '0_before_any_click', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
 
-        await page.mouse.click(TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
-        await delay(500);
-        screenshots.push({ label: '2_after_first_click', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
-        console.log('📸 Capture après 1er clic (point toujours présent)');
+        // --- GESTION TURNSTILE (stratégie identique à script.js) ---
+        console.log('🛡️ Recherche de l\'iframe Turnstile...');
+        const turnstileFrame = page.frames().find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
+        
+        if (turnstileFrame) {
+            console.log('✅ Iframe Turnstile trouvée, clic direct dans l\'iframe');
+            
+            // Premier clic
+            await turnstileFrame.click('input[type="checkbox"]');
+            console.log('   Premier clic effectué');
+            await delay(8000); // Attendre 8s
+            
+            screenshots.push({ label: '1_after_first_click_iframe', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
+            
+            // Deuxième clic
+            await turnstileFrame.click('input[type="checkbox"]');
+            console.log('   Second clic effectué');
+            await delay(8000);
+            
+            screenshots.push({ label: '2_after_second_click_iframe', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
+        } else {
+            console.log('⚠️ Iframe Turnstile non trouvée, fallback sur coordonnées');
+            
+            // Fallback : clic coordonné (double clic)
+            await page.mouse.click(TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
+            await delay(8000);
+            screenshots.push({ label: '1_fallback_first_click', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
+            
+            await page.mouse.click(TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
+            await delay(8000);
+            screenshots.push({ label: '2_fallback_second_click', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
+        }
 
-        // Attendre 10 secondes
-        console.log('⏳ Attente 10 secondes après 1er clic...');
-        await delay(10000);
-        screenshots.push({ label: '3_after_10s_wait', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
-        console.log('📸 Capture après 10s d\'attente');
+        // Attendre la génération du token (max 8s)
+        console.log('⏳ Attente token Turnstile...');
+        await page.waitForFunction(
+            () => {
+                const inp = document.querySelector('[name="cf-turnstile-response"]');
+                return inp && inp.value.length > 10;
+            },
+            { timeout: 8000 }
+        ).catch(() => console.log('⚠️ Token non généré'));
 
-        // --- DEUXIÈME CLIC TURNSTILE ---
-        await page.mouse.click(TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
-        await delay(500);
-        screenshots.push({ label: '4_after_second_click', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
-        console.log('📸 Capture après 2e clic');
-
-        await removeRedDot(page);
-
-        // Attendre encore 10 secondes
-        console.log('⏳ Attente 10 secondes après 2e clic...');
-        await delay(10000);
-        screenshots.push({ label: '5_after_second_10s_wait', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
-        console.log('📸 Capture après 2e attente 10s');
-
-        // --- CLIQUER SUR "LOG IN" ---
+        // Clic sur "Log in"
         console.log('🔐 Clic sur "Log in"');
         const loginBtn = await page.waitForXPath("//button[contains(text(), 'Log in')]", { timeout: 5000 });
         await loginBtn.click();
@@ -132,7 +124,7 @@ export default async function handler(req, res) {
         console.log(`📍 URL finale: ${currentUrl}`);
 
         if (currentUrl.includes('login.php')) {
-            screenshots.push({ label: '6_final_error', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
+            screenshots.push({ label: '3_final_error', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
             const errorMsg = await page.evaluate(() => {
                 const el = document.querySelector('.alert-danger, .error');
                 return el ? el.textContent.trim() : null;
