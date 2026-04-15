@@ -5,7 +5,7 @@ const BROWSERLESS_TOKEN = process.env.BROWSERLESS_TOKEN;
 const PROXY_USERNAME = process.env.PROXY_USERNAME || '';
 const PROXY_PASSWORD = process.env.PROXY_PASSWORD || '';
 
-const TURNSTILE_COORDS = { x: 640, y: 650 };
+const TURNSTILE_COORDS = { x: 640, y: 575 };
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function drawRedDot(page, x, y) {
