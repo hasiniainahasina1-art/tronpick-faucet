@@ -66,43 +66,41 @@ export default async function handler(req, res) {
 
         await delay(500);
 
-        // Capture avant toute action
-        screenshots.push({ label: '0_before_any_click', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
+        // Capture après remplissage
+        screenshots.push({ label: 'after_fill', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
 
-        // --- GESTION TURNSTILE (stratégie identique à script.js) ---
+        // --- GESTION TURNSTILE ---
         console.log('🛡️ Recherche de l\'iframe Turnstile...');
         const turnstileFrame = page.frames().find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
         
         if (turnstileFrame) {
-            console.log('✅ Iframe Turnstile trouvée, clic direct dans l\'iframe');
+            console.log('✅ Iframe Turnstile trouvée, double clic dans l\'iframe');
             
             // Premier clic
             await turnstileFrame.click('input[type="checkbox"]');
             console.log('   Premier clic effectué');
-            await delay(8000); // Attendre 8s
-            
-            screenshots.push({ label: '1_after_first_click_iframe', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
+            await delay(8000);
+            screenshots.push({ label: 'after_first_iframe_click', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
             
             // Deuxième clic
             await turnstileFrame.click('input[type="checkbox"]');
             console.log('   Second clic effectué');
             await delay(8000);
-            
-            screenshots.push({ label: '2_after_second_click_iframe', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
+            screenshots.push({ label: 'after_second_iframe_click', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
         } else {
-            console.log('⚠️ Iframe Turnstile non trouvée, fallback sur coordonnées');
+            console.log('⚠️ Iframe non trouvée, fallback coordonnées');
             
-            // Fallback : clic coordonné (double clic)
+            // Fallback coordonné
             await page.mouse.click(TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
             await delay(8000);
-            screenshots.push({ label: '1_fallback_first_click', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
+            screenshots.push({ label: 'after_first_coord_click', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
             
             await page.mouse.click(TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
             await delay(8000);
-            screenshots.push({ label: '2_fallback_second_click', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
+            screenshots.push({ label: 'after_second_coord_click', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
         }
 
-        // Attendre la génération du token (max 8s)
+        // Attendre token
         console.log('⏳ Attente token Turnstile...');
         await page.waitForFunction(
             () => {
@@ -112,7 +110,7 @@ export default async function handler(req, res) {
             { timeout: 8000 }
         ).catch(() => console.log('⚠️ Token non généré'));
 
-        // Clic sur "Log in"
+        // Clic "Log in"
         console.log('🔐 Clic sur "Log in"');
         const loginBtn = await page.waitForXPath("//button[contains(text(), 'Log in')]", { timeout: 5000 });
         await loginBtn.click();
@@ -124,7 +122,7 @@ export default async function handler(req, res) {
         console.log(`📍 URL finale: ${currentUrl}`);
 
         if (currentUrl.includes('login.php')) {
-            screenshots.push({ label: '3_final_error', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
+            screenshots.push({ label: 'login_failed', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
             const errorMsg = await page.evaluate(() => {
                 const el = document.querySelector('.alert-danger, .error');
                 return el ? el.textContent.trim() : null;
@@ -145,11 +143,15 @@ export default async function handler(req, res) {
             try {
                 const pages = await browser.pages();
                 if (pages.length > 0) {
-                    screenshots.push({ label: 'final_crash', base64: await pages[0].screenshot({ encoding: 'base64', fullPage: true }) });
+                    screenshots.push({ label: 'crash', base64: await pages[0].screenshot({ encoding: 'base64', fullPage: true }) });
                 }
             } catch (e) {}
             await browser.close();
         }
-        res.status(500).json({ error: error.message, screenshots });
+        // S'assurer que screenshots est toujours présent
+        const response = { error: error.message };
+        if (error.screenshots) response.screenshots = error.screenshots;
+        else if (screenshots.length) response.screenshots = screenshots;
+        res.status(500).json(response);
     }
 }
