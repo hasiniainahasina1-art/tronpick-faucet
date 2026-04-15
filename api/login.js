@@ -99,23 +99,26 @@ export default async function handler(req, res) {
 
         await delay(500);
 
-        // === DESSINER POINT ROUGE ET CAPTURE ===
+        // === DESSINER POINT ROUGE ET CAPTURE AVEC POINT ===
         await drawRedDot(page, TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
         screenshots.withRedDot = await page.screenshot({ encoding: 'base64', fullPage: true });
         console.log('📸 Capture avec point rouge sur Turnstile');
-        await removeRedDot(page);
 
-        // === CLIQUER SUR LE TURNSTILE ===
+        // === CLIQUER SUR LE TURNSTILE (point toujours visible) ===
         console.log('🖱️ Clic sur Turnstile');
         await page.mouse.click(TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
+        await delay(500); // laisser le temps au clic de faire effet
         screenshots.afterTurnstileClick = await page.screenshot({ encoding: 'base64', fullPage: true });
-        console.log('📸 Capture après clic Turnstile');
+        console.log('📸 Capture APRÈS clic Turnstile (point encore présent)');
+
+        // === SUPPRIMER LE POINT ROUGE ===
+        await removeRedDot(page);
 
         // === ATTENDRE 10 SECONDES ===
         console.log('⏳ Attente de 10 secondes...');
         await delay(10000);
         screenshots.afterWait = await page.screenshot({ encoding: 'base64', fullPage: true });
-        console.log('📸 Capture après 10s d\'attente');
+        console.log('📸 Capture après 10s d\'attente (sans point)');
 
         // === CLIQUER SUR "LOG IN" ===
         console.log('🔐 Clic sur "Log in"');
@@ -159,4 +162,4 @@ export default async function handler(req, res) {
         }
         res.status(500).json({ error: error.message, screenshots: error.screenshots || screenshots });
     }
-        }
+}
