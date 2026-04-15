@@ -5,10 +5,36 @@ const BROWSERLESS_TOKEN = process.env.BROWSERLESS_TOKEN;
 const PROXY_USERNAME = process.env.PROXY_USERNAME || '';
 const PROXY_PASSWORD = process.env.PROXY_PASSWORD || '';
 
+// Coordonnées exactes du Turnstile sur la page de login (1280x720)
+const TURNSTILE_COORDS = { x: 640, y: 615 };
+
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+async function drawRedDot(page, x, y) {
+    await page.evaluate((x, y) => {
+        const dot = document.createElement('div');
+        dot.id = 'puppeteer-red-dot';
+        dot.style.position = 'fixed';
+        dot.style.left = (x - 6) + 'px';
+        dot.style.top = (y - 6) + 'px';
+        dot.style.width = '12px';
+        dot.style.height = '12px';
+        dot.style.backgroundColor = 'red';
+        dot.style.border = '2px solid darkred';
+        dot.style.borderRadius = '50%';
+        dot.style.zIndex = '999999';
+        document.body.appendChild(dot);
+    }, x, y);
+}
+
+async function removeRedDot(page) {
+    await page.evaluate(() => {
+        const dot = document.getElementById('puppeteer-red-dot');
+        if (dot) dot.remove();
+    });
+}
+
 export default async function handler(req, res) {
-    // CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -38,93 +64,100 @@ export default async function handler(req, res) {
         proxyAuth = { username: PROXY_USERNAME, password: PROXY_PASSWORD };
     }
 
+    const screenshots = [];
     let browser;
+
     try {
-        // Connexion à Browserless
         browser = await puppeteer.connect({ browserWSEndpoint: `wss://chrome.browserless.io?token=${BROWSERLESS_TOKEN}` });
         const page = await browser.newPage();
         if (proxyAuth) await page.authenticate(proxyAuth);
         await page.setViewport({ width: 1280, height: 720 });
 
         console.log(`🌐 Navigation vers ${loginUrl}`);
-        await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+        await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
 
-        // Remplissage formulaire (identique à script.js)
-        console.log('⌨️ Remplissage');
+        // Remplissage
+        console.log('⌨️ Remplissage formulaire');
         await page.waitForSelector('input[type="email"], input[name="email"]', { timeout: 5000 });
         await page.click('input[type="email"], input[name="email"]', { clickCount: 3 });
         await page.keyboard.press('Backspace');
-        await page.type('input[type="email"], input[name="email"]', email, { delay: 10 });
+        await page.type('input[type="email"], input[name="email"]', email, { delay: 20 });
 
         await page.waitForSelector('input[type="password"]', { timeout: 5000 });
         await page.click('input[type="password"]', { clickCount: 3 });
         await page.keyboard.press('Backspace');
-        await page.type('input[type="password"]', password, { delay: 10 });
+        await page.type('input[type="password"]', password, { delay: 20 });
 
-        // --- GESTION TURNSTILE (exactement comme dans script.js) ---
-        console.log('🛡️ Recherche iframe Turnstile...');
-        const frame = await page.waitForFrame(
-            f => f.url().includes('challenges.cloudflare.com/turnstile'),
-            { timeout: 8000 }
-        ).catch(() => null);
+        await delay(500);
 
-        if (frame) {
-            console.log('✅ Iframe trouvée, clic checkbox');
-            await frame.click('input[type="checkbox"]');
-            await delay(5000); // Attente validation (comme script.js)
-        } else {
-            console.log('⚠️ Iframe non trouvée, fallback coordonné (640,615)');
-            await page.mouse.click(640, 615);
-            await delay(5000);
-        }
+        // --- PREMIER CLIC TURNSTILE ---
+        await drawRedDot(page, TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
+        screenshots.push({ label: '1_before_first_click', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
+        console.log('📸 Capture avec point rouge avant 1er clic');
 
-        // Clic sur "Log in"
+        await page.mouse.click(TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
+        await delay(500);
+        screenshots.push({ label: '2_after_first_click', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
+        console.log('📸 Capture après 1er clic (point toujours présent)');
+
+        // Attendre 10 secondes
+        console.log('⏳ Attente 10 secondes après 1er clic...');
+        await delay(10000);
+        screenshots.push({ label: '3_after_10s_wait', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
+        console.log('📸 Capture après 10s d\'attente');
+
+        // --- DEUXIÈME CLIC TURNSTILE ---
+        await page.mouse.click(TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
+        await delay(500);
+        screenshots.push({ label: '4_after_second_click', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
+        console.log('📸 Capture après 2e clic');
+
+        await removeRedDot(page);
+
+        // Attendre encore 10 secondes
+        console.log('⏳ Attente 10 secondes après 2e clic...');
+        await delay(10000);
+        screenshots.push({ label: '5_after_second_10s_wait', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
+        console.log('📸 Capture après 2e attente 10s');
+
+        // --- CLIQUER SUR "LOG IN" ---
         console.log('🔐 Clic sur "Log in"');
         const loginBtn = await page.waitForXPath("//button[contains(text(), 'Log in')]", { timeout: 5000 });
         await loginBtn.click();
 
-        await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 }).catch(() => {});
+        await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
         await delay(2000);
 
         const currentUrl = page.url();
         console.log(`📍 URL finale: ${currentUrl}`);
 
         if (currentUrl.includes('login.php')) {
-            // ÉCHEC : capture d'écran garantie
-            const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
+            screenshots.push({ label: '6_final_error', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
             const errorMsg = await page.evaluate(() => {
-                const el = document.querySelector('.alert-danger, .error, .message-error');
+                const el = document.querySelector('.alert-danger, .error');
                 return el ? el.textContent.trim() : null;
             });
-            const err = new Error(errorMsg || 'Échec de connexion');
-            err.screenshot = screenshot; // Attacher la capture
-            console.log('📸 Capture attachée à l\'erreur');
+            const err = new Error(errorMsg || 'Identifiants invalides ou captcha');
+            err.screenshots = screenshots;
             throw err;
         }
 
-        // SUCCÈS
         const cookies = await page.cookies();
+        console.log(`✅ ${cookies.length} cookies capturés`);
         await browser.close();
         res.status(200).json({ success: true, cookies });
 
     } catch (error) {
         console.error('❌ Erreur:', error);
-        // Si l'erreur n'a pas encore de capture, essayer d'en prendre une
-        if (browser && !error.screenshot) {
+        if (browser) {
             try {
                 const pages = await browser.pages();
                 if (pages.length > 0) {
-                    error.screenshot = await pages[0].screenshot({ encoding: 'base64', fullPage: true });
-                    console.log('📸 Capture de secours ajoutée');
+                    screenshots.push({ label: 'final_crash', base64: await pages[0].screenshot({ encoding: 'base64', fullPage: true }) });
                 }
-            } catch (e) {
-                console.error('Impossible de prendre une capture de secours:', e);
-            }
+            } catch (e) {}
+            await browser.close();
         }
-        if (browser) await browser.close().catch(() => {});
-        // Renvoyer TOUJOURS la capture si elle existe
-        const response = { error: error.message };
-        if (error.screenshot) response.screenshot = error.screenshot;
-        res.status(500).json(response);
+        res.status(500).json({ error: error.message, screenshots });
     }
 }
