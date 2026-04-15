@@ -5,7 +5,6 @@ const BROWSERLESS_TOKEN = process.env.BROWSERLESS_TOKEN;
 const PROXY_USERNAME = process.env.PROXY_USERNAME || '';
 const PROXY_PASSWORD = process.env.PROXY_PASSWORD || '';
 
-// Coordonnées de secours (si l'iframe n'est pas trouvée)
 const TURNSTILE_COORDS = { x: 640, y: 615 };
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -44,96 +43,80 @@ export default async function handler(req, res) {
     let browser;
 
     try {
+        // Connexion rapide à Browserless
         browser = await puppeteer.connect({ browserWSEndpoint: `wss://chrome.browserless.io?token=${BROWSERLESS_TOKEN}` });
         const page = await browser.newPage();
         if (proxyAuth) await page.authenticate(proxyAuth);
         await page.setViewport({ width: 1280, height: 720 });
 
-        console.log(`🌐 Navigation vers ${loginUrl}`);
-        await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+        // Navigation avec 'commit' (très rapide)
+        await page.goto(loginUrl, { waitUntil: 'commit', timeout: 15000 });
 
-        // Remplissage
-        console.log('⌨️ Remplissage formulaire');
-        await page.waitForSelector('input[type="email"], input[name="email"]', { timeout: 5000 });
+        // Remplissage ultra-rapide
+        await page.waitForSelector('input[type="email"], input[name="email"]', { timeout: 3000 });
         await page.click('input[type="email"], input[name="email"]', { clickCount: 3 });
         await page.keyboard.press('Backspace');
-        await page.type('input[type="email"], input[name="email"]', email, { delay: 20 });
+        await page.type('input[type="email"], input[name="email"]', email, { delay: 10 });
 
-        await page.waitForSelector('input[type="password"]', { timeout: 5000 });
+        await page.waitForSelector('input[type="password"]', { timeout: 3000 });
         await page.click('input[type="password"]', { clickCount: 3 });
         await page.keyboard.press('Backspace');
-        await page.type('input[type="password"]', password, { delay: 20 });
+        await page.type('input[type="password"]', password, { delay: 10 });
 
-        await delay(500);
-
-        // Capture après remplissage
         screenshots.push({ label: 'after_fill', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
 
-        // --- GESTION TURNSTILE ---
-        console.log('🛡️ Recherche de l\'iframe Turnstile...');
+        // --- TURNSTILE : double clic (iframe prioritaire) ---
         const turnstileFrame = page.frames().find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
         
         if (turnstileFrame) {
-            console.log('✅ Iframe Turnstile trouvée, double clic dans l\'iframe');
-            
-            // Premier clic
+            // Double clic dans l'iframe
             await turnstileFrame.click('input[type="checkbox"]');
-            console.log('   Premier clic effectué');
-            await delay(8000);
-            screenshots.push({ label: 'after_first_iframe_click', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
+            await delay(4000); // Attente réduite
+            screenshots.push({ label: 'after_first_iframe', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
             
-            // Deuxième clic
             await turnstileFrame.click('input[type="checkbox"]');
-            console.log('   Second clic effectué');
-            await delay(8000);
-            screenshots.push({ label: 'after_second_iframe_click', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
+            await delay(4000);
+            screenshots.push({ label: 'after_second_iframe', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
         } else {
-            console.log('⚠️ Iframe non trouvée, fallback coordonnées');
-            
             // Fallback coordonné
             await page.mouse.click(TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
-            await delay(8000);
-            screenshots.push({ label: 'after_first_coord_click', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
+            await delay(4000);
+            screenshots.push({ label: 'after_first_coord', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
             
             await page.mouse.click(TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
-            await delay(8000);
-            screenshots.push({ label: 'after_second_coord_click', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
+            await delay(4000);
+            screenshots.push({ label: 'after_second_coord', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
         }
 
-        // Attendre token
-        console.log('⏳ Attente token Turnstile...');
+        // Attente token (max 5s)
         await page.waitForFunction(
             () => {
                 const inp = document.querySelector('[name="cf-turnstile-response"]');
                 return inp && inp.value.length > 10;
             },
-            { timeout: 8000 }
-        ).catch(() => console.log('⚠️ Token non généré'));
+            { timeout: 5000 }
+        ).catch(() => console.log('⚠️ Token non généré, on tente quand même'));
 
         // Clic "Log in"
-        console.log('🔐 Clic sur "Log in"');
-        const loginBtn = await page.waitForXPath("//button[contains(text(), 'Log in')]", { timeout: 5000 });
+        const loginBtn = await page.waitForXPath("//button[contains(text(), 'Log in')]", { timeout: 3000 });
         await loginBtn.click();
 
-        await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
-        await delay(2000);
+        await page.waitForNavigation({ waitUntil: 'commit', timeout: 10000 }).catch(() => {});
+        await delay(1000);
 
         const currentUrl = page.url();
-        console.log(`📍 URL finale: ${currentUrl}`);
-
         if (currentUrl.includes('login.php')) {
             screenshots.push({ label: 'login_failed', base64: await page.screenshot({ encoding: 'base64', fullPage: true }) });
             const errorMsg = await page.evaluate(() => {
                 const el = document.querySelector('.alert-danger, .error');
                 return el ? el.textContent.trim() : null;
             });
-            const err = new Error(errorMsg || 'Identifiants invalides ou captcha');
+            const err = new Error(errorMsg || 'Échec connexion');
             err.screenshots = screenshots;
             throw err;
         }
 
         const cookies = await page.cookies();
-        console.log(`✅ ${cookies.length} cookies capturés`);
         await browser.close();
         res.status(200).json({ success: true, cookies });
 
@@ -148,10 +131,6 @@ export default async function handler(req, res) {
             } catch (e) {}
             await browser.close();
         }
-        // S'assurer que screenshots est toujours présent
-        const response = { error: error.message };
-        if (error.screenshots) response.screenshots = error.screenshots;
-        else if (screenshots.length) response.screenshots = screenshots;
-        res.status(500).json(response);
+        res.status(500).json({ error: error.message, screenshots });
     }
 }
