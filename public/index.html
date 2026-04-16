@@ -36,6 +36,8 @@
         .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
         .hidden { display: none; }
         .text-center { text-align: center; }
+        .test-section { margin-top: 20px; padding-top: 20px; border-top: 1px dashed #cbd5e1; }
+        .screenshot-container img { max-width: 100%; margin-top: 10px; border: 1px solid #ccc; border-radius: 8px; }
     </style>
 </head>
 <body>
@@ -67,6 +69,12 @@
                 <button type="button" id="cancelBtn" class="secondary hidden">Annuler</button>
             </div>
         </form>
+
+        <!-- Section de test Turnstile -->
+        <div class="test-section">
+            <button id="testTurnstileBtn" class="secondary">🧪 Tester Turnstile (sans remplir)</button>
+            <div id="testResult" style="margin-top: 15px;"></div>
+        </div>
     </div>
 
     <!-- Liste des comptes -->
@@ -83,6 +91,7 @@
 
 <script>
     (function() {
+        // --- API calls ---
         async function loadAccounts() {
             const res = await fetch('/api/accounts');
             if (!res.ok) throw new Error('Erreur chargement');
@@ -96,12 +105,8 @@
             });
             if (!res.ok) throw new Error('Erreur sauvegarde');
         }
-        async function triggerRender() {
-            try {
-                await fetch('/api/trigger', { method: 'POST' });
-            } catch (e) { console.error('Trigger error:', e); }
-        }
 
+        // --- UI Elements ---
         const form = document.getElementById('accountForm');
         const emailInp = document.getElementById('email');
         const passInp = document.getElementById('password');
@@ -117,6 +122,13 @@
 
         let accounts = [];
 
+        const cookiesStatusMap = {
+            pending: { icon: '⏳', text: 'En attente', class: 'cookie-pending' },
+            valid:   { icon: '✅', text: 'Valides', class: 'cookie-valid' },
+            expired: { icon: '⚠️', text: 'Expirés', class: 'cookie-expired' },
+            failed:  { icon: '❌', text: 'Échec', class: 'cookie-failed' }
+        };
+
         function showMessage(text, type) {
             const div = document.createElement('div');
             div.className = `message ${type}`;
@@ -124,13 +136,6 @@
             msgArea.appendChild(div);
             setTimeout(() => div.remove(), 5000);
         }
-
-        const cookiesStatusMap = {
-            pending: { icon: '⏳', text: 'En attente', class: 'cookie-pending' },
-            valid:   { icon: '✅', text: 'Valides', class: 'cookie-valid' },
-            expired: { icon: '⚠️', text: 'Expirés', class: 'cookie-expired' },
-            failed:  { icon: '❌', text: 'Échec', class: 'cookie-failed' }
-        };
 
         function render() {
             accountsBody.innerHTML = '';
@@ -216,11 +221,50 @@
             }
             await save(accs);
             cancelBtn.click();
-            showMessage('✅ Compte ajouté. Déclenchement du login...', 'success');
-            triggerRender(); // Appel du hook Render
+            showMessage('✅ Compte ajouté (validation différée)', 'success');
         });
 
         refreshBtn.addEventListener('click', refresh);
+
+        // --- Test Turnstile ---
+        document.getElementById('testTurnstileBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('testTurnstileBtn');
+            const resultDiv = document.getElementById('testResult');
+            btn.disabled = true;
+            btn.textContent = '⏳ Test en cours...';
+            resultDiv.innerHTML = '';
+
+            try {
+                const res = await fetch('/api/test-turnstile');
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error);
+
+                if (data.screenshots) {
+                    for (const shot of data.screenshots) {
+                        const container = document.createElement('div');
+                        container.style.marginBottom = '20px';
+                        const label = document.createElement('p');
+                        label.textContent = shot.label;
+                        label.style.fontWeight = 'bold';
+                        const img = document.createElement('img');
+                        img.src = `data:image/png;base64,${shot.base64}`;
+                        img.style.maxWidth = '100%';
+                        img.style.border = '1px solid #ccc';
+                        img.style.borderRadius = '8px';
+                        container.appendChild(label);
+                        container.appendChild(img);
+                        resultDiv.appendChild(container);
+                    }
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<p class="error">❌ ${error.message}</p>`;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🧪 Tester Turnstile (sans remplir)';
+            }
+        });
+
+        // Initialisation
         refresh();
     })();
 </script>
