@@ -17,16 +17,44 @@ async function moveMouseHuman(page, x, y) {
     }
 }
 
+// 🔍 Vérifie si captcha validé
+async function isTurnstileSolved(page) {
+    return await page.evaluate(() => {
+        const el = document.querySelector('[name="cf-turnstile-response"]');
+        return el && el.value && el.value.length > 0;
+    });
+}
+
+// 🎯 Clique réel dans iframe
+async function clickTurnstile(page) {
+    const frame = page.frames().find(f =>
+        f.url().includes("challenges.cloudflare.com")
+    );
+
+    if (!frame) throw new Error("Turnstile iframe introuvable");
+
+    const checkbox = await frame.waitForSelector('input[type="checkbox"]', {
+        timeout: 8000
+    });
+
+    const box = await checkbox.boundingBox();
+    if (!box) throw new Error("Position checkbox introuvable");
+
+    await moveMouseHuman(page, box.x + box.width / 2, box.y + box.height / 2);
+    await delay(500, 1200);
+
+    await page.mouse.click(
+        box.x + box.width / 2,
+        box.y + box.height / 2
+    );
+}
+
 export default async function handler(req, res) {
     let browser;
     const screenshots = [];
 
     try {
         console.log("🚀 START");
-
-        if (!BROWSERLESS_TOKEN) {
-            throw new Error("Token manquant");
-        }
 
         browser = await puppeteer.connect({
             browserWSEndpoint: `wss://chrome.browserless.io?token=${BROWSERLESS_TOKEN}`
@@ -40,78 +68,62 @@ export default async function handler(req, res) {
 
         await page.setViewport({ width: 1280, height: 720 });
 
-        console.log("🌐 GOTO");
         await page.goto('https://tronpick.io/login.php', {
-            waitUntil: 'domcontentloaded',
-            timeout: 20000
+            waitUntil: 'domcontentloaded'
         });
 
-        // 📸 1 - Page chargée
         screenshots.push({
-            label: "01_page_loaded",
+            label: "01_loaded",
             base64: await page.screenshot({ encoding: 'base64', fullPage: true })
         });
 
-        await delay(3000, 7000);
+        let solved = false;
 
-        // Scroll
-        await page.evaluate(() => window.scrollBy(0, Math.random() * 200));
+        for (let i = 1; i <= 5; i++) {
+            console.log(`🔁 Tentative ${i}`);
 
-        // 📸 2 - Après scroll
-        screenshots.push({
-            label: "02_after_scroll",
-            base64: await page.screenshot({ encoding: 'base64', fullPage: true })
-        });
+            await delay(3000, 6000);
 
-        console.log("🖱 MOVE");
-        await moveMouseHuman(page, 640, 615);
+            try {
+                await clickTurnstile(page);
+            } catch (e) {
+                console.log("⚠️ clic impossible:", e.message);
+            }
 
-        await delay(500, 1500);
+            await delay(4000, 7000);
 
-        console.log("🖱 CLICK");
-        await page.mouse.click(
-            640 + Math.random() * 3,
-            615 + Math.random() * 3
-        );
+            // 📸 capture après tentative
+            screenshots.push({
+                label: `0${i}_after_click`,
+                base64: await page.screenshot({ encoding: 'base64', fullPage: true })
+            });
 
-        // 📸 3 - Après clic
-        screenshots.push({
-            label: "03_after_click",
-            base64: await page.screenshot({ encoding: 'base64', fullPage: true })
-        });
+            // ✅ vérification
+            solved = await isTurnstileSolved(page);
 
-        await delay(4000, 8000);
+            console.log("🎯 Solved:", solved);
 
-        console.log("🔁 Deuxième interaction");
-        await moveMouseHuman(page, 640, 615);
-
-        await delay(500, 1500);
-
-        await page.mouse.click(
-            640 + Math.random() * 3,
-            615 + Math.random() * 3
-        );
-
-        // 📸 4 - Après 2ème clic
-        screenshots.push({
-            label: "04_after_second_click",
-            base64: await page.screenshot({ encoding: 'base64', fullPage: true })
-        });
+            if (solved) {
+                screenshots.push({
+                    label: "SUCCESS",
+                    base64: await page.screenshot({ encoding: 'base64', fullPage: true })
+                });
+                break;
+            }
+        }
 
         await browser.close();
 
         res.status(200).json({
-            success: true,
+            success: solved,
+            message: solved ? "Captcha validé" : "Échec après plusieurs tentatives",
             screenshots
         });
 
     } catch (error) {
-        console.error("❌ ERROR:", error.message);
-        console.error(error.stack);
+        console.error("❌ ERROR:", error);
 
-        if (browser) {
-            await browser.close().catch(() => {});
-        }
+        if (browser) await browser.close().catch(() => {});
 
         res.status(500).json({
             success: false,
