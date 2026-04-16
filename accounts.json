@@ -8,5 +8,15 @@
     "enabled": true,
     "cookiesStatus": "pending",
     "lastClaim": 0
+  },
+  {
+    "email": "rivoniainafinoana123@gmail.com",
+    "password": "Finoana124.",
+    "timer": 60,
+    "platform": "tronpick",
+    "proxy": null,
+    "enabled": true,
+    "cookiesStatus": "pending",
+    "lastClaim": 0
   }
 ]
