@@ -25,10 +25,36 @@ if (!fs.existsSync(screenshotsDir)) {
 }
 
 // --- Coordonnées fixes (résolution 1280x720) ---
-const TURNSTILE_COORDS = { x: 640, y: 615 }; // Login
-const CLAIM_COORDS = { x: 640, y: 223 };     // Faucet (fallback)
+const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };   // Login
+const TURNSTILE_FAUCET_COORDS = { x: 640, y: 166 };  // Turnstile sur la page faucet
+const CLAIM_COORDS = { x: 640, y: 223 };             // Bouton CLAIM
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// --- Dessiner un point rouge aux coordonnées (pour debug) ---
+async function drawRedDot(page, x, y) {
+    await page.evaluate((x, y) => {
+        const dot = document.createElement('div');
+        dot.id = 'puppeteer-red-dot';
+        dot.style.position = 'fixed';
+        dot.style.left = (x - 6) + 'px';
+        dot.style.top = (y - 6) + 'px';
+        dot.style.width = '12px';
+        dot.style.height = '12px';
+        dot.style.backgroundColor = 'red';
+        dot.style.border = '2px solid darkred';
+        dot.style.borderRadius = '50%';
+        dot.style.zIndex = '999999';
+        document.body.appendChild(dot);
+    }, x, y);
+}
+
+async function removeRedDot(page) {
+    await page.evaluate(() => {
+        const dot = document.getElementById('puppeteer-red-dot');
+        if (dot) dot.remove();
+    });
+}
 
 // --- Fonctions utilitaires (inchangées) ---
 async function fillField(page, selector, value, fieldName) {
@@ -167,7 +193,7 @@ async function performLoginAndCaptureCookies(account) {
             await delay(8000);
         } else {
             console.log('⚠️ Iframe non trouvée, fallback coordonné');
-            await humanClickAt(page, TURNSTILE_COORDS);
+            await humanClickAt(page, TURNSTILE_LOGIN_COORDS);
             await delay(10000);
         }
 
@@ -197,7 +223,7 @@ async function performLoginAndCaptureCookies(account) {
     }
 }
 
-// --- Claim avec cookies (avec capture d'écran en cas d'échec) ---
+// --- Claim avec cookies (double clic coordonné + captures) ---
 async function claimWithCookies(account) {
     const { email, cookies, platform } = account;
     console.log(`🍪 Claim pour ${email} via cookies`);
@@ -230,53 +256,46 @@ async function claimWithCookies(account) {
         await humanScrollToClaim(page);
         await delay(2000);
 
-        // --- GESTION TURNSTILE FAUCET ---
-        console.log('🛡️ Attente iframe Turnstile (max 30s)...');
-        let turnstileFrame = null;
-        const startWait = Date.now();
-        
-        while (Date.now() - startWait < 30000 && !turnstileFrame) {
-            const frames = page.frames();
-            turnstileFrame = frames.find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
-            if (!turnstileFrame) await delay(2000);
-        }
+        // --- STRATÉGIE DOUBLE CLIC AVEC CAPTURES ET POINT ROUGE ---
+        console.log('🎯 Début de la séquence Turnstile faucet');
 
-        if (turnstileFrame) {
-            console.log('✅ Iframe Turnstile trouvée');
-            
-            await turnstileFrame.waitForSelector('body', { timeout: 5000 }).catch(() => {});
-            
-            await turnstileFrame.click('input[type="checkbox"]').catch(() => {});
-            console.log('   Clic checkbox effectué');
-            
-            await turnstileFrame.evaluate(() => {
-                const labels = [...document.querySelectorAll('label')];
-                const verifyLabel = labels.find(l => l.textContent.toLowerCase().includes('verify you are human'));
-                if (verifyLabel) verifyLabel.click();
-            });
-            
-            await delay(10000);
-            
-            const isChecked = await turnstileFrame.$eval('input[type="checkbox"]', cb => cb.checked).catch(() => false);
-            const tokenPresent = await page.evaluate(() => {
-                const inp = document.querySelector('[name="cf-turnstile-response"]');
-                return inp && inp.value.length > 10;
-            });
-            
-            if (isChecked || tokenPresent) {
-                console.log('✅ Turnstile résolu');
-            } else {
-                console.log('⚠️ Turnstile non résolu, on tente quand même');
-            }
-        } else {
-            console.log('⚠️ Iframe Turnstile non trouvée après 30s. Fallback coordonné...');
-            await humanClickAt(page, CLAIM_COORDS);
-            await delay(10000);
-            await humanClickAt(page, CLAIM_COORDS);
-            await delay(10000);
-        }
+        // 1. Dessiner point rouge, capturer, puis premier clic
+        await drawRedDot(page, TURNSTILE_FAUCET_COORDS.x, TURNSTILE_FAUCET_COORDS.y);
+        await page.screenshot({ path: path.join(screenshotsDir, `01_before_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        console.log('📸 Capture avant 1er clic (point rouge visible)');
 
-        // Clic sur CLAIM
+        await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
+        console.log('🖱️ Premier clic effectué');
+        await removeRedDot(page);
+
+        await page.screenshot({ path: path.join(screenshotsDir, `02_after_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        console.log('📸 Capture après 1er clic');
+
+        // Attendre 10 secondes
+        console.log('⏳ Attente de 10 secondes...');
+        await delay(10000);
+        await page.screenshot({ path: path.join(screenshotsDir, `03_after_10s_wait_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        console.log('📸 Capture après 10s d\'attente');
+
+        // 2. Deuxième point rouge et deuxième clic
+        await drawRedDot(page, TURNSTILE_FAUCET_COORDS.x, TURNSTILE_FAUCET_COORDS.y);
+        await page.screenshot({ path: path.join(screenshotsDir, `04_before_second_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        console.log('📸 Capture avant 2ème clic (point rouge visible)');
+
+        await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
+        console.log('🖱️ Deuxième clic effectué');
+        await removeRedDot(page);
+
+        await page.screenshot({ path: path.join(screenshotsDir, `05_after_second_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        console.log('📸 Capture après 2ème clic');
+
+        // Attendre 10 secondes
+        console.log('⏳ Attente de 10 secondes...');
+        await delay(10000);
+        await page.screenshot({ path: path.join(screenshotsDir, `06_after_10s_wait_second_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        console.log('📸 Capture après 10s d\'attente (avant CLAIM)');
+
+        // 3. Clic sur CLAIM
         console.log('🎯 Clic sur CLAIM');
         const claimClicked = await page.evaluate(() => {
             const btn = document.querySelector('#process_claim_hourly_faucet');
@@ -290,6 +309,8 @@ async function claimWithCookies(account) {
 
         await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
         await delay(5000);
+        await page.screenshot({ path: path.join(screenshotsDir, `07_after_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        console.log('📸 Capture après clic sur CLAIM');
 
         const messages = await page.evaluate(() => {
             return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [role="alert"]'))
@@ -300,14 +321,6 @@ async function claimWithCookies(account) {
         });
         const success = btnDisabled || messages.some(m => /success|claimed|reward|sent/i.test(m));
         const resultMessage = messages[0] || (btnDisabled ? 'Bouton désactivé' : 'Aucune réaction');
-
-        // --- CAPTURE D'ÉCRAN EN CAS D'ÉCHEC ---
-        if (!success) {
-            const timestamp = Date.now();
-            const screenshotPath = path.join(screenshotsDir, `claim_failed_${email.replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}.png`);
-            await page.screenshot({ path: screenshotPath, fullPage: true });
-            console.log(`📸 Capture d'écran sauvegardée : ${screenshotPath}`);
-        }
 
         return { success, message: resultMessage };
 
