@@ -24,14 +24,14 @@ if (!fs.existsSync(screenshotsDir)) {
     fs.mkdirSync(screenshotsDir, { recursive: true });
 }
 
-// --- Coordonnées fixes (résolution 1280x720) ---
+// --- Coordonnées ---
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };   // Login
-const TURNSTILE_FAUCET_COORDS = { x: 350, y: 157 };  // Turnstile sur la page faucet (vraies coordonnées)
+const TURNSTILE_FAUCET_COORDS = { x: 650, y: 158 };  // Turnstile faucet (nouveau)
 const CLAIM_COORDS = { x: 640, y: 223 };             // Bouton CLAIM
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// --- Dessiner un point rouge aux coordonnées (pour debug) ---
+// --- Dessiner un point rouge ---
 async function drawRedDot(page, x, y) {
     await page.evaluate((x, y) => {
         const dot = document.createElement('div');
@@ -56,7 +56,7 @@ async function removeRedDot(page) {
     });
 }
 
-// --- Fonctions utilitaires (inchangées) ---
+// --- Fonctions utilitaires ---
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -113,7 +113,7 @@ async function humanClickAt(page, coords) {
     await page.mouse.click(coords.x, coords.y);
 }
 
-// --- Gestion du dépôt GitHub (inchangée) ---
+// --- Gestion du dépôt GitHub ---
 async function loadAccounts() {
     try {
         const res = await octokit.repos.getContent({
@@ -152,7 +152,7 @@ async function saveAccounts(accounts) {
     });
 }
 
-// --- Login et capture cookies (inchangée) ---
+// --- Login et capture cookies ---
 async function performLoginAndCaptureCookies(account) {
     const { email, password, platform } = account;
     console.log(`🔐 Login pour ${email}...`);
@@ -223,7 +223,7 @@ async function performLoginAndCaptureCookies(account) {
     }
 }
 
-// --- Claim avec cookies (nouvelle séquence avec les bonnes coordonnées) ---
+// --- Claim avec cookies (nouvelle séquence) ---
 async function claimWithCookies(account) {
     const { email, cookies, platform } = account;
     console.log(`🍪 Claim pour ${email} via cookies`);
@@ -236,6 +236,9 @@ async function claimWithCookies(account) {
         binpick: 'https://binpick.io/faucet.php'
     };
     const faucetUrl = siteUrls[platform] || 'https://tronpick.io/faucet.php';
+
+    const TURNSTILE_COORDS = { x: 650, y: 622 };
+    const CLAIM_COORDS = { x: 640, y: 223 };
 
     let browser;
     try {
@@ -253,46 +256,59 @@ async function claimWithCookies(account) {
             throw new Error('Cookies expirés');
         }
 
-        // --- NOUVELLE SÉQUENCE AVEC LES BONNES COORDONNÉES ---
+        // 1. Actualiser
         console.log('🔄 Actualisation de la page faucet...');
         await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
         
-        console.log('⏳ Attente de 5 secondes après actualisation...');
+        // 2. Attendre 5s
+        console.log('⏳ Attente de 5 secondes...');
         await delay(5000);
-        await page.screenshot({ path: path.join(screenshotsDir, `01_after_reload_5s_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        await page.screenshot({ path: path.join(screenshotsDir, `01_after_reload_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        // Premier clic sur Turnstile avec point rouge
-        await drawRedDot(page, TURNSTILE_FAUCET_COORDS.x, TURNSTILE_FAUCET_COORDS.y);
-        await page.screenshot({ path: path.join(screenshotsDir, `02_before_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        // 3. Scroll humain
+        console.log('📜 Scroll progressif vers CLAIM...');
+        await humanScrollToClaim(page);
+        await delay(2000);
+        await page.screenshot({ path: path.join(screenshotsDir, `02_after_scroll_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+        // 4. Attendre 5s
+        console.log('⏳ Attente de 5 secondes...');
+        await delay(5000);
+
+        // 5. Premier clic Turnstile
+        await drawRedDot(page, TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
+        await page.screenshot({ path: path.join(screenshotsDir, `03_before_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
         
-        console.log(`🖱️ Premier clic sur Turnstile (${TURNSTILE_FAUCET_COORDS.x}, ${TURNSTILE_FAUCET_COORDS.y})`);
-        await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
+        console.log(`🖱️ Premier clic Turnstile (${TURNSTILE_COORDS.x}, ${TURNSTILE_COORDS.y})`);
+        await humanClickAt(page, TURNSTILE_COORDS);
         await removeRedDot(page);
-        await page.screenshot({ path: path.join(screenshotsDir, `03_after_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        await page.screenshot({ path: path.join(screenshotsDir, `04_after_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        console.log('⏳ Attente de 10 secondes...');
-        await delay(10000);
-        await page.screenshot({ path: path.join(screenshotsDir, `04_after_10s_wait_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-
-        // Attendre 5 secondes supplémentaires puis cliquer sur CLAIM
-        console.log('⏳ Attente de 5 secondes avant CLAIM...');
+        // 6. Attendre 5s
+        console.log('⏳ Attente de 5 secondes...');
         await delay(5000);
-        await page.screenshot({ path: path.join(screenshotsDir, `05_before_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        await page.screenshot({ path: path.join(screenshotsDir, `05_after_5s_wait_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        console.log('🎯 Clic sur CLAIM');
-        const claimClicked = await page.evaluate(() => {
-            const btn = document.querySelector('#process_claim_hourly_faucet');
-            if (btn && !btn.disabled) {
-                btn.click();
-                return true;
-            }
-            return false;
-        });
-        if (!claimClicked) throw new Error('Bouton CLAIM introuvable ou désactivé');
+        // 7. Deuxième clic Turnstile
+        await drawRedDot(page, TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
+        await page.screenshot({ path: path.join(screenshotsDir, `06_before_second_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        
+        console.log(`🖱️ Deuxième clic Turnstile (${TURNSTILE_COORDS.x}, ${TURNSTILE_COORDS.y})`);
+        await humanClickAt(page, TURNSTILE_COORDS);
+        await removeRedDot(page);
+        await page.screenshot({ path: path.join(screenshotsDir, `07_after_second_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
+        // 8. Attendre 5s
+        console.log('⏳ Attente de 5 secondes...');
+        await delay(5000);
+        await page.screenshot({ path: path.join(screenshotsDir, `08_before_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+        // 9. Clic CLAIM
+        console.log(`🎯 Clic sur CLAIM (${CLAIM_COORDS.x}, ${CLAIM_COORDS.y})`);
+        await humanClickAt(page, CLAIM_COORDS);
         await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
         await delay(5000);
-        await page.screenshot({ path: path.join(screenshotsDir, `06_after_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        await page.screenshot({ path: path.join(screenshotsDir, `09_after_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
         const messages = await page.evaluate(() => {
             return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [role="alert"]'))
@@ -325,7 +341,6 @@ async function claimWithCookies(account) {
         const now = Date.now();
         let needsSave = false;
 
-        // 1. Capturer cookies pour les comptes pending
         const pending = accounts.filter(acc => acc.enabled && !acc.cookies);
         if (pending.length) {
             console.log(`🍪 Capture cookies pour ${pending.length} compte(s)...`);
@@ -344,7 +359,6 @@ async function claimWithCookies(account) {
             }
         }
 
-        // 2. Claim pour les comptes valides
         const eligible = accounts.filter(acc => {
             if (!acc.enabled || !acc.cookies || acc.cookiesStatus !== 'valid') return false;
             const last = acc.lastClaim || 0;
