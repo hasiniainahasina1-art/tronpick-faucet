@@ -24,10 +24,9 @@ if (!fs.existsSync(screenshotsDir)) {
     fs.mkdirSync(screenshotsDir, { recursive: true });
 }
 
-// --- Coordonnées ---
+// --- Coordonnées fixes ---
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };   // Login
-const TURNSTILE_FAUCET_COORDS = { x: 650, y: 158 };  // Turnstile faucet (nouveau)
-const CLAIM_COORDS = { x: 640, y: 223 };             // Bouton CLAIM
+const TURNSTILE_FAUCET_COORDS = { x: 650, y: 622 };  // Turnstile faucet
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -223,7 +222,7 @@ async function performLoginAndCaptureCookies(account) {
     }
 }
 
-// --- Claim avec cookies (nouvelle séquence) ---
+// --- Claim avec cookies (plan exact) ---
 async function claimWithCookies(account) {
     const { email, cookies, platform } = account;
     console.log(`🍪 Claim pour ${email} via cookies`);
@@ -236,9 +235,6 @@ async function claimWithCookies(account) {
         binpick: 'https://binpick.io/faucet.php'
     };
     const faucetUrl = siteUrls[platform] || 'https://tronpick.io/faucet.php';
-
-    const TURNSTILE_COORDS = { x: 650, y: 622 };
-    const CLAIM_COORDS = { x: 640, y: 223 };
 
     let browser;
     try {
@@ -256,56 +252,67 @@ async function claimWithCookies(account) {
             throw new Error('Cookies expirés');
         }
 
-        // 1. Actualiser
+        // 1. Actualiser la page
         console.log('🔄 Actualisation de la page faucet...');
         await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
         
-        // 2. Attendre 5s
-        console.log('⏳ Attente de 5 secondes...');
+        // 2. Attendre 5 secondes
+        console.log('⏳ Attente de 5 secondes après actualisation...');
         await delay(5000);
         await page.screenshot({ path: path.join(screenshotsDir, `01_after_reload_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        // 3. Scroll humain
-        console.log('📜 Scroll progressif vers CLAIM...');
+        // 3. Scroll humain jusqu'au bouton CLAIM
+        console.log('📜 Scroll progressif vers le bouton CLAIM...');
         await humanScrollToClaim(page);
         await delay(2000);
         await page.screenshot({ path: path.join(screenshotsDir, `02_after_scroll_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        // 4. Attendre 5s
-        console.log('⏳ Attente de 5 secondes...');
-        await delay(5000);
-
-        // 5. Premier clic Turnstile
-        await drawRedDot(page, TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
+        // 4. Premier clic Turnstile avec point rouge
+        await drawRedDot(page, TURNSTILE_FAUCET_COORDS.x, TURNSTILE_FAUCET_COORDS.y);
         await page.screenshot({ path: path.join(screenshotsDir, `03_before_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
         
-        console.log(`🖱️ Premier clic Turnstile (${TURNSTILE_COORDS.x}, ${TURNSTILE_COORDS.y})`);
-        await humanClickAt(page, TURNSTILE_COORDS);
+        console.log(`🖱️ Premier clic Turnstile (${TURNSTILE_FAUCET_COORDS.x}, ${TURNSTILE_FAUCET_COORDS.y})`);
+        await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
         await removeRedDot(page);
+        
+        // 5. Capture après premier clic
         await page.screenshot({ path: path.join(screenshotsDir, `04_after_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        // 6. Attendre 5s
-        console.log('⏳ Attente de 5 secondes...');
-        await delay(5000);
-        await page.screenshot({ path: path.join(screenshotsDir, `05_after_5s_wait_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        // 6. Attendre 10 secondes
+        console.log('⏳ Attente de 10 secondes...');
+        await delay(10000);
+        await page.screenshot({ path: path.join(screenshotsDir, `05_after_10s_wait_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        // 7. Deuxième clic Turnstile
-        await drawRedDot(page, TURNSTILE_COORDS.x, TURNSTILE_COORDS.y);
+        // 7. Deuxième clic Turnstile avec point rouge
+        await drawRedDot(page, TURNSTILE_FAUCET_COORDS.x, TURNSTILE_FAUCET_COORDS.y);
         await page.screenshot({ path: path.join(screenshotsDir, `06_before_second_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
         
-        console.log(`🖱️ Deuxième clic Turnstile (${TURNSTILE_COORDS.x}, ${TURNSTILE_COORDS.y})`);
-        await humanClickAt(page, TURNSTILE_COORDS);
+        console.log(`🖱️ Deuxième clic Turnstile (${TURNSTILE_FAUCET_COORDS.x}, ${TURNSTILE_FAUCET_COORDS.y})`);
+        await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
         await removeRedDot(page);
+        
+        // 8. Capture après deuxième clic
         await page.screenshot({ path: path.join(screenshotsDir, `07_after_second_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        // 8. Attendre 5s
-        console.log('⏳ Attente de 5 secondes...');
-        await delay(5000);
+        // 9. Attendre 10 secondes
+        console.log('⏳ Attente de 10 secondes...');
+        await delay(10000);
         await page.screenshot({ path: path.join(screenshotsDir, `08_before_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        // 9. Clic CLAIM
-        console.log(`🎯 Clic sur CLAIM (${CLAIM_COORDS.x}, ${CLAIM_COORDS.y})`);
-        await humanClickAt(page, CLAIM_COORDS);
+        // 10. Récupérer les coordonnées exactes du bouton CLAIM et cliquer
+        const claimCoords = await page.evaluate(() => {
+            const btn = document.querySelector('#process_claim_hourly_faucet');
+            if (!btn) return null;
+            const rect = btn.getBoundingClientRect();
+            return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+        });
+        
+        if (!claimCoords) throw new Error('Bouton CLAIM introuvable');
+        
+        console.log(`📍 Coordonnées exactes du bouton CLAIM : (${Math.round(claimCoords.x)}, ${Math.round(claimCoords.y)})`);
+        console.log(`🎯 Clic sur CLAIM (${Math.round(claimCoords.x)}, ${Math.round(claimCoords.y)})`);
+        
+        await humanClickAt(page, claimCoords);
         await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
         await delay(5000);
         await page.screenshot({ path: path.join(screenshotsDir, `09_after_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
@@ -320,7 +327,7 @@ async function claimWithCookies(account) {
         const success = btnDisabled || messages.some(m => /success|claimed|reward|sent/i.test(m));
         const resultMessage = messages[0] || (btnDisabled ? 'Bouton désactivé' : 'Aucune réaction');
 
-        return { success, message: resultMessage };
+        return { success, message: resultMessage, claimCoords };
 
     } finally {
         if (browser) await browser.close().catch(() => {});
@@ -341,6 +348,7 @@ async function claimWithCookies(account) {
         const now = Date.now();
         let needsSave = false;
 
+        // 1. Capturer cookies pour les comptes pending
         const pending = accounts.filter(acc => acc.enabled && !acc.cookies);
         if (pending.length) {
             console.log(`🍪 Capture cookies pour ${pending.length} compte(s)...`);
@@ -359,6 +367,7 @@ async function claimWithCookies(account) {
             }
         }
 
+        // 2. Claim pour les comptes valides
         const eligible = accounts.filter(acc => {
             if (!acc.enabled || !acc.cookies || acc.cookiesStatus !== 'valid') return false;
             const last = acc.lastClaim || 0;
@@ -375,6 +384,10 @@ async function claimWithCookies(account) {
                         console.log(`✅ Claim réussi pour ${acc.email}`);
                     } else {
                         console.log(`❌ Claim échoué pour ${acc.email}: ${result.message}`);
+                    }
+                    // Afficher les coordonnées du bouton CLAIM utilisées
+                    if (result.claimCoords) {
+                        console.log(`📍 Coordonnées CLAIM utilisées : (${Math.round(result.claimCoords.x)}, ${Math.round(result.claimCoords.y)})`);
                     }
                 } catch (e) {
                     console.error(`❌ Erreur claim ${acc.email}:`, e.message);
