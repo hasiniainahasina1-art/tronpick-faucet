@@ -26,7 +26,7 @@ if (!fs.existsSync(screenshotsDir)) {
 
 // --- Coordonnées fixes (résolution 1280x720) ---
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };   // Login
-const TURNSTILE_FAUCET_COORDS = { x: 500, y: 166 };  // Turnstile sur la page faucet
+const TURNSTILE_FAUCET_COORDS = { x: 3500, y: 170 };  // Turnstile sur la page faucet
 const CLAIM_COORDS = { x: 640, y: 223 };             // Bouton CLAIM
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
