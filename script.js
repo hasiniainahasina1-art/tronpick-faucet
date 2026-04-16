@@ -1,29 +1,27 @@
+// script.js
 const { connect } = require('puppeteer-real-browser');
 const { Octokit } = require('@octokit/rest');
 
-// Configuration GitHub
+// --- Configuration GitHub Gist ---
 const GH_TOKEN = process.env.GH_TOKEN;
-const GH_USERNAME = process.env.GH_USERNAME;
-const GH_REPO = process.env.GH_REPO;
-const GH_BRANCH = process.env.GH_BRANCH || 'main';
-const GH_FILE_PATH = process.env.GH_FILE_PATH || 'accounts.json';
+const GIST_ID = process.env.GIST_ID;
 
-if (!GH_TOKEN || !GH_USERNAME || !GH_REPO) {
-    console.error('❌ Variables GitHub manquantes');
+if (!GH_TOKEN || !GIST_ID) {
+    console.error('❌ GH_TOKEN ou GIST_ID manquant');
     process.exit(1);
 }
 
 const octokit = new Octokit({ auth: GH_TOKEN });
 
-// Proxy par défaut
+// --- Proxy par défaut ---
 const DEFAULT_PROXY_HOST = '31.59.20.176';
 const DEFAULT_PROXY_PORT = '6754';
 const DEFAULT_PROXY_USERNAME = process.env.PROXY_USERNAME || '';
 const DEFAULT_PROXY_PASSWORD = process.env.PROXY_PASSWORD || '';
 
-// Coordonnées
-const TURNSTILE_COORDS = { x: 640, y: 615 };
-const CLAIM_COORDS = { x: 640, y: 223 };
+// --- Coordonnées fixes (résolution 1280x720) ---
+const TURNSTILE_COORDS = { x: 640, y: 615 }; // Login
+const CLAIM_COORDS = { x: 640, y: 223 };     // Faucet
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -84,31 +82,30 @@ async function humanClickAt(page, coords) {
     await page.mouse.click(coords.x, coords.y);
 }
 
-// --- GitHub helpers ---
+// --- Gestion du Gist ---
 async function loadAccounts() {
-    try {
-        const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH });
-        return JSON.parse(Buffer.from(res.data.content, 'base64').toString('utf8'));
-    } catch (e) {
-        if (e.status === 404) return [];
-        throw e;
-    }
+    const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+        headers: { 'Authorization': `token ${GH_TOKEN}` }
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const gist = await res.json();
+    const content = gist.files['accounts.json']?.content || '[]';
+    return JSON.parse(content);
 }
 
 async function saveAccounts(accounts) {
-    let sha = null;
-    try {
-        const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH });
-        sha = res.data.sha;
-    } catch (e) {}
-    const content = Buffer.from(JSON.stringify(accounts, null, 2)).toString('base64');
-    await octokit.repos.createOrUpdateFileContents({
-        owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH,
-        message: 'Mise à jour automatique', content, branch: GH_BRANCH, sha
+    const body = {
+        files: { 'accounts.json': { content: JSON.stringify(accounts, null, 2) } }
+    };
+    const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `token ${GH_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
     });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }
 
-// --- Login ---
+// --- Login et capture cookies ---
 async function performLoginAndCaptureCookies(browser, account) {
     const { email, password, platform, proxy } = account;
     console.log(`🔐 Login pour ${email}...`);
@@ -175,7 +172,7 @@ async function performLoginAndCaptureCookies(browser, account) {
     }
 }
 
-// --- Claim ---
+// --- Claim avec cookies ---
 async function claimWithCookies(browser, account) {
     const { email, cookies, platform, proxy } = account;
     console.log(`🍪 Claim pour ${email} via cookies`);
@@ -253,7 +250,10 @@ async function claimWithCookies(browser, account) {
     let browser;
     try {
         let accounts = await loadAccounts();
-        if (!accounts.length) return;
+        if (!accounts.length) {
+            console.log('Aucun compte.');
+            return;
+        }
 
         const now = Date.now();
         let needsSave = false;
