@@ -1,6 +1,8 @@
 // script.js
 const { connect } = require('puppeteer-real-browser');
 const { Octokit } = require('@octokit/rest');
+const fs = require('fs');
+const path = require('path');
 
 // --- Configuration GitHub (dépôt) ---
 const GH_TOKEN = process.env.GH_TOKEN;
@@ -16,13 +18,19 @@ if (!GH_TOKEN || !GH_USERNAME || !GH_REPO) {
 
 const octokit = new Octokit({ auth: GH_TOKEN });
 
+// --- Dossier pour les captures d'écran ---
+const screenshotsDir = path.join(__dirname, 'screenshots');
+if (!fs.existsSync(screenshotsDir)) {
+    fs.mkdirSync(screenshotsDir, { recursive: true });
+}
+
 // --- Coordonnées fixes (résolution 1280x720) ---
 const TURNSTILE_COORDS = { x: 640, y: 615 }; // Login
 const CLAIM_COORDS = { x: 640, y: 223 };     // Faucet (fallback)
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// --- Fonctions utilitaires ---
+// --- Fonctions utilitaires (inchangées) ---
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -79,7 +87,7 @@ async function humanClickAt(page, coords) {
     await page.mouse.click(coords.x, coords.y);
 }
 
-// --- Gestion du dépôt GitHub ---
+// --- Gestion du dépôt GitHub (inchangée) ---
 async function loadAccounts() {
     try {
         const res = await octokit.repos.getContent({
@@ -118,7 +126,7 @@ async function saveAccounts(accounts) {
     });
 }
 
-// --- Login et capture cookies (sans proxy) ---
+// --- Login et capture cookies (inchangée) ---
 async function performLoginAndCaptureCookies(account) {
     const { email, password, platform } = account;
     console.log(`🔐 Login pour ${email}...`);
@@ -148,7 +156,6 @@ async function performLoginAndCaptureCookies(account) {
         await fillField(page, 'input[type="password"]', password, 'password');
         await delay(2000);
 
-        // Gestion Turnstile login
         const frame = await page.waitForFrame(
             f => f.url().includes('challenges.cloudflare.com/turnstile'),
             { timeout: 15000 }
@@ -190,7 +197,7 @@ async function performLoginAndCaptureCookies(account) {
     }
 }
 
-// --- Claim avec cookies (détection robuste de l'iframe Turnstile) ---
+// --- Claim avec cookies (avec capture d'écran en cas d'échec) ---
 async function claimWithCookies(account) {
     const { email, cookies, platform } = account;
     console.log(`🍪 Claim pour ${email} via cookies`);
@@ -223,7 +230,7 @@ async function claimWithCookies(account) {
         await humanScrollToClaim(page);
         await delay(2000);
 
-        // --- GESTION TURNSTILE FAUCET AMÉLIORÉE ---
+        // --- GESTION TURNSTILE FAUCET ---
         console.log('🛡️ Attente iframe Turnstile (max 30s)...');
         let turnstileFrame = null;
         const startWait = Date.now();
@@ -239,11 +246,9 @@ async function claimWithCookies(account) {
             
             await turnstileFrame.waitForSelector('body', { timeout: 5000 }).catch(() => {});
             
-            // Clic sur la checkbox
             await turnstileFrame.click('input[type="checkbox"]').catch(() => {});
             console.log('   Clic checkbox effectué');
             
-            // Clic sur le label "Verify you are human"
             await turnstileFrame.evaluate(() => {
                 const labels = [...document.querySelectorAll('label')];
                 const verifyLabel = labels.find(l => l.textContent.toLowerCase().includes('verify you are human'));
@@ -264,11 +269,7 @@ async function claimWithCookies(account) {
                 console.log('⚠️ Turnstile non résolu, on tente quand même');
             }
         } else {
-            console.log('⚠️ Iframe Turnstile non trouvée après 30s. Capture d\'écran...');
-            const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
-            console.log(`📸 CAPTURE_FAUCET_${Date.now()}.png (base64): ${screenshot.substring(0, 100)}...`);
-            
-            // Fallback coordonné
+            console.log('⚠️ Iframe Turnstile non trouvée après 30s. Fallback coordonné...');
             await humanClickAt(page, CLAIM_COORDS);
             await delay(10000);
             await humanClickAt(page, CLAIM_COORDS);
@@ -298,7 +299,18 @@ async function claimWithCookies(account) {
             return document.querySelector('#process_claim_hourly_faucet')?.disabled || false;
         });
         const success = btnDisabled || messages.some(m => /success|claimed|reward|sent/i.test(m));
-        return { success, message: messages[0] || (btnDisabled ? 'Bouton désactivé' : 'Aucune réaction') };
+        const resultMessage = messages[0] || (btnDisabled ? 'Bouton désactivé' : 'Aucune réaction');
+
+        // --- CAPTURE D'ÉCRAN EN CAS D'ÉCHEC ---
+        if (!success) {
+            const timestamp = Date.now();
+            const screenshotPath = path.join(screenshotsDir, `claim_failed_${email.replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}.png`);
+            await page.screenshot({ path: screenshotPath, fullPage: true });
+            console.log(`📸 Capture d'écran sauvegardée : ${screenshotPath}`);
+        }
+
+        return { success, message: resultMessage };
+
     } finally {
         if (browser) await browser.close().catch(() => {});
     }
