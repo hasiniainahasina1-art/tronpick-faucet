@@ -16,15 +16,9 @@ if (!GH_TOKEN || !GH_USERNAME || !GH_REPO) {
 
 const octokit = new Octokit({ auth: GH_TOKEN });
 
-// --- Proxy par défaut ---
-const DEFAULT_PROXY_HOST = '31.59.20.176';
-const DEFAULT_PROXY_PORT = '6754';
-const DEFAULT_PROXY_USERNAME = process.env.PROXY_USERNAME || '';
-const DEFAULT_PROXY_PASSWORD = process.env.PROXY_PASSWORD || '';
-
 // --- Coordonnées fixes (résolution 1280x720) ---
 const TURNSTILE_COORDS = { x: 640, y: 615 }; // Login
-const CLAIM_COORDS = { x: 640, y: 223 };     // Faucet
+const CLAIM_COORDS = { x: 640, y: 223 };     // Faucet (fallback)
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -124,9 +118,9 @@ async function saveAccounts(accounts) {
     });
 }
 
-// --- Login et capture cookies (nouveau navigateur à chaque appel) ---
+// --- Login et capture cookies (sans proxy) ---
 async function performLoginAndCaptureCookies(account) {
-    const { email, password, platform, proxy } = account;
+    const { email, password, platform } = account;
     console.log(`🔐 Login pour ${email}...`);
 
     const siteUrls = {
@@ -139,27 +133,13 @@ async function performLoginAndCaptureCookies(account) {
     const loginUrl = siteUrls[platform];
     if (!loginUrl) throw new Error('Plateforme inconnue');
 
-    let proxyConfig = null;
-    if (proxy) {
-        const parts = proxy.split(':');
-        if (parts.length === 2) proxyConfig = { host: parts[0], port: parts[1] };
-        else if (parts.length === 4) proxyConfig = { host: parts[0], port: parts[1], username: parts[2], password: parts[3] };
-    } else {
-        proxyConfig = { host: DEFAULT_PROXY_HOST, port: DEFAULT_PROXY_PORT, username: DEFAULT_PROXY_USERNAME, password: DEFAULT_PROXY_PASSWORD };
-    }
-
     let browser;
     try {
         const { browser: br, page } = await connect({
             headless: false,
-            turnstile: true,
-            proxy: proxyConfig
+            turnstile: true
         });
         browser = br;
-
-        if (proxyConfig && proxyConfig.username) {
-            await page.authenticate({ username: proxyConfig.username, password: proxyConfig.password });
-        }
 
         await page.setViewport({ width: 1280, height: 720 });
         await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 60000 });
@@ -168,8 +148,21 @@ async function performLoginAndCaptureCookies(account) {
         await fillField(page, 'input[type="password"]', password, 'password');
         await delay(2000);
 
-        await humanClickAt(page, TURNSTILE_COORDS);
-        await delay(10000);
+        // Gestion Turnstile login
+        const frame = await page.waitForFrame(
+            f => f.url().includes('challenges.cloudflare.com/turnstile'),
+            { timeout: 15000 }
+        ).catch(() => null);
+
+        if (frame) {
+            console.log('✅ Iframe Turnstile trouvée (login), clic checkbox');
+            await frame.click('input[type="checkbox"]');
+            await delay(8000);
+        } else {
+            console.log('⚠️ Iframe non trouvée, fallback coordonné');
+            await humanClickAt(page, TURNSTILE_COORDS);
+            await delay(10000);
+        }
 
         const loginClicked = await page.evaluate(() => {
             const btns = [...document.querySelectorAll('button')];
@@ -197,9 +190,9 @@ async function performLoginAndCaptureCookies(account) {
     }
 }
 
-// --- Claim avec cookies (nouveau navigateur à chaque appel) ---
+// --- Claim avec cookies (détection robuste de l'iframe Turnstile) ---
 async function claimWithCookies(account) {
-    const { email, cookies, platform, proxy } = account;
+    const { email, cookies, platform } = account;
     console.log(`🍪 Claim pour ${email} via cookies`);
 
     const siteUrls = {
@@ -211,27 +204,13 @@ async function claimWithCookies(account) {
     };
     const faucetUrl = siteUrls[platform] || 'https://tronpick.io/faucet.php';
 
-    let proxyConfig = null;
-    if (proxy) {
-        const parts = proxy.split(':');
-        if (parts.length === 2) proxyConfig = { host: parts[0], port: parts[1] };
-        else if (parts.length === 4) proxyConfig = { host: parts[0], port: parts[1], username: parts[2], password: parts[3] };
-    } else {
-        proxyConfig = { host: DEFAULT_PROXY_HOST, port: DEFAULT_PROXY_PORT, username: DEFAULT_PROXY_USERNAME, password: DEFAULT_PROXY_PASSWORD };
-    }
-
     let browser;
     try {
         const { browser: br, page } = await connect({
             headless: false,
-            turnstile: true,
-            proxy: proxyConfig
+            turnstile: true
         });
         browser = br;
-
-        if (proxyConfig && proxyConfig.username) {
-            await page.authenticate({ username: proxyConfig.username, password: proxyConfig.password });
-        }
 
         await page.setCookie(...cookies);
         await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
@@ -244,11 +223,60 @@ async function claimWithCookies(account) {
         await humanScrollToClaim(page);
         await delay(2000);
 
-        await humanClickAt(page, CLAIM_COORDS);
-        await delay(10000);
-        await humanClickAt(page, CLAIM_COORDS);
-        await delay(10000);
+        // --- GESTION TURNSTILE FAUCET AMÉLIORÉE ---
+        console.log('🛡️ Attente iframe Turnstile (max 30s)...');
+        let turnstileFrame = null;
+        const startWait = Date.now();
+        
+        while (Date.now() - startWait < 30000 && !turnstileFrame) {
+            const frames = page.frames();
+            turnstileFrame = frames.find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
+            if (!turnstileFrame) await delay(2000);
+        }
 
+        if (turnstileFrame) {
+            console.log('✅ Iframe Turnstile trouvée');
+            
+            await turnstileFrame.waitForSelector('body', { timeout: 5000 }).catch(() => {});
+            
+            // Clic sur la checkbox
+            await turnstileFrame.click('input[type="checkbox"]').catch(() => {});
+            console.log('   Clic checkbox effectué');
+            
+            // Clic sur le label "Verify you are human"
+            await turnstileFrame.evaluate(() => {
+                const labels = [...document.querySelectorAll('label')];
+                const verifyLabel = labels.find(l => l.textContent.toLowerCase().includes('verify you are human'));
+                if (verifyLabel) verifyLabel.click();
+            });
+            
+            await delay(10000);
+            
+            const isChecked = await turnstileFrame.$eval('input[type="checkbox"]', cb => cb.checked).catch(() => false);
+            const tokenPresent = await page.evaluate(() => {
+                const inp = document.querySelector('[name="cf-turnstile-response"]');
+                return inp && inp.value.length > 10;
+            });
+            
+            if (isChecked || tokenPresent) {
+                console.log('✅ Turnstile résolu');
+            } else {
+                console.log('⚠️ Turnstile non résolu, on tente quand même');
+            }
+        } else {
+            console.log('⚠️ Iframe Turnstile non trouvée après 30s. Capture d\'écran...');
+            const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });
+            console.log(`📸 CAPTURE_FAUCET_${Date.now()}.png (base64): ${screenshot.substring(0, 100)}...`);
+            
+            // Fallback coordonné
+            await humanClickAt(page, CLAIM_COORDS);
+            await delay(10000);
+            await humanClickAt(page, CLAIM_COORDS);
+            await delay(10000);
+        }
+
+        // Clic sur CLAIM
+        console.log('🎯 Clic sur CLAIM');
         const claimClicked = await page.evaluate(() => {
             const btn = document.querySelector('#process_claim_hourly_faucet');
             if (btn && !btn.disabled) {
