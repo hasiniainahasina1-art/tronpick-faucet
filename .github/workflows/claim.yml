@@ -29,7 +29,10 @@ jobs:
       - name: 🤖 Exécuter le script d'automatisation
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          GIST_ID: ${{ secrets.GIST_ID }}
+          GH_USERNAME: ${{ secrets.GH_USERNAME }}
+          GH_REPO: ${{ secrets.GH_REPO }}
+          GH_BRANCH: ${{ secrets.GH_BRANCH }}
+          GH_FILE_PATH: ${{ secrets.GH_FILE_PATH }}
           PROXY_USERNAME: ${{ secrets.PROXY_USERNAME }}
           PROXY_PASSWORD: ${{ secrets.PROXY_PASSWORD }}
         run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" node script.js
