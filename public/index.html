@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Finoana Auto Claim</title>
     <style>
+        /* Styles identiques aux versions précédentes */
         body { font-family: Arial; background: #f4f9ff; margin: 20px; }
         .container { max-width: 1200px; margin: 0 auto; }
         h1, h2 { text-align: center; color: #1e293b; }
@@ -29,6 +30,18 @@
 <div class="container">
     <h1>⚙️ Finoana Auto Claim</h1>
 
+    <!-- Configuration GitHub -->
+    <div class="card">
+        <h2>🔐 Configuration GitHub</h2>
+        <div class="form-row">
+            <div class="form-group"><label>Token GitHub (scope repo)</label><input type="password" id="ghToken" placeholder="ghp_..."></div>
+            <div class="form-group"><label>Nom d'utilisateur</label><input type="text" id="ghUsername" value="hasiniainahasina1-art"></div>
+            <div class="form-group"><label>Dépôt</label><input type="text" id="ghRepo" value="tronpick-faucet"></div>
+            <button id="saveConfigBtn">💾 Enregistrer</button>
+        </div>
+    </div>
+
+    <!-- Formulaire d'ajout -->
     <div class="card">
         <h2>➕ Ajouter un compte</h2>
         <form id="accountForm">
@@ -52,6 +65,7 @@
         </form>
     </div>
 
+    <!-- Liste des comptes -->
     <div class="card">
         <h2>📋 Comptes configurés</h2>
         <div id="messageArea"></div>
@@ -65,20 +79,70 @@
 
 <script>
     (function() {
-        async function loadAccounts() {
-            const res = await fetch('/api/accounts');
-            if (!res.ok) throw new Error('Erreur chargement');
-            return await res.json();
-        }
-        async function saveAccounts(accounts) {
-            const res = await fetch('/api/accounts', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(accounts)
-            });
-            if (!res.ok) throw new Error('Erreur sauvegarde');
+        // Configuration stockée localement
+        let ghToken = localStorage.getItem('gh_token') || '';
+        let ghUsername = localStorage.getItem('gh_username') || 'hasiniainahasina1-art';
+        let ghRepo = localStorage.getItem('gh_repo') || 'tronpick-faucet';
+        const branch = 'main';
+        const filePath = 'accounts.json';
+
+        document.getElementById('ghToken').value = ghToken;
+        document.getElementById('ghUsername').value = ghUsername;
+        document.getElementById('ghRepo').value = ghRepo;
+
+        document.getElementById('saveConfigBtn').addEventListener('click', () => {
+            ghToken = document.getElementById('ghToken').value.trim();
+            ghUsername = document.getElementById('ghUsername').value.trim();
+            ghRepo = document.getElementById('ghRepo').value.trim();
+            localStorage.setItem('gh_token', ghToken);
+            localStorage.setItem('gh_username', ghUsername);
+            localStorage.setItem('gh_repo', ghRepo);
+            showMessage('✅ Configuration enregistrée', 'success');
+            loadAccounts();
+        });
+
+        // API GitHub
+        async function githubApi(method, body = null) {
+            if (!ghToken || !ghUsername || !ghRepo) throw new Error('Configuration GitHub manquante');
+            const url = `https://api.github.com/repos/${ghUsername}/${ghRepo}/contents/${filePath}`;
+            const headers = { 'Authorization': `token ${ghToken}`, 'Accept': 'application/vnd.github.v3+json' };
+            const options = { method, headers };
+            if (body) {
+                options.body = JSON.stringify(body);
+                headers['Content-Type'] = 'application/json';
+            }
+            const res = await fetch(url, options);
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.message || `HTTP ${res.status}`);
+            }
+            return res.json();
         }
 
+        async function loadAccountsFromGitHub() {
+            try {
+                const data = await githubApi('GET');
+                const content = atob(data.content);
+                return JSON.parse(content);
+            } catch (e) {
+                if (e.message.includes('404')) return [];
+                throw e;
+            }
+        }
+
+        async function saveAccountsToGitHub(accounts) {
+            let sha = null;
+            try {
+                const data = await githubApi('GET');
+                sha = data.sha;
+            } catch (e) {}
+            const content = btoa(unescape(encodeURIComponent(JSON.stringify(accounts, null, 2))));
+            const body = { message: 'Mise à jour comptes', content, branch };
+            if (sha) body.sha = sha;
+            await githubApi('PUT', body);
+        }
+
+        // UI
         const form = document.getElementById('accountForm');
         const emailInp = document.getElementById('email');
         const passInp = document.getElementById('password');
@@ -127,12 +191,16 @@
         }
 
         async function refresh() {
-            try { accounts = await loadAccounts(); render(); }
-            catch(e) { showMessage('Erreur chargement', 'error'); }
+            try {
+                accounts = await loadAccountsFromGitHub();
+                render();
+            } catch(e) {
+                showMessage('Erreur chargement: ' + e.message, 'error');
+            }
         }
 
         async function save(accs) {
-            await saveAccounts(accs);
+            await saveAccountsToGitHub(accs);
             showMessage('✅ Sauvegardé', 'success');
             await refresh();
         }
@@ -184,11 +252,13 @@
             }
             await save(accs);
             cancelBtn.click();
-            showMessage('✅ Compte ajouté (validation dans l\'heure)', 'success');
+            showMessage('✅ Compte ajouté (validation différée)', 'success');
         });
 
         refreshBtn.addEventListener('click', refresh);
-        refresh();
+
+        // Initialisation
+        if (ghToken) refresh(); else showMessage('Veuillez configurer votre token GitHub', 'error');
     })();
 </script>
 </body>
