@@ -3,6 +3,12 @@ const puppeteer = require('puppeteer-core');
 
 const BROWSERLESS_TOKEN = process.env.BROWSERLESS_TOKEN;
 
+// Proxy par défaut (identique à script.js)
+const DEFAULT_PROXY_HOST = '31.59.20.176';
+const DEFAULT_PROXY_PORT = '6754';
+const PROXY_USERNAME = process.env.PROXY_USERNAME || '';
+const PROXY_PASSWORD = process.env.PROXY_PASSWORD || '';
+
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 export default async function handler(req, res) {
@@ -23,6 +29,15 @@ export default async function handler(req, res) {
             browserWSEndpoint: `wss://chrome.browserless.io?token=${BROWSERLESS_TOKEN}`
         });
         const page = await browser.newPage();
+        
+        // --- Authentification proxy (identique à script.js) ---
+        if (PROXY_USERNAME && PROXY_PASSWORD) {
+            await page.authenticate({ username: PROXY_USERNAME, password: PROXY_PASSWORD });
+            console.log('✅ Proxy authentifié');
+        } else {
+            console.log('ℹ️ Proxy sans authentification ou non configuré');
+        }
+
         await page.setViewport({ width: 1280, height: 720 });
 
         console.log('🌐 Navigation vers login.php');
@@ -40,7 +55,6 @@ export default async function handler(req, res) {
 
         // 2. Premier clic Turnstile et capture
         console.log('🖱️ Premier clic Turnstile');
-        // Utiliser les coordonnées validées (640, 615)
         await page.mouse.click(640, 615);
         screenshots.push({
             label: '02_apres_premier_clic',
