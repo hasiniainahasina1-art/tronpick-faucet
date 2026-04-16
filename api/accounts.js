@@ -1,10 +1,12 @@
 // api/accounts.js
 export default async function handler(req, res) {
+    // CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     if (req.method === 'OPTIONS') return res.status(200).end();
 
+    // Variables d'environnement GitHub
     const GH_TOKEN = process.env.GH_TOKEN;
     const GH_USERNAME = process.env.GH_USERNAME;
     const GH_REPO = process.env.GH_REPO;
@@ -16,7 +18,10 @@ export default async function handler(req, res) {
     }
 
     const apiUrl = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/contents/${FILE_PATH}`;
-    const headers = { 'Authorization': `token ${GH_TOKEN}`, 'Accept': 'application/vnd.github.v3+json' };
+    const headers = {
+        'Authorization': `token ${GH_TOKEN}`,
+        'Accept': 'application/vnd.github.v3+json'
+    };
 
     try {
         if (req.method === 'GET') {
@@ -32,7 +37,10 @@ export default async function handler(req, res) {
             let sha = null;
             try {
                 const getRes = await fetch(apiUrl, { headers });
-                if (getRes.ok) { const data = await getRes.json(); sha = data.sha; }
+                if (getRes.ok) {
+                    const data = await getRes.json();
+                    sha = data.sha;
+                }
             } catch (e) {}
             const content = Buffer.from(JSON.stringify(accounts, null, 2)).toString('base64');
             const body = { message: 'Mise à jour comptes', content, branch: GH_BRANCH };
@@ -46,7 +54,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
         }
     } catch (error) {
-        console.error(error);
+        console.error('Erreur API accounts:', error);
         res.status(500).json({ error: error.message });
     }
 }
