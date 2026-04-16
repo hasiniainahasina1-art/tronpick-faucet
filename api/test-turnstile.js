@@ -1,88 +1,87 @@
-// api/test-turnstile.js
-const puppeteer = require('puppeteer-core');
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 
-const BROWSERLESS_TOKEN = process.env.BROWSERLESS_TOKEN;
+puppeteer.use(StealthPlugin());
 
-// Proxy par défaut (identique à script.js)
-const DEFAULT_PROXY_HOST = '31.59.20.176';
-const DEFAULT_PROXY_PORT = '6754';
-const PROXY_USERNAME = process.env.PROXY_USERNAME || '';
-const PROXY_PASSWORD = process.env.PROXY_PASSWORD || '';
+const delay = (min, max) => 
+  new Promise(res => setTimeout(res, Math.random() * (max - min) + min));
 
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+// Mouvement souris humain
+async function moveMouseHuman(page, x, y) {
+    const steps = 20 + Math.floor(Math.random() * 15);
+    const start = await page.mouse._client.send('Input.dispatchMouseEvent', {
+        type: 'mouseMoved',
+        x: Math.random() * 300,
+        y: Math.random() * 300
+    });
 
-export default async function handler(req, res) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    if (req.method === 'OPTIONS') return res.status(200).end();
-
-    if (!BROWSERLESS_TOKEN) {
-        return res.status(500).json({ error: 'BROWSERLESS_TOKEN manquant' });
+    for (let i = 0; i < steps; i++) {
+        await page.mouse.move(
+            x + (Math.random() * 5),
+            y + (Math.random() * 5)
+        );
+        await delay(10, 50);
     }
+}
 
-    const screenshots = [];
+module.exports = async (req, res) => {
     let browser;
 
     try {
         browser = await puppeteer.connect({
-            browserWSEndpoint: `wss://chrome.browserless.io?token=${BROWSERLESS_TOKEN}`
+            browserWSEndpoint: `wss://chrome.browserless.io?token=${process.env.BROWSERLESS_TOKEN}`
         });
+
         const page = await browser.newPage();
-        
-        // --- Authentification proxy (identique à script.js) ---
-        if (PROXY_USERNAME && PROXY_PASSWORD) {
-            await page.authenticate({ username: PROXY_USERNAME, password: PROXY_PASSWORD });
-            console.log('✅ Proxy authentifié');
-        } else {
-            console.log('ℹ️ Proxy sans authentification ou non configuré');
-        }
+
+        // 🎭 User-Agent réaliste
+        await page.setUserAgent(
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36'
+        );
 
         await page.setViewport({ width: 1280, height: 720 });
 
-        console.log('🌐 Navigation vers login.php');
-        await page.goto('https://tronpick.io/login.php', { waitUntil: 'domcontentloaded', timeout: 15000 });
+        console.log('🌐 Chargement...');
+        await page.goto('https://tronpick.io/login.php', { waitUntil: 'networkidle2' });
 
-        // 1. Actualisation (reload) et attente 6 secondes
-        console.log('🔄 Actualisation de la page...');
-        await page.reload({ waitUntil: 'domcontentloaded', timeout: 15000 });
-        console.log('⏳ Attente de 6 secondes après actualisation...');
-        await delay(6000);
-        screenshots.push({
-            label: '01_apres_actualisation_6s',
-            base64: await page.screenshot({ encoding: 'base64', fullPage: true })
+        // Scroll humain
+        await page.evaluate(() => {
+            window.scrollBy(0, Math.random() * 300);
         });
 
-        // 2. Premier clic Turnstile et capture
-        console.log('🖱️ Premier clic Turnstile');
-        await page.mouse.click(640, 615);
-        screenshots.push({
-            label: '02_apres_premier_clic',
-            base64: await page.screenshot({ encoding: 'base64', fullPage: true })
-        });
+        await delay(3000, 7000);
 
-        // 3. Attendre 6 secondes et capture
-        console.log('⏳ Attente de 6 secondes après premier clic...');
-        await delay(6000);
-        screenshots.push({
-            label: '03_apres_6s_attente',
-            base64: await page.screenshot({ encoding: 'base64', fullPage: true })
-        });
+        console.log('🖱️ Mouvement vers Turnstile...');
+        await moveMouseHuman(page, 640, 615);
 
-        // 4. Deuxième clic Turnstile et capture
-        console.log('🖱️ Deuxième clic Turnstile');
-        await page.mouse.click(640, 615);
-        screenshots.push({
-            label: '04_apres_deuxieme_clic',
-            base64: await page.screenshot({ encoding: 'base64', fullPage: true })
-        });
+        await delay(500, 1500);
+
+        console.log('🖱️ Clic humain...');
+        await page.mouse.click(
+            640 + (Math.random() * 3),
+            615 + (Math.random() * 3)
+        );
+
+        await delay(4000, 9000);
+
+        console.log('🔁 Deuxième interaction...');
+        await moveMouseHuman(page, 640, 615);
+
+        await delay(500, 1500);
+
+        await page.mouse.click(
+            640 + (Math.random() * 3),
+            615 + (Math.random() * 3)
+        );
+
+        const screenshot = await page.screenshot({ encoding: 'base64' });
 
         await browser.close();
-        res.status(200).json({ success: true, screenshots });
 
-    } catch (error) {
-        console.error('❌ Erreur:', error);
-        if (browser) await browser.close().catch(() => {});
-        res.status(500).json({ error: error.message });
+        res.json({ success: true, screenshot });
+
+    } catch (e) {
+        if (browser) await browser.close();
+        res.status(500).json({ error: e.message });
     }
-}
+};
