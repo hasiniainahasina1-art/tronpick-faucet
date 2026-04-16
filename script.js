@@ -24,7 +24,7 @@ const DEFAULT_PROXY_PASSWORD = process.env.PROXY_PASSWORD || '';
 
 // --- Coordonnées fixes (résolution 1280x720) ---
 const TURNSTILE_COORDS = { x: 640, y: 615 }; // Login
-const CLAIM_COORDS = { x: 640, y: 223 };     // Faucet
+const CLAIM_COORDS = { x: 640, y: 223 };     // Faucet (fallback)
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -168,8 +168,21 @@ async function performLoginAndCaptureCookies(account) {
         await fillField(page, 'input[type="password"]', password, 'password');
         await delay(2000);
 
-        await humanClickAt(page, TURNSTILE_COORDS);
-        await delay(10000);
+        // Gestion Turnstile login (clic dans l'iframe ou coordonné)
+        const frame = await page.waitForFrame(
+            f => f.url().includes('challenges.cloudflare.com/turnstile'),
+            { timeout: 15000 }
+        ).catch(() => null);
+
+        if (frame) {
+            console.log('✅ Iframe Turnstile trouvée (login), clic checkbox');
+            await frame.click('input[type="checkbox"]');
+            await delay(8000);
+        } else {
+            console.log('⚠️ Iframe non trouvée, fallback coordonné');
+            await humanClickAt(page, TURNSTILE_COORDS);
+            await delay(10000);
+        }
 
         const loginClicked = await page.evaluate(() => {
             const btns = [...document.querySelectorAll('button')];
@@ -197,7 +210,7 @@ async function performLoginAndCaptureCookies(account) {
     }
 }
 
-// --- Claim avec cookies (nouveau navigateur à chaque appel) ---
+// --- Claim avec cookies (gestion robuste de l'iframe Turnstile) ---
 async function claimWithCookies(account) {
     const { email, cookies, platform, proxy } = account;
     console.log(`🍪 Claim pour ${email} via cookies`);
@@ -244,10 +257,30 @@ async function claimWithCookies(account) {
         await humanScrollToClaim(page);
         await delay(2000);
 
-        await humanClickAt(page, CLAIM_COORDS);
-        await delay(10000);
-        await humanClickAt(page, CLAIM_COORDS);
-        await delay(10000);
+        // --- GESTION TURNSTILE FAUCET ---
+        const turnstileFrame = await page.waitForFrame(
+            f => f.url().includes('challenges.cloudflare.com/turnstile'),
+            { timeout: 15000 }
+        ).catch(() => null);
+
+        if (turnstileFrame) {
+            console.log('✅ Iframe Turnstile trouvée (faucet), clic checkbox');
+            await turnstileFrame.click('input[type="checkbox"]');
+            await delay(8000);
+            await page.waitForFunction(
+                () => {
+                    const inp = document.querySelector('[name="cf-turnstile-response"]');
+                    return inp && inp.value.length > 10;
+                },
+                { timeout: 10000 }
+            ).catch(() => console.log('⚠️ Token non généré'));
+        } else {
+            console.log('⚠️ Iframe non trouvée, fallback coordonné');
+            await humanClickAt(page, CLAIM_COORDS);
+            await delay(10000);
+            await humanClickAt(page, CLAIM_COORDS);
+            await delay(10000);
+        }
 
         const claimClicked = await page.evaluate(() => {
             const btn = document.querySelector('#process_claim_hourly_faucet');
