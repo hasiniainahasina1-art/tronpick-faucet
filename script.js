@@ -1,10 +1,7 @@
-// script.js
 const { connect } = require('puppeteer-real-browser');
-const fs = require('fs');
-const path = require('path');
 const { Octokit } = require('@octokit/rest');
 
-// Configuration GitHub (via variables d'environnement)
+// Configuration GitHub
 const GH_TOKEN = process.env.GH_TOKEN;
 const GH_USERNAME = process.env.GH_USERNAME;
 const GH_REPO = process.env.GH_REPO;
@@ -24,13 +21,13 @@ const DEFAULT_PROXY_PORT = '6754';
 const DEFAULT_PROXY_USERNAME = process.env.PROXY_USERNAME || '';
 const DEFAULT_PROXY_PASSWORD = process.env.PROXY_PASSWORD || '';
 
-// Coordonnées fixes (résolution 1280x720)
-const TURNSTILE_COORDS = { x: 640, y: 615 }; // Login
-const CLAIM_COORDS = { x: 640, y: 223 };     // Faucet
+// Coordonnées
+const TURNSTILE_COORDS = { x: 640, y: 615 };
+const CLAIM_COORDS = { x: 640, y: 223 };
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// --- Fonctions utilitaires (remplissage, scroll, clic) ---
+// --- Fonctions utilitaires ---
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -87,12 +84,10 @@ async function humanClickAt(page, coords) {
     await page.mouse.click(coords.x, coords.y);
 }
 
-// --- Gestion GitHub ---
+// --- GitHub helpers ---
 async function loadAccounts() {
     try {
-        const res = await octokit.repos.getContent({
-            owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH
-        });
+        const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH });
         return JSON.parse(Buffer.from(res.data.content, 'base64').toString('utf8'));
     } catch (e) {
         if (e.status === 404) return [];
@@ -103,19 +98,17 @@ async function loadAccounts() {
 async function saveAccounts(accounts) {
     let sha = null;
     try {
-        const res = await octokit.repos.getContent({
-            owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH
-        });
+        const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH });
         sha = res.data.sha;
     } catch (e) {}
     const content = Buffer.from(JSON.stringify(accounts, null, 2)).toString('base64');
     await octokit.repos.createOrUpdateFileContents({
         owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH,
-        message: 'Mise à jour automatique (Render)', content, branch: GH_BRANCH, sha
+        message: 'Mise à jour automatique', content, branch: GH_BRANCH, sha
     });
 }
 
-// --- Login et capture cookies ---
+// --- Login ---
 async function performLoginAndCaptureCookies(browser, account) {
     const { email, password, platform, proxy } = account;
     console.log(`🔐 Login pour ${email}...`);
@@ -153,11 +146,9 @@ async function performLoginAndCaptureCookies(browser, account) {
         await fillField(page, 'input[type="password"]', password, 'password');
         await delay(2000);
 
-        // Turnstile login : clic coordonné
         await humanClickAt(page, TURNSTILE_COORDS);
-        await delay(10000); // Attendre validation
+        await delay(10000);
 
-        // Clic sur "Log in"
         const loginClicked = await page.evaluate(() => {
             const btns = [...document.querySelectorAll('button')];
             const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
@@ -179,13 +170,12 @@ async function performLoginAndCaptureCookies(browser, account) {
 
         const cookies = await page.cookies();
         return cookies;
-
     } finally {
         await context.close();
     }
 }
 
-// --- Claim avec cookies ---
+// --- Claim ---
 async function claimWithCookies(browser, account) {
     const { email, cookies, platform, proxy } = account;
     console.log(`🍪 Claim pour ${email} via cookies`);
@@ -226,13 +216,11 @@ async function claimWithCookies(browser, account) {
         await humanScrollToClaim(page);
         await delay(2000);
 
-        // Double clic Turnstile faucet
         await humanClickAt(page, CLAIM_COORDS);
         await delay(10000);
         await humanClickAt(page, CLAIM_COORDS);
         await delay(10000);
 
-        // Clic sur CLAIM
         const claimClicked = await page.evaluate(() => {
             const btn = document.querySelector('#process_claim_hourly_faucet');
             if (btn && !btn.disabled) {
@@ -255,7 +243,6 @@ async function claimWithCookies(browser, account) {
         });
         const success = btnDisabled || messages.some(m => /success|claimed|reward|sent/i.test(m));
         return { success, message: messages[0] || (btnDisabled ? 'Bouton désactivé' : 'Aucune réaction') };
-
     } finally {
         await context.close();
     }
@@ -266,10 +253,7 @@ async function claimWithCookies(browser, account) {
     let browser;
     try {
         let accounts = await loadAccounts();
-        if (!accounts.length) {
-            console.log('Aucun compte.');
-            return;
-        }
+        if (!accounts.length) return;
 
         const now = Date.now();
         let needsSave = false;
