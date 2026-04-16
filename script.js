@@ -1,3 +1,4 @@
+// script.js
 const { connect } = require('puppeteer-real-browser');
 const { Octokit } = require('@octokit/rest');
 
@@ -123,8 +124,8 @@ async function saveAccounts(accounts) {
     });
 }
 
-// --- Login et capture cookies ---
-async function performLoginAndCaptureCookies(browser, account) {
+// --- Login et capture cookies (nouveau navigateur à chaque appel) ---
+async function performLoginAndCaptureCookies(account) {
     const { email, password, platform, proxy } = account;
     console.log(`🔐 Login pour ${email}...`);
 
@@ -147,13 +148,19 @@ async function performLoginAndCaptureCookies(browser, account) {
         proxyConfig = { host: DEFAULT_PROXY_HOST, port: DEFAULT_PROXY_PORT, username: DEFAULT_PROXY_USERNAME, password: DEFAULT_PROXY_PASSWORD };
     }
 
-    const context = await browser.createIncognitoBrowserContext();
-    const page = await context.newPage();
-    if (proxyConfig && proxyConfig.username) {
-        await page.authenticate({ username: proxyConfig.username, password: proxyConfig.password });
-    }
-
+    let browser;
     try {
+        const { browser: br, page } = await connect({
+            headless: false,
+            turnstile: true,
+            proxy: proxyConfig
+        });
+        browser = br;
+
+        if (proxyConfig && proxyConfig.username) {
+            await page.authenticate({ username: proxyConfig.username, password: proxyConfig.password });
+        }
+
         await page.setViewport({ width: 1280, height: 720 });
         await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 60000 });
 
@@ -186,12 +193,12 @@ async function performLoginAndCaptureCookies(browser, account) {
         const cookies = await page.cookies();
         return cookies;
     } finally {
-        await context.close();
+        if (browser) await browser.close().catch(() => {});
     }
 }
 
-// --- Claim avec cookies ---
-async function claimWithCookies(browser, account) {
+// --- Claim avec cookies (nouveau navigateur à chaque appel) ---
+async function claimWithCookies(account) {
     const { email, cookies, platform, proxy } = account;
     console.log(`🍪 Claim pour ${email} via cookies`);
 
@@ -213,13 +220,19 @@ async function claimWithCookies(browser, account) {
         proxyConfig = { host: DEFAULT_PROXY_HOST, port: DEFAULT_PROXY_PORT, username: DEFAULT_PROXY_USERNAME, password: DEFAULT_PROXY_PASSWORD };
     }
 
-    const context = await browser.createIncognitoBrowserContext();
-    const page = await context.newPage();
-    if (proxyConfig && proxyConfig.username) {
-        await page.authenticate({ username: proxyConfig.username, password: proxyConfig.password });
-    }
-
+    let browser;
     try {
+        const { browser: br, page } = await connect({
+            headless: false,
+            turnstile: true,
+            proxy: proxyConfig
+        });
+        browser = br;
+
+        if (proxyConfig && proxyConfig.username) {
+            await page.authenticate({ username: proxyConfig.username, password: proxyConfig.password });
+        }
+
         await page.setCookie(...cookies);
         await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
         await delay(5000);
@@ -259,13 +272,12 @@ async function claimWithCookies(browser, account) {
         const success = btnDisabled || messages.some(m => /success|claimed|reward|sent/i.test(m));
         return { success, message: messages[0] || (btnDisabled ? 'Bouton désactivé' : 'Aucune réaction') };
     } finally {
-        await context.close();
+        if (browser) await browser.close().catch(() => {});
     }
 }
 
 // --- Principal ---
 (async () => {
-    let browser;
     try {
         let accounts = await loadAccounts();
         console.log(`📋 Comptes chargés : ${accounts.length}`);
@@ -282,16 +294,9 @@ async function claimWithCookies(browser, account) {
         const pending = accounts.filter(acc => acc.enabled && !acc.cookies);
         if (pending.length) {
             console.log(`🍪 Capture cookies pour ${pending.length} compte(s)...`);
-            const { browser: br } = await connect({
-                headless: false,
-                turnstile: true,
-                proxy: { host: DEFAULT_PROXY_HOST, port: DEFAULT_PROXY_PORT, username: DEFAULT_PROXY_USERNAME, password: DEFAULT_PROXY_PASSWORD }
-            });
-            browser = br;
-
             for (const acc of pending) {
                 try {
-                    const cookies = await performLoginAndCaptureCookies(browser, acc);
+                    const cookies = await performLoginAndCaptureCookies(acc);
                     acc.cookies = cookies;
                     acc.cookiesStatus = 'valid';
                     console.log(`✅ Cookies OK pour ${acc.email}`);
@@ -302,8 +307,6 @@ async function claimWithCookies(browser, account) {
                 needsSave = true;
                 await delay(5000);
             }
-            await browser.close();
-            browser = null;
         }
 
         // 2. Claim pour les comptes valides
@@ -315,16 +318,9 @@ async function claimWithCookies(browser, account) {
 
         if (eligible.length) {
             console.log(`🚀 Claim pour ${eligible.length} compte(s)...`);
-            const { browser: br } = await connect({
-                headless: false,
-                turnstile: true,
-                proxy: { host: DEFAULT_PROXY_HOST, port: DEFAULT_PROXY_PORT, username: DEFAULT_PROXY_USERNAME, password: DEFAULT_PROXY_PASSWORD }
-            });
-            browser = br;
-
             for (const acc of eligible) {
                 try {
-                    const result = await claimWithCookies(browser, acc);
+                    const result = await claimWithCookies(acc);
                     if (result.success) {
                         acc.lastClaim = now;
                         console.log(`✅ Claim réussi pour ${acc.email}`);
@@ -341,7 +337,6 @@ async function claimWithCookies(browser, account) {
                 needsSave = true;
                 await delay(5000);
             }
-            await browser.close();
         }
 
         if (needsSave) {
@@ -351,7 +346,5 @@ async function claimWithCookies(browser, account) {
 
     } catch (e) {
         console.error('Erreur fatale:', e);
-    } finally {
-        if (browser) await browser.close();
     }
 })();
