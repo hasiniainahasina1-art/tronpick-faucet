@@ -5,8 +5,8 @@
     "timer": 1,
     "platform": "tronpick",
     "proxy": null,
-    "enabled": true,
-    "cookiesStatus": "failed",
+    "enabled": false,
+    "cookiesStatus": "pending",
     "lastClaim": 0
   }
 ]
