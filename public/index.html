@@ -5,62 +5,43 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Finoana Auto Claim</title>
     <style>
-        body { font-family: Arial, sans-serif; background: #f4f9ff; margin: 20px; }
+        body { font-family: Arial; background: #f4f9ff; margin: 20px; }
         .container { max-width: 1200px; margin: 0 auto; }
-        h1, h2 { color: #1e293b; text-align: center; }
+        h1, h2 { text-align: center; color: #1e293b; }
         .card { background: white; border-radius: 12px; padding: 25px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
         .form-row { display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end; }
         .form-group { flex: 1 1 200px; }
-        label { display: block; font-weight: bold; margin-bottom: 5px; color: #334155; text-align: left; }
-        input, select { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
-        button { padding: 12px 25px; background: #28a745; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
-        button:hover { background: #218838; }
+        label { display: block; font-weight: bold; margin-bottom: 5px; }
+        input, select { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; }
+        button { padding: 12px 25px; background: #28a745; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
         button.secondary { background: #6c757d; }
-        button.danger { background: #dc3545; }
         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { text-align: left; padding: 12px 8px; border-bottom: 1px solid #dee2e6; }
-        th { background: #f8f9fa; font-weight: bold; }
-        .status-badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; }
-        .status-active { background: #d4edda; color: #155724; }
-        .status-inactive { background: #f8d7da; color: #721c24; }
-        .cookie-status { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 20px; font-size: 12px; font-weight: bold; }
-        .cookie-pending { background: #fff3cd; color: #856404; }
-        .cookie-valid   { background: #d4edda; color: #155724; }
-        .cookie-expired { background: #f8d7da; color: #721c24; }
-        .cookie-failed  { background: #f8d7da; color: #721c24; }
-        .actions { display: flex; gap: 8px; }
-        .actions button { padding: 5px 10px; font-size: 12px; }
-        .countdown { font-weight: bold; color: #2563eb; }
+        th, td { padding: 12px 8px; border-bottom: 1px solid #dee2e6; text-align: left; }
+        .cookie-pending { background: #fff3cd; color: #856404; padding: 4px 8px; border-radius: 20px; }
+        .cookie-valid { background: #d4edda; color: #155724; padding: 4px 8px; border-radius: 20px; }
+        .cookie-failed { background: #f8d7da; color: #721c24; padding: 4px 8px; border-radius: 20px; }
         .message { padding: 12px; border-radius: 6px; margin-bottom: 20px; }
-        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-        .hidden { display: none; }
-        .text-center { text-align: center; }
-        .test-section { margin-top: 20px; padding-top: 20px; border-top: 1px dashed #cbd5e1; }
-        .screenshot-container img { max-width: 100%; margin-top: 10px; border: 1px solid #ccc; border-radius: 8px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
     </style>
 </head>
 <body>
 <div class="container">
     <h1>⚙️ Finoana Auto Claim</h1>
 
-    <!-- Formulaire d'ajout / modification -->
     <div class="card">
-        <h2 id="formTitle">➕ Ajouter un compte</h2>
+        <h2>➕ Ajouter un compte</h2>
         <form id="accountForm">
-            <input type="hidden" id="accountIndex" value="">
+            <input type="hidden" id="accountIndex">
             <div class="form-row">
                 <div class="form-group"><label>Email *</label><input type="email" id="email" required></div>
                 <div class="form-group"><label>Mot de passe *</label><input type="password" id="password" required></div>
             </div>
             <div class="form-row">
-                <div class="form-group"><label>Intervalle (min) *</label><input type="number" id="timer" min="1" value="60" required></div>
-                <div class="form-group"><label>Plateforme *</label><select id="platform" required>
-                    <option value="tronpick">TronPick</option>
-                    <option value="litepick">LitePick</option>
-                    <option value="dogepick">DogePick</option>
-                    <option value="solpick">SolPick</option>
-                    <option value="binpick">BinPick</option>
+                <div class="form-group"><label>Intervalle (min)</label><input type="number" id="timer" min="1" value="60"></div>
+                <div class="form-group"><label>Plateforme</label><select id="platform">
+                    <option value="tronpick">TronPick</option><option value="litepick">LitePick</option><option value="dogepick">DogePick</option>
+                    <option value="solpick">SolPick</option><option value="binpick">BinPick</option>
                 </select></div>
                 <div class="form-group"><label>Proxy</label><input type="text" id="proxy" placeholder="ip:port:user:pass"></div>
             </div>
@@ -69,19 +50,12 @@
                 <button type="button" id="cancelBtn" class="secondary hidden">Annuler</button>
             </div>
         </form>
-
-        <!-- Section de test Turnstile -->
-        <div class="test-section">
-            <button id="testTurnstileBtn" class="secondary">🧪 Tester Turnstile (sans remplir)</button>
-            <div id="testResult" style="margin-top: 15px;"></div>
-        </div>
     </div>
 
-    <!-- Liste des comptes -->
     <div class="card">
         <h2>📋 Comptes configurés</h2>
         <div id="messageArea"></div>
-        <div class="text-center"><button id="refreshBtn" class="secondary">🔄 Rafraîchir</button></div>
+        <button id="refreshBtn" class="secondary">🔄 Rafraîchir</button>
         <table id="accountsTable">
             <thead><tr><th>Email</th><th>Intervalle</th><th>Plateforme</th><th>Proxy</th><th>Cookies</th><th>Statut</th><th>Actions</th></tr></thead>
             <tbody id="accountsBody"></tbody>
@@ -91,7 +65,6 @@
 
 <script>
     (function() {
-        // --- API calls ---
         async function loadAccounts() {
             const res = await fetch('/api/accounts');
             if (!res.ok) throw new Error('Erreur chargement');
@@ -106,7 +79,6 @@
             if (!res.ok) throw new Error('Erreur sauvegarde');
         }
 
-        // --- UI Elements ---
         const form = document.getElementById('accountForm');
         const emailInp = document.getElementById('email');
         const passInp = document.getElementById('password');
@@ -121,13 +93,6 @@
         const accountIndex = document.getElementById('accountIndex');
 
         let accounts = [];
-
-        const cookiesStatusMap = {
-            pending: { icon: '⏳', text: 'En attente', class: 'cookie-pending' },
-            valid:   { icon: '✅', text: 'Valides', class: 'cookie-valid' },
-            expired: { icon: '⚠️', text: 'Expirés', class: 'cookie-expired' },
-            failed:  { icon: '❌', text: 'Échec', class: 'cookie-failed' }
-        };
 
         function showMessage(text, type) {
             const div = document.createElement('div');
@@ -145,15 +110,13 @@
             }
             accounts.forEach((acc, i) => {
                 const row = accountsBody.insertRow();
-                const st = cookiesStatusMap[acc.cookiesStatus || 'pending'] || cookiesStatusMap.pending;
+                const status = acc.cookiesStatus || 'pending';
+                const st = status === 'valid' ? ['✅','Valides','cookie-valid'] : (status === 'failed' ? ['❌','Échec','cookie-failed'] : ['⏳','En attente','cookie-pending']);
                 row.innerHTML = `
-                    <td>${acc.email}</td>
-                    <td>${acc.timer || 60} min</td>
-                    <td>${acc.platform || 'tronpick'}</td>
-                    <td>${acc.proxy || 'Défaut'}</td>
-                    <td><span class="cookie-status ${st.class}">${st.icon} ${st.text}</span></td>
-                    <td><span class="status-badge ${acc.enabled !== false ? 'status-active' : 'status-inactive'}">${acc.enabled !== false ? 'Actif' : 'Inactif'}</span></td>
-                    <td class="actions">
+                    <td>${acc.email}</td><td>${acc.timer} min</td><td>${acc.platform}</td><td>${acc.proxy||'Défaut'}</td>
+                    <td><span class="${st[2]}">${st[0]} ${st[1]}</span></td>
+                    <td>${acc.enabled?'Actif':'Inactif'}</td>
+                    <td>
                         <button class="secondary edit" data-index="${i}">✏️</button>
                         <button class="danger delete" data-index="${i}">🗑️</button>
                     </td>
@@ -178,7 +141,7 @@
             const a = accounts[idx];
             accountIndex.value = idx;
             emailInp.value = a.email; passInp.value = a.password;
-            timerInp.value = a.timer; platformSel.value = a.platform; proxyInp.value = a.proxy || '';
+            timerInp.value = a.timer; platformSel.value = a.platform; proxyInp.value = a.proxy||'';
             document.querySelector('h2').textContent = '✏️ Modifier';
             saveBtn.textContent = 'Mettre à jour';
             cancelBtn.classList.remove('hidden');
@@ -221,50 +184,10 @@
             }
             await save(accs);
             cancelBtn.click();
-            showMessage('✅ Compte ajouté (validation différée)', 'success');
+            showMessage('✅ Compte ajouté (validation dans l\'heure)', 'success');
         });
 
         refreshBtn.addEventListener('click', refresh);
-
-        // --- Test Turnstile ---
-        document.getElementById('testTurnstileBtn').addEventListener('click', async () => {
-            const btn = document.getElementById('testTurnstileBtn');
-            const resultDiv = document.getElementById('testResult');
-            btn.disabled = true;
-            btn.textContent = '⏳ Test en cours...';
-            resultDiv.innerHTML = '';
-
-            try {
-                const res = await fetch('/api/test-turnstile');
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error);
-
-                if (data.screenshots) {
-                    for (const shot of data.screenshots) {
-                        const container = document.createElement('div');
-                        container.style.marginBottom = '20px';
-                        const label = document.createElement('p');
-                        label.textContent = shot.label;
-                        label.style.fontWeight = 'bold';
-                        const img = document.createElement('img');
-                        img.src = `data:image/png;base64,${shot.base64}`;
-                        img.style.maxWidth = '100%';
-                        img.style.border = '1px solid #ccc';
-                        img.style.borderRadius = '8px';
-                        container.appendChild(label);
-                        container.appendChild(img);
-                        resultDiv.appendChild(container);
-                    }
-                }
-            } catch (error) {
-                resultDiv.innerHTML = `<p class="error">❌ ${error.message}</p>`;
-            } finally {
-                btn.disabled = false;
-                btn.textContent = '🧪 Tester Turnstile (sans remplir)';
-            }
-        });
-
-        // Initialisation
         refresh();
     })();
 </script>
