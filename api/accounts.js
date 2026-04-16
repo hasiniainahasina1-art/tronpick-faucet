@@ -5,18 +5,21 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     if (req.method === 'OPTIONS') return res.status(200).end();
 
-    const GH_TOKEN = process.env.GH_TOKEN;
-    const GH_USERNAME = process.env.GH_USERNAME;
-    const GH_REPO = process.env.GH_REPO;
-    const GH_BRANCH = process.env.GH_BRANCH || 'main';
-    const FILE_PATH = process.env.GH_FILE_PATH || 'accounts.json';
-
-    if (!GH_TOKEN || !GH_USERNAME || !GH_REPO) {
-        return res.status(500).json({ error: 'Configuration GitHub manquante' });
+    // Lire la configuration depuis la variable unique
+    let config;
+    try {
+        config = JSON.parse(process.env.GH_CONFIG || '{}');
+    } catch (e) {
+        return res.status(500).json({ error: 'GH_CONFIG invalide' });
     }
 
-    const apiUrl = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/contents/${FILE_PATH}`;
-    const headers = { 'Authorization': `token ${GH_TOKEN}`, 'Accept': 'application/vnd.github.v3+json' };
+    const { token, username, repo, branch = 'main', path = 'accounts.json' } = config;
+    if (!token || !username || !repo) {
+        return res.status(500).json({ error: 'Configuration GitHub incomplète' });
+    }
+
+    const apiUrl = `https://api.github.com/repos/${username}/${repo}/contents/${path}`;
+    const headers = { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' };
 
     try {
         if (req.method === 'GET') {
@@ -35,7 +38,7 @@ export default async function handler(req, res) {
                 if (getRes.ok) { const data = await getRes.json(); sha = data.sha; }
             } catch (e) {}
             const content = Buffer.from(JSON.stringify(accounts, null, 2)).toString('base64');
-            const body = { message: 'Mise à jour comptes', content, branch: GH_BRANCH };
+            const body = { message: 'Mise à jour comptes', content, branch };
             if (sha) body.sha = sha;
             const putRes = await fetch(apiUrl, {
                 method: 'PUT',
