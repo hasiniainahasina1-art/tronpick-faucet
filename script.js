@@ -26,7 +26,7 @@ if (!fs.existsSync(screenshotsDir)) {
 
 // --- Coordonnées fixes (résolution 1280x720) ---
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };   // Login
-const TURNSTILE_FAUCET_COORDS = { x: 350, y: 157 };  // Turnstile sur la page faucet
+const TURNSTILE_FAUCET_COORDS = { x: 350, y: 157 };  // Turnstile sur la page faucet (vraies coordonnées)
 const CLAIM_COORDS = { x: 640, y: 223 };             // Bouton CLAIM
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -223,7 +223,7 @@ async function performLoginAndCaptureCookies(account) {
     }
 }
 
-// --- Claim avec cookies (double clic coordonné + captures) ---
+// --- Claim avec cookies (nouvelle séquence avec les bonnes coordonnées) ---
 async function claimWithCookies(account) {
     const { email, cookies, platform } = account;
     console.log(`🍪 Claim pour ${email} via cookies`);
@@ -247,55 +247,38 @@ async function claimWithCookies(account) {
 
         await page.setCookie(...cookies);
         await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-        await delay(5000);
+        await delay(2000);
 
         if (page.url().includes('login.php')) {
             throw new Error('Cookies expirés');
         }
 
-        await humanScrollToClaim(page);
-        await delay(2000);
+        // --- NOUVELLE SÉQUENCE AVEC LES BONNES COORDONNÉES ---
+        console.log('🔄 Actualisation de la page faucet...');
+        await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
+        
+        console.log('⏳ Attente de 5 secondes après actualisation...');
+        await delay(5000);
+        await page.screenshot({ path: path.join(screenshotsDir, `01_after_reload_5s_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        // --- STRATÉGIE DOUBLE CLIC AVEC CAPTURES ET POINT ROUGE ---
-        console.log('🎯 Début de la séquence Turnstile faucet');
-
-        // 1. Dessiner point rouge, capturer, puis premier clic
+        // Premier clic sur Turnstile avec point rouge
         await drawRedDot(page, TURNSTILE_FAUCET_COORDS.x, TURNSTILE_FAUCET_COORDS.y);
-        await page.screenshot({ path: path.join(screenshotsDir, `01_before_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-        console.log('📸 Capture avant 1er clic (point rouge visible)');
-
+        await page.screenshot({ path: path.join(screenshotsDir, `02_before_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        
+        console.log(`🖱️ Premier clic sur Turnstile (${TURNSTILE_FAUCET_COORDS.x}, ${TURNSTILE_FAUCET_COORDS.y})`);
         await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
-        console.log('🖱️ Premier clic effectué');
         await removeRedDot(page);
+        await page.screenshot({ path: path.join(screenshotsDir, `03_after_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        await page.screenshot({ path: path.join(screenshotsDir, `02_after_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-        console.log('📸 Capture après 1er clic');
-
-        // Attendre 10 secondes
         console.log('⏳ Attente de 10 secondes...');
         await delay(10000);
-        await page.screenshot({ path: path.join(screenshotsDir, `03_after_10s_wait_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-        console.log('📸 Capture après 10s d\'attente');
+        await page.screenshot({ path: path.join(screenshotsDir, `04_after_10s_wait_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        // 2. Deuxième point rouge et deuxième clic
-        await drawRedDot(page, TURNSTILE_FAUCET_COORDS.x, TURNSTILE_FAUCET_COORDS.y);
-        await page.screenshot({ path: path.join(screenshotsDir, `04_before_second_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-        console.log('📸 Capture avant 2ème clic (point rouge visible)');
+        // Attendre 5 secondes supplémentaires puis cliquer sur CLAIM
+        console.log('⏳ Attente de 5 secondes avant CLAIM...');
+        await delay(5000);
+        await page.screenshot({ path: path.join(screenshotsDir, `05_before_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
-        console.log('🖱️ Deuxième clic effectué');
-        await removeRedDot(page);
-
-        await page.screenshot({ path: path.join(screenshotsDir, `05_after_second_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-        console.log('📸 Capture après 2ème clic');
-
-        // Attendre 10 secondes
-        console.log('⏳ Attente de 10 secondes...');
-        await delay(10000);
-        await page.screenshot({ path: path.join(screenshotsDir, `06_after_10s_wait_second_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-        console.log('📸 Capture après 10s d\'attente (avant CLAIM)');
-
-        // 3. Clic sur CLAIM
         console.log('🎯 Clic sur CLAIM');
         const claimClicked = await page.evaluate(() => {
             const btn = document.querySelector('#process_claim_hourly_faucet');
@@ -309,8 +292,7 @@ async function claimWithCookies(account) {
 
         await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
         await delay(5000);
-        await page.screenshot({ path: path.join(screenshotsDir, `07_after_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-        console.log('📸 Capture après clic sur CLAIM');
+        await page.screenshot({ path: path.join(screenshotsDir, `06_after_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
         const messages = await page.evaluate(() => {
             return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [role="alert"]'))
