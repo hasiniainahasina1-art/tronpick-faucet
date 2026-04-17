@@ -18,27 +18,72 @@ if (!GH_TOKEN || !GH_USERNAME || !GH_REPO) {
 
 const octokit = new Octokit({ auth: GH_TOKEN });
 
+// --- Configuration des proxys ---
+// Option 1 : Proxy unique tournant (ex: Bright Data gateway)
+const PROXY_URL = process.env.PROXY_URL || ''; // ex: "http://user:pass@gateway:port"
+
+// Option 2 : Liste de proxys japonais (si pas de proxy tournant)
+const JP_PROXY_LIST = (process.env.JP_PROXY_LIST || '').split(',').filter(p => p.trim() !== '');
+
+let proxyList = [];
+if (PROXY_URL) {
+    // Mode proxy unique tournant : on utilisera toujours la même URL, mais elle fournira des IPs différentes
+    console.log('🌐 Mode proxy tournant unique activé');
+    proxyList = [PROXY_URL];
+} else if (JP_PROXY_LIST.length > 0) {
+    console.log(`🌐 Mode liste de proxys japonais : ${JP_PROXY_LIST.length} proxys chargés`);
+    proxyList = JP_PROXY_LIST;
+} else {
+    console.error('❌ Aucun proxy configuré. Définissez PROXY_URL ou JP_PROXY_LIST.');
+    process.exit(1);
+}
+
+// Mélanger un tableau (Fisher–Yates)
+function shuffleArray(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+}
+
+let shuffledProxies = shuffleArray([...proxyList]);
+let currentProxyIndex = 0;
+
+function getNextProxyConfig() {
+    if (shuffledProxies.length === 0) return null;
+    const proxyUrl = shuffledProxies[currentProxyIndex];
+    currentProxyIndex = (currentProxyIndex + 1) % shuffledProxies.length;
+    if (currentProxyIndex === 0) {
+        shuffledProxies = shuffleArray([...proxyList]);
+        console.log('🔄 Tour des proxys terminé, nouvelle permutation.');
+    }
+    const match = proxyUrl.match(/^http:\/\/([^:]+):([^@]+)@([^:]+):(\d+)$/);
+    if (!match) {
+        console.error('❌ Format de proxy invalide:', proxyUrl);
+        return null;
+    }
+    return {
+        server: `http://${match[3]}:${match[4]}`,
+        username: match[1],
+        password: match[2]
+    };
+}
+
 // --- Dossier pour les captures d'écran ---
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) {
     fs.mkdirSync(screenshotsDir, { recursive: true });
 }
 
-// --- Proxy authentifié ---
-const PROXY_CONFIG = {
-    server: 'http://142.111.67.146:5611',
-    username: 'Finoana123',
-    password: 'Finoana123'
-};
-
 // --- Coordonnées validées ---
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
-const TURNSTILE_FAUCET_COORDS = { x: 400, y: 158 };
-const CLAIM_COORDS = { x: 400, y: 223 };
+const TURNSTILE_FAUCET_COORDS = { x: 640, y: 158 };
+const CLAIM_COORDS = { x: 640, y: 223 };
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// --- Fonctions utilitaires ---
+// --- Fonctions utilitaires (inchangées) ---
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -95,7 +140,7 @@ async function humanClickAt(page, coords) {
     await page.mouse.click(coords.x, coords.y);
 }
 
-// --- Gestion du dépôt GitHub ---
+// --- Gestion du dépôt GitHub (inchangée) ---
 async function loadAccounts() {
     try {
         const res = await octokit.repos.getContent({
@@ -149,12 +194,16 @@ async function performLoginAndCaptureCookies(account) {
     const loginUrl = siteUrls[platform];
     if (!loginUrl) throw new Error('Plateforme inconnue');
 
+    const proxyConfig = getNextProxyConfig();
+    if (!proxyConfig) throw new Error('Aucun proxy valide disponible');
+    console.log(`🔄 Proxy utilisé : ${proxyConfig.server}`);
+
     let browser;
     try {
         const { browser: br, page } = await connect({
             headless: false,
             turnstile: true,
-            proxy: PROXY_CONFIG
+            proxy: proxyConfig
         });
         browser = br;
 
@@ -206,7 +255,7 @@ async function performLoginAndCaptureCookies(account) {
     }
 }
 
-// --- Claim avec cookies (avec renouvellement automatique si expirés) ---
+// --- Claim avec cookies (rotation proxy + renouvellement auto) ---
 async function claimWithCookies(account) {
     const { email, cookies, platform } = account;
     console.log(`🍪 Claim pour ${email} via cookies`);
@@ -220,12 +269,16 @@ async function claimWithCookies(account) {
     };
     const faucetUrl = siteUrls[platform] || 'https://tronpick.io/faucet.php';
 
+    const proxyConfig = getNextProxyConfig();
+    if (!proxyConfig) throw new Error('Aucun proxy valide disponible');
+    console.log(`🔄 Proxy utilisé : ${proxyConfig.server}`);
+
     let browser;
     try {
         const { browser: br, page } = await connect({
             headless: false,
             turnstile: true,
-            proxy: PROXY_CONFIG
+            proxy: proxyConfig
         });
         browser = br;
 
@@ -233,7 +286,7 @@ async function claimWithCookies(account) {
         await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
         await delay(5000);
 
-        // Vérification IP publique (optionnel)
+        // Vérification IP publique
         await page.goto('https://api.ipify.org?format=json', { waitUntil: 'domcontentloaded', timeout: 10000 });
         const ipText = await page.evaluate(() => document.body.textContent);
         const ipData = JSON.parse(ipText);
@@ -245,7 +298,7 @@ async function claimWithCookies(account) {
             throw new Error('Cookies expirés');
         }
 
-        // --- SÉQUENCE DE CLAIM ---
+        // --- SÉQUENCE DE CLAIM (identique) ---
         console.log('⏳ Attente de 5 secondes...');
         await delay(5000);
 
@@ -277,7 +330,6 @@ async function claimWithCookies(account) {
         await delay(10000);
         await page.screenshot({ path: path.join(screenshotsDir, `06_before_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        // Clic sur CLAIM
         await humanClickAt(page, CLAIM_COORDS);
         await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
         await delay(5000);
@@ -293,7 +345,7 @@ async function claimWithCookies(account) {
         const success = btnDisabled || messages.some(m => /success|claimed|reward|sent/i.test(m));
         const resultMessage = messages[0] || (btnDisabled ? 'Bouton désactivé (succès présumé)' : 'Aucune réaction');
 
-        // --- ATTENTE 20 SECONDES PUIS DÉCONNEXION ---
+        // --- DÉCONNEXION ---
         console.log('⏳ Attente de 20 secondes avant déconnexion...');
         await delay(20000);
         await page.screenshot({ path: path.join(screenshotsDir, `08_before_logout_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
@@ -325,24 +377,20 @@ async function claimWithCookies(account) {
         return { success, message: resultMessage };
 
     } catch (error) {
-        // Si cookies expirés, tenter un renouvellement automatique
         if (error.message.includes('Cookies expirés')) {
             console.log(`🔄 Cookies expirés pour ${email}, tentative de reconnexion...`);
             try {
                 const newCookies = await performLoginAndCaptureCookies(account);
-                // Mettre à jour le compte avec les nouveaux cookies
                 account.cookies = newCookies;
                 account.cookiesStatus = 'valid';
-                console.log(`✅ Nouveaux cookies capturés pour ${email}. Le claim sera réessayé à la prochaine exécution.`);
-                // On retourne un succès partiel pour que le compte soit sauvegardé
-                return { success: false, message: 'Cookies renouvelés, prochain claim à la prochaine exécution', cookiesRenewed: true };
+                console.log(`✅ Nouveaux cookies capturés pour ${email}.`);
+                return { success: false, message: 'Cookies renouvelés', cookiesRenewed: true };
             } catch (loginError) {
-                console.error(`❌ Échec du renouvellement des cookies pour ${email}:`, loginError.message);
+                console.error(`❌ Échec reconnexion ${email}:`, loginError.message);
                 account.cookiesStatus = 'failed';
-                return { success: false, message: `Cookies expirés et échec reconnexion: ${loginError.message}` };
+                return { success: false, message: `Échec reconnexion: ${loginError.message}` };
             }
         }
-        // Autres erreurs
         console.error(`❌ Erreur claim ${email}:`, error.message);
         return { success: false, message: error.message };
     } finally {
@@ -364,7 +412,6 @@ async function claimWithCookies(account) {
         const now = Date.now();
         let needsSave = false;
 
-        // 1. Capturer cookies pour les comptes pending
         const pending = accounts.filter(acc => acc.enabled && !acc.cookies);
         if (pending.length) {
             console.log(`🍪 Capture cookies pour ${pending.length} compte(s)...`);
@@ -383,7 +430,6 @@ async function claimWithCookies(account) {
             }
         }
 
-        // 2. Claim pour les comptes valides
         const eligible = accounts.filter(acc => {
             if (!acc.enabled || !acc.cookies || acc.cookiesStatus !== 'valid') return false;
             const last = acc.lastClaim || 0;
@@ -401,10 +447,8 @@ async function claimWithCookies(account) {
                     } else {
                         console.log(`❌ Claim échoué pour ${acc.email}: ${result.message}`);
                     }
-                    // Si les cookies ont été renouvelés, on sauvegarde quand même
                     if (result.cookiesRenewed) {
-                        // Les cookies ont déjà été mis à jour dans l'objet acc
-                        console.log(`🔄 Cookies renouvelés pour ${acc.email}, compte mis à jour.`);
+                        console.log(`🔄 Cookies renouvelés pour ${acc.email}`);
                     }
                 } catch (e) {
                     console.error(`❌ Erreur claim ${acc.email}:`, e.message);
