@@ -167,8 +167,8 @@ async function saveAccounts(accounts) {
     });
 }
 
-// --- Login et capture cookies ---
-async function performLoginAndCaptureCookies(account) {
+// --- Login et capture cookies (reçoit un proxy en paramètre) ---
+async function performLoginAndCaptureCookies(account, proxyConfig) {
     const { email, password, platform } = account;
     console.log(`🔐 Login pour ${email}...`);
 
@@ -182,8 +182,7 @@ async function performLoginAndCaptureCookies(account) {
     const loginUrl = siteUrls[platform];
     if (!loginUrl) throw new Error('Plateforme inconnue');
 
-    const proxyConfig = getNextProxyConfig();
-    if (!proxyConfig) throw new Error('Aucun proxy valide disponible');
+    if (!proxyConfig) throw new Error('Aucun proxy fourni');
     console.log(`🔄 Proxy utilisé : ${proxyConfig.server}`);
 
     let browser;
@@ -243,8 +242,8 @@ async function performLoginAndCaptureCookies(account) {
     }
 }
 
-// --- Claim avec cookies (séquence complète + déconnexion) ---
-async function claimWithCookies(account) {
+// --- Claim avec cookies (reçoit un proxy en paramètre) ---
+async function claimWithCookies(account, proxyConfig) {
     const { email, cookies, platform } = account;
     console.log(`🍪 Claim pour ${email} via cookies`);
 
@@ -257,8 +256,7 @@ async function claimWithCookies(account) {
     };
     const faucetUrl = siteUrls[platform] || 'https://tronpick.io/faucet.php';
 
-    const proxyConfig = getNextProxyConfig();
-    if (!proxyConfig) throw new Error('Aucun proxy valide disponible');
+    if (!proxyConfig) throw new Error('Aucun proxy fourni');
     console.log(`🔄 Proxy utilisé : ${proxyConfig.server}`);
 
     let browser;
@@ -366,9 +364,9 @@ async function claimWithCookies(account) {
 
     } catch (error) {
         if (error.message.includes('Cookies expirés')) {
-            console.log(`🔄 Cookies expirés pour ${email}, tentative de reconnexion...`);
+            console.log(`🔄 Cookies expirés pour ${email}, tentative de reconnexion avec le même proxy...`);
             try {
-                const newCookies = await performLoginAndCaptureCookies(account);
+                const newCookies = await performLoginAndCaptureCookies(account, proxyConfig);
                 account.cookies = newCookies;
                 account.cookiesStatus = 'valid';
                 console.log(`✅ Nouveaux cookies capturés pour ${email}.`);
@@ -386,7 +384,7 @@ async function claimWithCookies(account) {
     }
 }
 
-// --- Principal (traitement atomique par compte) ---
+// --- Principal (traitement atomique par compte, proxy dédié) ---
 (async () => {
     try {
         let accounts = await loadAccounts();
@@ -408,11 +406,18 @@ async function claimWithCookies(account) {
 
             console.log(`\n===== Traitement du compte : ${acc.email} =====`);
 
-            // 1. Si pas de cookies ou statut expiré/failed, on fait un login
+            // Attribuer un proxy dédié à ce compte pour toute la durée du traitement
+            const accountProxy = getNextProxyConfig();
+            if (!accountProxy) {
+                console.error(`❌ Impossible d'obtenir un proxy pour ${acc.email}, compte ignoré.`);
+                continue;
+            }
+
+            // 1. Si pas de cookies ou statut expiré/failed, on fait un login avec ce proxy
             if (!acc.cookies || acc.cookiesStatus === 'expired' || acc.cookiesStatus === 'failed') {
                 console.log(`🍪 Compte ${acc.email} sans cookies valides, tentative de login...`);
                 try {
-                    const newCookies = await performLoginAndCaptureCookies(acc);
+                    const newCookies = await performLoginAndCaptureCookies(acc, accountProxy);
                     acc.cookies = newCookies;
                     acc.cookiesStatus = 'valid';
                     console.log(`✅ Cookies capturés pour ${acc.email}`);
@@ -436,10 +441,10 @@ async function claimWithCookies(account) {
                 continue;
             }
 
-            // 3. Exécuter le claim
+            // 3. Exécuter le claim avec le même proxy
             console.log(`🚀 Claim éligible pour ${acc.email}`);
             try {
-                const result = await claimWithCookies(acc);
+                const result = await claimWithCookies(acc, accountProxy);
                 if (result.success) {
                     acc.lastClaim = now;
                     console.log(`✅ Claim réussi pour ${acc.email}`);
