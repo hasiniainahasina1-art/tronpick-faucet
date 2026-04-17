@@ -31,13 +31,13 @@ const PROXY_CONFIG = {
     password: 'Finoana123'
 };
 
-// --- Coordonnées fixes (validées) ---
+// --- Coordonnées (utilisées uniquement en fallback) ---
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };   // Login
-const TURNSTILE_FAUCET_COORDS = { x: 400, y: 157 };  // Turnstile faucet
+const TURNSTILE_FAUCET_COORDS = { x: 650, y: 622 };  // Turnstile faucet (fallback)
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// --- Dessiner un point rouge ---
+// --- Dessiner un point rouge (pour déboguer le fallback) ---
 async function drawRedDot(page, x, y) {
     await page.evaluate((x, y) => {
         const dot = document.createElement('div');
@@ -178,7 +178,7 @@ async function performLoginAndCaptureCookies(account) {
         const { browser: br, page } = await connect({
             headless: false,
             turnstile: true,
-            proxy: PROXY_CONFIG   // <--- Votre proxy
+            proxy: PROXY_CONFIG
         });
         browser = br;
 
@@ -230,7 +230,7 @@ async function performLoginAndCaptureCookies(account) {
     }
 }
 
-// --- Claim avec cookies (votre proxy + attente avant actualisation) ---
+// --- Claim avec cookies (approche iframe prioritaire + fallback coordonné) ---
 async function claimWithCookies(account) {
     const { email, cookies, platform } = account;
     console.log(`🍪 Claim pour ${email} via cookies`);
@@ -249,7 +249,7 @@ async function claimWithCookies(account) {
         const { browser: br, page } = await connect({
             headless: false,
             turnstile: true,
-            proxy: PROXY_CONFIG   // <--- Votre proxy
+            proxy: PROXY_CONFIG
         });
         browser = br;
 
@@ -257,13 +257,11 @@ async function claimWithCookies(account) {
         await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
         await delay(2000);
 
-        // Vérification de l'IP publique (optionnel, pour confirmer que le proxy fonctionne)
+        // Vérification IP publique
         await page.goto('https://api.ipify.org?format=json', { waitUntil: 'domcontentloaded', timeout: 10000 });
         const ipText = await page.evaluate(() => document.body.textContent);
         const ipData = JSON.parse(ipText);
-        console.log(`🌍 IP publique utilisée pour le claim : ${ipData.ip}`);
-
-        // Retour sur la page faucet
+        console.log(`🌍 IP publique utilisée : ${ipData.ip}`);
         await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
         await delay(2000);
 
@@ -271,74 +269,64 @@ async function claimWithCookies(account) {
             throw new Error('Cookies expirés');
         }
 
-        // --- Attendre 5 secondes AVANT d'actualiser ---
-        console.log('⏳ Attente de 5 secondes avant actualisation...');
-        await delay(5000);
-        
-        // 1. Actualiser la page
-        console.log('🔄 Actualisation de la page faucet...');
-        await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
-        
-        // 2. Attendre 5 secondes après actualisation
-        console.log('⏳ Attente de 5 secondes après actualisation...');
-        await delay(5000);
-        await page.screenshot({ path: path.join(screenshotsDir, `01_after_reload_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-
-        // 3. Scroll humain jusqu'au bouton CLAIM
-        console.log('📜 Scroll progressif vers le bouton CLAIM...');
+        // Scroll vers le bouton CLAIM pour faire apparaître Turnstile
         await humanScrollToClaim(page);
         await delay(2000);
-        await page.screenshot({ path: path.join(screenshotsDir, `02_after_scroll_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        await page.screenshot({ path: path.join(screenshotsDir, `00_after_scroll_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        // 4. Premier clic Turnstile avec point rouge
-        await drawRedDot(page, TURNSTILE_FAUCET_COORDS.x, TURNSTILE_FAUCET_COORDS.y);
-        await page.screenshot({ path: path.join(screenshotsDir, `03_before_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-        
-        console.log(`🖱️ Premier clic Turnstile (${TURNSTILE_FAUCET_COORDS.x}, ${TURNSTILE_FAUCET_COORDS.y})`);
-        await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
-        await removeRedDot(page);
-        
-        // 5. Capture après premier clic
-        await page.screenshot({ path: path.join(screenshotsDir, `04_after_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        // --- STRATÉGIE : Attendre l'iframe Turnstile et cliquer dedans ---
+        console.log('🛡️ Attente iframe Turnstile (max 30s)...');
+        let turnstileFrame = null;
+        const startWait = Date.now();
+        while (Date.now() - startWait < 30000 && !turnstileFrame) {
+            const frames = page.frames();
+            turnstileFrame = frames.find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
+            if (!turnstileFrame) await delay(2000);
+        }
 
-        // 6. Attendre 10 secondes
-        console.log('⏳ Attente de 10 secondes...');
-        await delay(10000);
-        await page.screenshot({ path: path.join(screenshotsDir, `05_after_10s_wait_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        if (turnstileFrame) {
+            console.log('✅ Iframe Turnstile trouvée, clic checkbox');
+            await turnstileFrame.waitForSelector('body', { timeout: 5000 }).catch(() => {});
+            await turnstileFrame.click('input[type="checkbox"]');
+            console.log('   Clic checkbox effectué');
+            await delay(8000); // Attendre validation automatique
 
-        // 7. Deuxième clic Turnstile avec point rouge
-        await drawRedDot(page, TURNSTILE_FAUCET_COORDS.x, TURNSTILE_FAUCET_COORDS.y);
-        await page.screenshot({ path: path.join(screenshotsDir, `06_before_second_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-        
-        console.log(`🖱️ Deuxième clic Turnstile (${TURNSTILE_FAUCET_COORDS.x}, ${TURNSTILE_FAUCET_COORDS.y})`);
-        await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
-        await removeRedDot(page);
-        
-        // 8. Capture après deuxième clic
-        await page.screenshot({ path: path.join(screenshotsDir, `07_after_second_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+            // Vérifier que le token est généré
+            await page.waitForFunction(
+                () => {
+                    const inp = document.querySelector('[name="cf-turnstile-response"]');
+                    return inp && inp.value.length > 10;
+                },
+                { timeout: 10000 }
+            ).catch(() => console.log('⚠️ Token non généré, on tente quand même'));
+            
+            await page.screenshot({ path: path.join(screenshotsDir, `01_after_turnstile_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        } else {
+            console.log('⚠️ Iframe Turnstile non trouvée, fallback coordonné');
+            // Fallback avec point rouge
+            await drawRedDot(page, TURNSTILE_FAUCET_COORDS.x, TURNSTILE_FAUCET_COORDS.y);
+            await page.screenshot({ path: path.join(screenshotsDir, `02_fallback_before_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+            await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
+            await removeRedDot(page);
+            await delay(10000);
+            await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
+            await delay(10000);
+            await page.screenshot({ path: path.join(screenshotsDir, `03_fallback_after_clicks_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        }
 
-        // 9. Attendre 10 secondes
-        console.log('⏳ Attente de 10 secondes...');
-        await delay(10000);
-        await page.screenshot({ path: path.join(screenshotsDir, `08_before_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-
-        // 10. Récupérer les coordonnées exactes du bouton CLAIM et cliquer
+        // Clic sur CLAIM
         const claimCoords = await page.evaluate(() => {
             const btn = document.querySelector('#process_claim_hourly_faucet');
             if (!btn) return null;
             const rect = btn.getBoundingClientRect();
             return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
         });
-        
         if (!claimCoords) throw new Error('Bouton CLAIM introuvable');
-        
-        console.log(`📍 Coordonnées exactes du bouton CLAIM : (${Math.round(claimCoords.x)}, ${Math.round(claimCoords.y)})`);
         console.log(`🎯 Clic sur CLAIM (${Math.round(claimCoords.x)}, ${Math.round(claimCoords.y)})`);
-        
         await humanClickAt(page, claimCoords);
         await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
         await delay(5000);
-        await page.screenshot({ path: path.join(screenshotsDir, `09_after_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        await page.screenshot({ path: path.join(screenshotsDir, `04_after_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
         const messages = await page.evaluate(() => {
             return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [role="alert"]'))
@@ -349,9 +337,7 @@ async function claimWithCookies(account) {
         });
         const success = btnDisabled || messages.some(m => /success|claimed|reward|sent/i.test(m));
         const resultMessage = messages[0] || (btnDisabled ? 'Bouton désactivé' : 'Aucune réaction');
-
         return { success, message: resultMessage, claimCoords };
-
     } finally {
         if (browser) await browser.close().catch(() => {});
     }
