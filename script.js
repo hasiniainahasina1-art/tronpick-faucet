@@ -33,7 +33,7 @@ const PROXY_CONFIG = {
 
 // --- Coordonnées fixes (validées) ---
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };   // Login
-const TURNSTILE_FAUCET_COORDS = { x: 400, y: 157 };  // Turnstile faucet
+const TURNSTILE_FAUCET_COORDS = { x: 650, y: 622 };  // Turnstile faucet
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -62,7 +62,7 @@ async function removeRedDot(page) {
     });
 }
 
-// --- Fonctions utilitaires (inchangées) ---
+// --- Fonctions utilitaires ---
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -158,7 +158,7 @@ async function saveAccounts(accounts) {
     });
 }
 
-// --- Login et capture cookies (avec proxy authentifié) ---
+// --- Login et capture cookies (avec proxy) ---
 async function performLoginAndCaptureCookies(account) {
     const { email, password, platform } = account;
     console.log(`🔐 Login pour ${email}...`);
@@ -178,7 +178,7 @@ async function performLoginAndCaptureCookies(account) {
         const { browser: br, page } = await connect({
             headless: false,
             turnstile: true,
-            proxy: PROXY_CONFIG   // <--- Objet proxy avec authentification
+            proxy: PROXY_CONFIG
         });
         browser = br;
 
@@ -230,7 +230,7 @@ async function performLoginAndCaptureCookies(account) {
     }
 }
 
-// --- Claim avec cookies (plan exact + proxy authentifié + vérification IP) ---
+// --- Claim avec cookies (nouvelle séquence avec attente avant actualisation) ---
 async function claimWithCookies(account) {
     const { email, cookies, platform } = account;
     console.log(`🍪 Claim pour ${email} via cookies`);
@@ -249,7 +249,7 @@ async function claimWithCookies(account) {
         const { browser: br, page } = await connect({
             headless: false,
             turnstile: true,
-            proxy: PROXY_CONFIG   // <--- Objet proxy avec authentification
+            proxy: PROXY_CONFIG
         });
         browser = br;
 
@@ -271,6 +271,10 @@ async function claimWithCookies(account) {
             throw new Error('Cookies expirés');
         }
 
+        // --- NOUVELLE ÉTAPE : Attendre 5 secondes AVANT d'actualiser ---
+        console.log('⏳ Attente de 5 secondes avant actualisation...');
+        await delay(5000);
+        
         // 1. Actualiser la page
         console.log('🔄 Actualisation de la page faucet...');
         await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
