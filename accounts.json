@@ -5,7 +5,7 @@
     "timer": 60,
     "platform": "tronpick",
     "proxy": null,
-    "enabled": true,
+    "enabled": false,
     "cookiesStatus": "valid",
     "lastClaim": 1776410654648,
     "cookies": [
