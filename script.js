@@ -24,12 +24,16 @@ if (!fs.existsSync(screenshotsDir)) {
     fs.mkdirSync(screenshotsDir, { recursive: true });
 }
 
-// --- Proxy (identique à celui testé) ---
-const PROXY_SERVER = 'http://84.8.134.235:8888/';
+// --- Proxy avec authentification (fourni par l'utilisateur) ---
+const PROXY_CONFIG = {
+    server: 'http://142.111.67.146:5611',
+    username: 'Finoana123',
+    password: 'Finoana123'
+};
 
-// --- Coordonnées fixes ---
+// --- Coordonnées fixes (validées) ---
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };   // Login
-const TURNSTILE_FAUCET_COORDS = { x: 400, y: 160 };  // Turnstile faucet
+const TURNSTILE_FAUCET_COORDS = { x: 400, y: 157 };  // Turnstile faucet
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -58,7 +62,7 @@ async function removeRedDot(page) {
     });
 }
 
-// --- Fonctions utilitaires ---
+// --- Fonctions utilitaires (inchangées) ---
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -154,7 +158,7 @@ async function saveAccounts(accounts) {
     });
 }
 
-// --- Login et capture cookies (avec proxy) ---
+// --- Login et capture cookies (avec proxy authentifié) ---
 async function performLoginAndCaptureCookies(account) {
     const { email, password, platform } = account;
     console.log(`🔐 Login pour ${email}...`);
@@ -174,7 +178,7 @@ async function performLoginAndCaptureCookies(account) {
         const { browser: br, page } = await connect({
             headless: false,
             turnstile: true,
-            proxy: { server: PROXY_SERVER }   // <--- Proxy ajouté
+            proxy: PROXY_CONFIG   // <--- Objet proxy avec authentification
         });
         browser = br;
 
@@ -226,7 +230,7 @@ async function performLoginAndCaptureCookies(account) {
     }
 }
 
-// --- Claim avec cookies (plan exact + proxy) ---
+// --- Claim avec cookies (plan exact + proxy authentifié + vérification IP) ---
 async function claimWithCookies(account) {
     const { email, cookies, platform } = account;
     console.log(`🍪 Claim pour ${email} via cookies`);
@@ -245,11 +249,21 @@ async function claimWithCookies(account) {
         const { browser: br, page } = await connect({
             headless: false,
             turnstile: true,
-            proxy: { server: PROXY_SERVER }   // <--- Proxy ajouté
+            proxy: PROXY_CONFIG   // <--- Objet proxy avec authentification
         });
         browser = br;
 
         await page.setCookie(...cookies);
+        await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+        await delay(2000);
+
+        // Vérification de l'IP publique
+        await page.goto('https://api.ipify.org?format=json', { waitUntil: 'domcontentloaded', timeout: 10000 });
+        const ipText = await page.evaluate(() => document.body.textContent);
+        const ipData = JSON.parse(ipText);
+        console.log(`🌍 IP publique utilisée pour le claim : ${ipData.ip}`);
+
+        // Retour sur la page faucet
         await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
         await delay(2000);
 
@@ -339,7 +353,7 @@ async function claimWithCookies(account) {
     }
 }
 
-// --- Principal ---
+// --- Principal (inchangé) ---
 (async () => {
     try {
         let accounts = await loadAccounts();
