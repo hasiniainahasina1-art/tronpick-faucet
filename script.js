@@ -31,33 +31,34 @@ const PROXY_CONFIG = {
     password: 'Finoana123'
 };
 
-// --- Coordonnées (utilisées uniquement en fallback) ---
-const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };   // Login
-const TURNSTILE_FAUCET_COORDS = { x: 650, y: 622 };  // Turnstile faucet (fallback)
+// --- Coordonnées EXACTES du script fonctionnel ---
+const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };   // Login (inchangé)
+const TURNSTILE_FAUCET_COORDS = { x: 400, y: 158 };  // 👈 CORRECTION CLÉ : coordonnées du script qui marche
+const CLAIM_COORDS = { x: 400, y: 223 };             // Bouton CLAIM
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// --- Dessiner un point rouge (pour déboguer le fallback) ---
+// --- Dessiner un point rouge (pour déboguer) ---
 async function drawRedDot(page, x, y) {
     await page.evaluate((x, y) => {
         const dot = document.createElement('div');
-        dot.id = 'puppeteer-red-dot';
+        dot.id = 'puppeteer-debug-dot';
         dot.style.position = 'fixed';
-        dot.style.left = (x - 6) + 'px';
-        dot.style.top = (y - 6) + 'px';
-        dot.style.width = '12px';
-        dot.style.height = '12px';
+        dot.style.left = (x - 5) + 'px';
+        dot.style.top = (y - 5) + 'px';
+        dot.style.width = '10px';
+        dot.style.height = '10px';
         dot.style.backgroundColor = 'red';
-        dot.style.border = '2px solid darkred';
         dot.style.borderRadius = '50%';
         dot.style.zIndex = '999999';
+        dot.style.border = '2px solid darkred';
         document.body.appendChild(dot);
     }, x, y);
 }
 
-async function removeRedDot(page) {
+async function clearRedDot(page) {
     await page.evaluate(() => {
-        const dot = document.getElementById('puppeteer-red-dot');
+        const dot = document.getElementById('puppeteer-debug-dot');
         if (dot) dot.remove();
     });
 }
@@ -230,7 +231,7 @@ async function performLoginAndCaptureCookies(account) {
     }
 }
 
-// --- Claim avec cookies (approche iframe prioritaire + fallback coordonné) ---
+// --- Claim avec cookies (séquence EXACTE du script fonctionnel) ---
 async function claimWithCookies(account) {
     const { email, cookies, platform } = account;
     console.log(`🍪 Claim pour ${email} via cookies`);
@@ -257,76 +258,63 @@ async function claimWithCookies(account) {
         await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
         await delay(2000);
 
-        // Vérification IP publique
-        await page.goto('https://api.ipify.org?format=json', { waitUntil: 'domcontentloaded', timeout: 10000 });
-        const ipText = await page.evaluate(() => document.body.textContent);
-        const ipData = JSON.parse(ipText);
-        console.log(`🌍 IP publique utilisée : ${ipData.ip}`);
-        await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-        await delay(2000);
-
         if (page.url().includes('login.php')) {
             throw new Error('Cookies expirés');
         }
 
-        // Scroll vers le bouton CLAIM pour faire apparaître Turnstile
+        // --- SÉQUENCE EXACTE DU SCRIPT FONCTIONNEL ---
+        // 1. Attente 5 secondes (comme dans le script original après connexion)
+        console.log('⏳ Attente de 5 secondes avant actualisation...');
+        await delay(5000);
+
+        // 2. Actualisation de la page faucet
+        console.log('🔄 Actualisation de la page faucet...');
+        await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
+        await page.screenshot({ path: path.join(screenshotsDir, `01_after_reload_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+        // 3. Attente de 20 SECONDES pour chargement complet du Turnstile
+        console.log('⏳ Attente de 20 secondes pour chargement du Turnstile...');
+        await delay(20000);
+        await page.screenshot({ path: path.join(screenshotsDir, `02_after_wait_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+        // 4. Scroll humain vers le bouton CLAIM
         await humanScrollToClaim(page);
         await delay(2000);
-        await page.screenshot({ path: path.join(screenshotsDir, `00_after_scroll_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        await page.screenshot({ path: path.join(screenshotsDir, `03_turnstile_visible_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        // --- STRATÉGIE : Attendre l'iframe Turnstile et cliquer dedans ---
-        console.log('🛡️ Attente iframe Turnstile (max 30s)...');
-        let turnstileFrame = null;
-        const startWait = Date.now();
-        while (Date.now() - startWait < 30000 && !turnstileFrame) {
-            const frames = page.frames();
-            turnstileFrame = frames.find(f => f.url().includes('challenges.cloudflare.com/turnstile'));
-            if (!turnstileFrame) await delay(2000);
-        }
+        // 5. Premier clic Turnstile (avec point rouge)
+        await drawRedDot(page, TURNSTILE_FAUCET_COORDS.x, TURNSTILE_FAUCET_COORDS.y);
+        await page.screenshot({ path: path.join(screenshotsDir, `04_turnstile_with_red_dot_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        await clearRedDot(page);
 
-        if (turnstileFrame) {
-            console.log('✅ Iframe Turnstile trouvée, clic checkbox');
-            await turnstileFrame.waitForSelector('body', { timeout: 5000 }).catch(() => {});
-            await turnstileFrame.click('input[type="checkbox"]');
-            console.log('   Clic checkbox effectué');
-            await delay(8000); // Attendre validation automatique
+        console.log(`🖱️ Premier clic Turnstile (${TURNSTILE_FAUCET_COORDS.x}, ${TURNSTILE_FAUCET_COORDS.y})`);
+        await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
+        await page.screenshot({ path: path.join(screenshotsDir, `05_after_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-            // Vérifier que le token est généré
-            await page.waitForFunction(
-                () => {
-                    const inp = document.querySelector('[name="cf-turnstile-response"]');
-                    return inp && inp.value.length > 10;
-                },
-                { timeout: 10000 }
-            ).catch(() => console.log('⚠️ Token non généré, on tente quand même'));
-            
-            await page.screenshot({ path: path.join(screenshotsDir, `01_after_turnstile_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-        } else {
-            console.log('⚠️ Iframe Turnstile non trouvée, fallback coordonné');
-            // Fallback avec point rouge
-            await drawRedDot(page, TURNSTILE_FAUCET_COORDS.x, TURNSTILE_FAUCET_COORDS.y);
-            await page.screenshot({ path: path.join(screenshotsDir, `02_fallback_before_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-            await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
-            await removeRedDot(page);
-            await delay(10000);
-            await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
-            await delay(10000);
-            await page.screenshot({ path: path.join(screenshotsDir, `03_fallback_after_clicks_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-        }
+        // 6. Attendre 10 secondes
+        console.log('⏳ Attente de 10 secondes...');
+        await delay(10000);
 
-        // Clic sur CLAIM
-        const claimCoords = await page.evaluate(() => {
-            const btn = document.querySelector('#process_claim_hourly_faucet');
-            if (!btn) return null;
-            const rect = btn.getBoundingClientRect();
-            return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
-        });
-        if (!claimCoords) throw new Error('Bouton CLAIM introuvable');
-        console.log(`🎯 Clic sur CLAIM (${Math.round(claimCoords.x)}, ${Math.round(claimCoords.y)})`);
-        await humanClickAt(page, claimCoords);
+        // 7. Deuxième clic Turnstile
+        console.log(`🖱️ Deuxième clic Turnstile (${TURNSTILE_FAUCET_COORDS.x}, ${TURNSTILE_FAUCET_COORDS.y})`);
+        await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
+        await page.screenshot({ path: path.join(screenshotsDir, `06_after_second_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+        // 8. Attendre 10 secondes
+        console.log('⏳ Attente de 10 secondes...');
+        await delay(10000);
+
+        // 9. Attendre 10 secondes supplémentaires avant CLAIM
+        console.log('⏳ Attente de 10 secondes avant le clic sur CLAIM...');
+        await delay(10000);
+        await page.screenshot({ path: path.join(screenshotsDir, `07_before_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+        // 10. Clic sur CLAIM
+        console.log(`🎯 Clic sur CLAIM (${CLAIM_COORDS.x}, ${CLAIM_COORDS.y})`);
+        await humanClickAt(page, CLAIM_COORDS);
         await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
         await delay(5000);
-        await page.screenshot({ path: path.join(screenshotsDir, `04_after_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        await page.screenshot({ path: path.join(screenshotsDir, `08_after_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
         const messages = await page.evaluate(() => {
             return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [role="alert"]'))
@@ -337,7 +325,9 @@ async function claimWithCookies(account) {
         });
         const success = btnDisabled || messages.some(m => /success|claimed|reward|sent/i.test(m));
         const resultMessage = messages[0] || (btnDisabled ? 'Bouton désactivé' : 'Aucune réaction');
-        return { success, message: resultMessage, claimCoords };
+
+        return { success, message: resultMessage };
+
     } finally {
         if (browser) await browser.close().catch(() => {});
     }
@@ -393,9 +383,6 @@ async function claimWithCookies(account) {
                         console.log(`✅ Claim réussi pour ${acc.email}`);
                     } else {
                         console.log(`❌ Claim échoué pour ${acc.email}: ${result.message}`);
-                    }
-                    if (result.claimCoords) {
-                        console.log(`📍 Coordonnées CLAIM utilisées : (${Math.round(result.claimCoords.x)}, ${Math.round(result.claimCoords.y)})`);
                     }
                 } catch (e) {
                     console.error(`❌ Erreur claim ${acc.email}:`, e.message);
