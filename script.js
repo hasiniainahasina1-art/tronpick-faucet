@@ -26,7 +26,7 @@ if (JP_PROXY_LIST.length === 0) {
 }
 console.log(`🌐 ${JP_PROXY_LIST.length} proxy(s) japonais chargé(s)`);
 
-// Mélanger un tableau
+// Mélanger un tableau (Fisher–Yates)
 function shuffleArray(array) {
     for (let i = array.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -71,7 +71,7 @@ const CLAIM_COORDS = { x: 400, y: 223 };
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// --- Fonctions utilitaires (inchangées) ---
+// --- Fonctions utilitaires ---
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -243,7 +243,7 @@ async function performLoginAndCaptureCookies(account) {
     }
 }
 
-// --- Claim avec cookies (rotation proxy + renouvellement auto) ---
+// --- Claim avec cookies (séquence complète + déconnexion) ---
 async function claimWithCookies(account) {
     const { email, cookies, platform } = account;
     console.log(`🍪 Claim pour ${email} via cookies`);
@@ -286,7 +286,7 @@ async function claimWithCookies(account) {
             throw new Error('Cookies expirés');
         }
 
-        // --- SÉQUENCE DE CLAIM (identique) ---
+        // --- SÉQUENCE DE CLAIM ---
         console.log('⏳ Attente de 5 secondes...');
         await delay(5000);
 
@@ -386,7 +386,7 @@ async function claimWithCookies(account) {
     }
 }
 
-// --- Principal (multi‑comptes) ---
+// --- Principal (traitement atomique par compte) ---
 (async () => {
     try {
         let accounts = await loadAccounts();
@@ -400,54 +400,66 @@ async function claimWithCookies(account) {
         const now = Date.now();
         let needsSave = false;
 
-        const pending = accounts.filter(acc => acc.enabled && !acc.cookies);
-        if (pending.length) {
-            console.log(`🍪 Capture cookies pour ${pending.length} compte(s)...`);
-            for (const acc of pending) {
+        for (const acc of accounts) {
+            if (!acc.enabled) {
+                console.log(`⏭️ Compte ${acc.email} désactivé, ignoré.`);
+                continue;
+            }
+
+            console.log(`\n===== Traitement du compte : ${acc.email} =====`);
+
+            // 1. Si pas de cookies ou statut expiré/failed, on fait un login
+            if (!acc.cookies || acc.cookiesStatus === 'expired' || acc.cookiesStatus === 'failed') {
+                console.log(`🍪 Compte ${acc.email} sans cookies valides, tentative de login...`);
                 try {
-                    const cookies = await performLoginAndCaptureCookies(acc);
-                    acc.cookies = cookies;
+                    const newCookies = await performLoginAndCaptureCookies(acc);
+                    acc.cookies = newCookies;
                     acc.cookiesStatus = 'valid';
-                    console.log(`✅ Cookies OK pour ${acc.email}`);
+                    console.log(`✅ Cookies capturés pour ${acc.email}`);
+                    needsSave = true;
                 } catch (e) {
                     acc.cookiesStatus = 'failed';
                     console.log(`❌ Échec login ${acc.email}: ${e.message}`);
+                    continue;
+                }
+            }
+
+            // 2. Vérifier l'éligibilité au claim
+            const lastClaim = acc.lastClaim || 0;
+            const intervalMs = (acc.timer || 60) * 60 * 1000;
+            const isEligible = (now - lastClaim) >= intervalMs;
+
+            if (!isEligible) {
+                const remainingMs = intervalMs - (now - lastClaim);
+                const remainingMin = Math.ceil(remainingMs / 60000);
+                console.log(`⏳ Prochain claim dans ${remainingMin} minute(s) pour ${acc.email}`);
+                continue;
+            }
+
+            // 3. Exécuter le claim
+            console.log(`🚀 Claim éligible pour ${acc.email}`);
+            try {
+                const result = await claimWithCookies(acc);
+                if (result.success) {
+                    acc.lastClaim = now;
+                    console.log(`✅ Claim réussi pour ${acc.email}`);
+                } else {
+                    console.log(`❌ Claim échoué pour ${acc.email}: ${result.message}`);
+                }
+                if (result.cookiesRenewed) {
+                    console.log(`🔄 Cookies renouvelés pour ${acc.email}`);
                 }
                 needsSave = true;
-                await delay(5000);
-            }
-        }
-
-        const eligible = accounts.filter(acc => {
-            if (!acc.enabled || !acc.cookies || acc.cookiesStatus !== 'valid') return false;
-            const last = acc.lastClaim || 0;
-            return (now - last) >= (acc.timer || 60) * 60 * 1000;
-        });
-
-        if (eligible.length) {
-            console.log(`🚀 Claim pour ${eligible.length} compte(s)...`);
-            for (const acc of eligible) {
-                try {
-                    const result = await claimWithCookies(acc);
-                    if (result.success) {
-                        acc.lastClaim = now;
-                        console.log(`✅ Claim réussi pour ${acc.email}`);
-                    } else {
-                        console.log(`❌ Claim échoué pour ${acc.email}: ${result.message}`);
-                    }
-                    if (result.cookiesRenewed) {
-                        console.log(`🔄 Cookies renouvelés pour ${acc.email}`);
-                    }
-                } catch (e) {
-                    console.error(`❌ Erreur claim ${acc.email}:`, e.message);
-                    if (e.message.includes('expir')) {
-                        acc.cookies = null;
-                        acc.cookiesStatus = 'expired';
-                    }
+            } catch (e) {
+                console.error(`❌ Erreur claim ${acc.email}:`, e.message);
+                if (e.message.includes('expir')) {
+                    acc.cookies = null;
+                    acc.cookiesStatus = 'expired';
+                    needsSave = true;
                 }
-                needsSave = true;
-                await delay(5000);
             }
+
+            await delay(5000);
         }
 
         if (needsSave) {
