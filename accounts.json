@@ -1,1 +1,12 @@
-[]
+[
+  {
+    "email": "hasiniainahasina1@gmail.com",
+    "password": "Finoana123.",
+    "timer": 60,
+    "platform": "tronpick",
+    "proxy": null,
+    "enabled": true,
+    "cookiesStatus": "pending",
+    "lastClaim": 0
+  }
+]
