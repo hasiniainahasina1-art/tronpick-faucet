@@ -18,27 +18,15 @@ if (!GH_TOKEN || !GH_USERNAME || !GH_REPO) {
 
 const octokit = new Octokit({ auth: GH_TOKEN });
 
-// --- Configuration des proxys ---
-// Option 1 : Proxy unique tournant (ex: Bright Data gateway)
-const PROXY_URL = process.env.PROXY_URL || ''; // ex: "http://user:pass@gateway:port"
-
-// Option 2 : Liste de proxys japonais (si pas de proxy tournant)
+// --- Liste des proxys japonais (depuis variable d'environnement) ---
 const JP_PROXY_LIST = (process.env.JP_PROXY_LIST || '').split(',').filter(p => p.trim() !== '');
-
-let proxyList = [];
-if (PROXY_URL) {
-    // Mode proxy unique tournant : on utilisera toujours la même URL, mais elle fournira des IPs différentes
-    console.log('🌐 Mode proxy tournant unique activé');
-    proxyList = [PROXY_URL];
-} else if (JP_PROXY_LIST.length > 0) {
-    console.log(`🌐 Mode liste de proxys japonais : ${JP_PROXY_LIST.length} proxys chargés`);
-    proxyList = JP_PROXY_LIST;
-} else {
-    console.error('❌ Aucun proxy configuré. Définissez PROXY_URL ou JP_PROXY_LIST.');
+if (JP_PROXY_LIST.length === 0) {
+    console.error('❌ JP_PROXY_LIST est vide ou mal configurée');
     process.exit(1);
 }
+console.log(`🌐 ${JP_PROXY_LIST.length} proxy(s) japonais chargé(s)`);
 
-// Mélanger un tableau (Fisher–Yates)
+// Mélanger un tableau
 function shuffleArray(array) {
     for (let i = array.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -47,7 +35,7 @@ function shuffleArray(array) {
     return array;
 }
 
-let shuffledProxies = shuffleArray([...proxyList]);
+let shuffledProxies = shuffleArray([...JP_PROXY_LIST]);
 let currentProxyIndex = 0;
 
 function getNextProxyConfig() {
@@ -55,7 +43,7 @@ function getNextProxyConfig() {
     const proxyUrl = shuffledProxies[currentProxyIndex];
     currentProxyIndex = (currentProxyIndex + 1) % shuffledProxies.length;
     if (currentProxyIndex === 0) {
-        shuffledProxies = shuffleArray([...proxyList]);
+        shuffledProxies = shuffleArray([...JP_PROXY_LIST]);
         console.log('🔄 Tour des proxys terminé, nouvelle permutation.');
     }
     const match = proxyUrl.match(/^http:\/\/([^:]+):([^@]+)@([^:]+):(\d+)$/);
@@ -140,7 +128,7 @@ async function humanClickAt(page, coords) {
     await page.mouse.click(coords.x, coords.y);
 }
 
-// --- Gestion du dépôt GitHub (inchangée) ---
+// --- Gestion du dépôt GitHub ---
 async function loadAccounts() {
     try {
         const res = await octokit.repos.getContent({
