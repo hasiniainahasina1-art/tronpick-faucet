@@ -33,7 +33,7 @@ const PROXY_CONFIG = {
 
 // --- Coordonnées fixes (validées) ---
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };   // Login
-const TURNSTILE_FAUCET_COORDS = { x: 650, y: 622 };  // Turnstile faucet
+const TURNSTILE_FAUCET_COORDS = { x: 400, y: 157 };  // Turnstile faucet
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
