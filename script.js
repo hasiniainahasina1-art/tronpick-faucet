@@ -66,8 +66,8 @@ if (!fs.existsSync(screenshotsDir)) {
 
 // --- Coordonnées validées ---
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
-const TURNSTILE_FAUCET_COORDS = { x: 400, y: 158 };
-const CLAIM_COORDS = { x: 400, y: 223 };
+const TURNSTILE_FAUCET_COORDS = { x: 640, y: 158 };
+const CLAIM_COORDS = { x: 640, y: 223 };
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -242,7 +242,7 @@ async function performLoginAndCaptureCookies(account, proxyConfig) {
     }
 }
 
-// --- Claim avec cookies (reçoit un proxy en paramètre) ---
+// --- Claim avec cookies (avec relance complète si cookies expirés) ---
 async function claimWithCookies(account, proxyConfig) {
     const { email, cookies, platform } = account;
     console.log(`🍪 Claim pour ${email} via cookies`);
@@ -284,7 +284,7 @@ async function claimWithCookies(account, proxyConfig) {
             throw new Error('Cookies expirés');
         }
 
-        // --- SÉQUENCE DE CLAIM ---
+        // --- SÉQUENCE DE CLAIM (identique) ---
         console.log('⏳ Attente de 5 secondes...');
         await delay(5000);
 
@@ -364,13 +364,16 @@ async function claimWithCookies(account, proxyConfig) {
 
     } catch (error) {
         if (error.message.includes('Cookies expirés')) {
-            console.log(`🔄 Cookies expirés pour ${email}, tentative de reconnexion avec le même proxy...`);
+            console.log(`🔄 Cookies expirés pour ${email}, reconnexion avec le même proxy puis relance du claim...`);
             try {
+                // 1. Refaire un login avec le même proxy
                 const newCookies = await performLoginAndCaptureCookies(account, proxyConfig);
                 account.cookies = newCookies;
                 account.cookiesStatus = 'valid';
-                console.log(`✅ Nouveaux cookies capturés pour ${email}.`);
-                return { success: false, message: 'Cookies renouvelés', cookiesRenewed: true };
+                console.log(`✅ Nouveaux cookies capturés pour ${email}. Relance immédiate du claim.`);
+
+                // 2. Rappeler claimWithCookies avec les nouveaux cookies (récursion)
+                return await claimWithCookies(account, proxyConfig);
             } catch (loginError) {
                 console.error(`❌ Échec reconnexion ${email}:`, loginError.message);
                 account.cookiesStatus = 'failed';
@@ -450,9 +453,6 @@ async function claimWithCookies(account, proxyConfig) {
                     console.log(`✅ Claim réussi pour ${acc.email}`);
                 } else {
                     console.log(`❌ Claim échoué pour ${acc.email}: ${result.message}`);
-                }
-                if (result.cookiesRenewed) {
-                    console.log(`🔄 Cookies renouvelés pour ${acc.email}`);
                 }
                 needsSave = true;
             } catch (e) {
