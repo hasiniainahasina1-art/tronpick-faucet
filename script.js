@@ -29,7 +29,7 @@ const PROXY_SERVER = 'http://84.8.134.235:8888/';
 
 // --- Coordonnées fixes ---
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };   // Login
-const TURNSTILE_FAUCET_COORDS = { x: 650, y: 622 };  // Turnstile faucet
+const TURNSTILE_FAUCET_COORDS = { x: 400, y: 160 };  // Turnstile faucet
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
