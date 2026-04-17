@@ -1,10 +1,10 @@
-jname: Claim Tronpick Faucet
+name: Claim Tronpick Faucet
 
 on:
   schedule:
     # Exécution automatique toutes les heures à la minute 0
     - cron: '0 * * * *'
-  workflow_dispatch:   # Permet de lancer manuellement depuis l'onglet Actions
+  workflow_dispatch:   # Permet de lancer manuellement
 
 jobs:
   claim:
@@ -33,7 +33,6 @@ jobs:
           GH_REPO: ${{ secrets.GH_REPO }}
           GH_BRANCH: ${{ secrets.GH_BRANCH }}
           GH_FILE_PATH: ${{ secrets.GH_FILE_PATH }}
-          PROXY_URL: ${{ secrets.PROXY_URL }}
           JP_PROXY_LIST: ${{ secrets.JP_PROXY_LIST }}
         run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" node script.js
 
