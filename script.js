@@ -24,7 +24,7 @@ if (!fs.existsSync(screenshotsDir)) {
     fs.mkdirSync(screenshotsDir, { recursive: true });
 }
 
-// --- Proxy authentifié (fourni par l'utilisateur) ---
+// --- Proxy authentifié ---
 const PROXY_CONFIG = {
     server: 'http://142.111.67.146:5611',
     username: 'Finoana123',
@@ -32,9 +32,9 @@ const PROXY_CONFIG = {
 };
 
 // --- Coordonnées validées ---
-const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };   // Login
-const TURNSTILE_FAUCET_COORDS = { x: 400, y: 158 };  // Turnstile faucet
-const CLAIM_COORDS = { x: 400, y: 223 };             // Bouton CLAIM
+const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
+const TURNSTILE_FAUCET_COORDS = { x: 400, y: 158 };
+const CLAIM_COORDS = { x: 400, y: 223 };
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -206,7 +206,7 @@ async function performLoginAndCaptureCookies(account) {
     }
 }
 
-// --- Claim avec cookies (séquence complète + déconnexion) ---
+// --- Claim avec cookies (avec renouvellement automatique si expirés) ---
 async function claimWithCookies(account) {
     const { email, cookies, platform } = account;
     console.log(`🍪 Claim pour ${email} via cookies`);
@@ -324,6 +324,27 @@ async function claimWithCookies(account) {
 
         return { success, message: resultMessage };
 
+    } catch (error) {
+        // Si cookies expirés, tenter un renouvellement automatique
+        if (error.message.includes('Cookies expirés')) {
+            console.log(`🔄 Cookies expirés pour ${email}, tentative de reconnexion...`);
+            try {
+                const newCookies = await performLoginAndCaptureCookies(account);
+                // Mettre à jour le compte avec les nouveaux cookies
+                account.cookies = newCookies;
+                account.cookiesStatus = 'valid';
+                console.log(`✅ Nouveaux cookies capturés pour ${email}. Le claim sera réessayé à la prochaine exécution.`);
+                // On retourne un succès partiel pour que le compte soit sauvegardé
+                return { success: false, message: 'Cookies renouvelés, prochain claim à la prochaine exécution', cookiesRenewed: true };
+            } catch (loginError) {
+                console.error(`❌ Échec du renouvellement des cookies pour ${email}:`, loginError.message);
+                account.cookiesStatus = 'failed';
+                return { success: false, message: `Cookies expirés et échec reconnexion: ${loginError.message}` };
+            }
+        }
+        // Autres erreurs
+        console.error(`❌ Erreur claim ${email}:`, error.message);
+        return { success: false, message: error.message };
     } finally {
         if (browser) await browser.close().catch(() => {});
     }
@@ -379,6 +400,11 @@ async function claimWithCookies(account) {
                         console.log(`✅ Claim réussi pour ${acc.email}`);
                     } else {
                         console.log(`❌ Claim échoué pour ${acc.email}: ${result.message}`);
+                    }
+                    // Si les cookies ont été renouvelés, on sauvegarde quand même
+                    if (result.cookiesRenewed) {
+                        // Les cookies ont déjà été mis à jour dans l'objet acc
+                        console.log(`🔄 Cookies renouvelés pour ${acc.email}, compte mis à jour.`);
                     }
                 } catch (e) {
                     console.error(`❌ Erreur claim ${acc.email}:`, e.message);
