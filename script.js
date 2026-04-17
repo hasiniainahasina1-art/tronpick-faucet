@@ -24,9 +24,12 @@ if (!fs.existsSync(screenshotsDir)) {
     fs.mkdirSync(screenshotsDir, { recursive: true });
 }
 
+// --- Proxy (identique à celui testé) ---
+const PROXY_SERVER = 'http://84.8.134.235:8888/';
+
 // --- Coordonnées fixes ---
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };   // Login
-const TURNSTILE_FAUCET_COORDS = { x: 400, y: 160 };  // Turnstile faucet
+const TURNSTILE_FAUCET_COORDS = { x: 650, y: 622 };  // Turnstile faucet
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -151,7 +154,7 @@ async function saveAccounts(accounts) {
     });
 }
 
-// --- Login et capture cookies ---
+// --- Login et capture cookies (avec proxy) ---
 async function performLoginAndCaptureCookies(account) {
     const { email, password, platform } = account;
     console.log(`🔐 Login pour ${email}...`);
@@ -170,7 +173,8 @@ async function performLoginAndCaptureCookies(account) {
     try {
         const { browser: br, page } = await connect({
             headless: false,
-            turnstile: true
+            turnstile: true,
+            proxy: { server: PROXY_SERVER }   // <--- Proxy ajouté
         });
         browser = br;
 
@@ -222,7 +226,7 @@ async function performLoginAndCaptureCookies(account) {
     }
 }
 
-// --- Claim avec cookies (plan exact) ---
+// --- Claim avec cookies (plan exact + proxy) ---
 async function claimWithCookies(account) {
     const { email, cookies, platform } = account;
     console.log(`🍪 Claim pour ${email} via cookies`);
@@ -240,7 +244,8 @@ async function claimWithCookies(account) {
     try {
         const { browser: br, page } = await connect({
             headless: false,
-            turnstile: true
+            turnstile: true,
+            proxy: { server: PROXY_SERVER }   // <--- Proxy ajouté
         });
         browser = br;
 
@@ -385,7 +390,6 @@ async function claimWithCookies(account) {
                     } else {
                         console.log(`❌ Claim échoué pour ${acc.email}: ${result.message}`);
                     }
-                    // Afficher les coordonnées du bouton CLAIM utilisées
                     if (result.claimCoords) {
                         console.log(`📍 Coordonnées CLAIM utilisées : (${Math.round(result.claimCoords.x)}, ${Math.round(result.claimCoords.y)})`);
                     }
