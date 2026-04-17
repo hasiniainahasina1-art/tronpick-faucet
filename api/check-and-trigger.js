@@ -4,13 +4,11 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     if (req.method === 'OPTIONS') return res.status(200).end();
 
-    const GH_TOKEN = process.env.GH_WORKFLOW_TOKEN;
-    const GH_USERNAME = process.env.GH_USERNAME;
-    const GH_REPO = process.env.GH_REPO;
-
-    if (!GH_TOKEN || !GH_USERNAME || !GH_REPO) {
-        return res.status(500).json({ error: 'Configuration GitHub manquante' });
-    }
+    // --- VALEURS EN DUR (remplacez par vos vraies valeurs) ---
+    const GH_TOKEN = "ghp_VOTRE_TOKEN_ICI";
+    const GH_USERNAME = "hasiniainahasina1-art";
+    const GH_REPO = "tronpick-faucet";
+    // ---------------------------------------------------------
 
     try {
         // 1. Lire accounts.json depuis GitHub
