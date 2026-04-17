@@ -24,7 +24,7 @@ if (!fs.existsSync(screenshotsDir)) {
     fs.mkdirSync(screenshotsDir, { recursive: true });
 }
 
-// --- Proxy avec authentification (fourni par l'utilisateur) ---
+// --- VOTRE PROXY (authentifié) ---
 const PROXY_CONFIG = {
     server: 'http://142.111.67.146:5611',
     username: 'Finoana123',
@@ -33,7 +33,7 @@ const PROXY_CONFIG = {
 
 // --- Coordonnées fixes (validées) ---
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };   // Login
-const TURNSTILE_FAUCET_COORDS = { x: 400, y: 157 };  // Turnstile faucet
+const TURNSTILE_FAUCET_COORDS = { x: 650, y: 622 };  // Turnstile faucet
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -158,7 +158,7 @@ async function saveAccounts(accounts) {
     });
 }
 
-// --- Login et capture cookies (avec proxy) ---
+// --- Login et capture cookies (avec votre proxy) ---
 async function performLoginAndCaptureCookies(account) {
     const { email, password, platform } = account;
     console.log(`🔐 Login pour ${email}...`);
@@ -178,7 +178,7 @@ async function performLoginAndCaptureCookies(account) {
         const { browser: br, page } = await connect({
             headless: false,
             turnstile: true,
-            proxy: PROXY_CONFIG
+            proxy: PROXY_CONFIG   // <--- Votre proxy
         });
         browser = br;
 
@@ -230,7 +230,7 @@ async function performLoginAndCaptureCookies(account) {
     }
 }
 
-// --- Claim avec cookies (nouvelle séquence avec attente avant actualisation) ---
+// --- Claim avec cookies (votre proxy + attente avant actualisation) ---
 async function claimWithCookies(account) {
     const { email, cookies, platform } = account;
     console.log(`🍪 Claim pour ${email} via cookies`);
@@ -249,7 +249,7 @@ async function claimWithCookies(account) {
         const { browser: br, page } = await connect({
             headless: false,
             turnstile: true,
-            proxy: PROXY_CONFIG
+            proxy: PROXY_CONFIG   // <--- Votre proxy
         });
         browser = br;
 
@@ -257,7 +257,7 @@ async function claimWithCookies(account) {
         await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
         await delay(2000);
 
-        // Vérification de l'IP publique
+        // Vérification de l'IP publique (optionnel, pour confirmer que le proxy fonctionne)
         await page.goto('https://api.ipify.org?format=json', { waitUntil: 'domcontentloaded', timeout: 10000 });
         const ipText = await page.evaluate(() => document.body.textContent);
         const ipData = JSON.parse(ipText);
@@ -271,7 +271,7 @@ async function claimWithCookies(account) {
             throw new Error('Cookies expirés');
         }
 
-        // --- NOUVELLE ÉTAPE : Attendre 5 secondes AVANT d'actualiser ---
+        // --- Attendre 5 secondes AVANT d'actualiser ---
         console.log('⏳ Attente de 5 secondes avant actualisation...');
         await delay(5000);
         
@@ -279,7 +279,7 @@ async function claimWithCookies(account) {
         console.log('🔄 Actualisation de la page faucet...');
         await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
         
-        // 2. Attendre 5 secondes
+        // 2. Attendre 5 secondes après actualisation
         console.log('⏳ Attente de 5 secondes après actualisation...');
         await delay(5000);
         await page.screenshot({ path: path.join(screenshotsDir, `01_after_reload_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
@@ -357,7 +357,7 @@ async function claimWithCookies(account) {
     }
 }
 
-// --- Principal (inchangé) ---
+// --- Principal ---
 (async () => {
     try {
         let accounts = await loadAccounts();
