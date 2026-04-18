@@ -1,4 +1,4 @@
-il// script.js
+// script.js
 const { connect } = require('puppeteer-real-browser');
 const { Octokit } = require('@octokit/rest');
 const fs = require('fs');
