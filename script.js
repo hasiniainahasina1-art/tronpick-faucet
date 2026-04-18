@@ -18,13 +18,13 @@ if (!GH_TOKEN || !GH_USERNAME || !GH_REPO) {
 
 const octokit = new Octokit({ auth: GH_TOKEN });
 
-// --- Liste des proxys (doit contenir au moins 2 proxys) ---
+// --- Liste des proxys (URL complètes) ---
 const JP_PROXY_LIST = (process.env.JP_PROXY_LIST || '').split(',').filter(p => p.trim() !== '');
 if (JP_PROXY_LIST.length < 2) {
     console.error('❌ JP_PROXY_LIST doit contenir au moins 2 proxys');
     process.exit(1);
 }
-console.log(`🌐 ${JP_PROXY_LIST.length} proxy(s) chargé(s). Utilisation alternée : index 0 et 1.`);
+console.log(`🌐 ${JP_PROXY_LIST.length} proxy(s) chargé(s).`);
 
 // --- Dossier pour les captures d'écran ---
 const screenshotsDir = path.join(__dirname, 'screenshots');
@@ -135,32 +135,16 @@ async function saveAccounts(accounts) {
     });
 }
 
-// --- Parser une URL de proxy ---
-function parseProxyUrl(proxyUrl) {
-    const match = proxyUrl.match(/^http:\/\/([^:]+):([^@]+)@([^:]+):(\d+)$/);
-    if (!match) {
-        console.error('❌ Format de proxy invalide:', proxyUrl);
-        return null;
-    }
-    return {
-        server: `http://${match[3]}:${match[4]}`,
-        username: match[1],
-        password: match[2]
-    };
-}
-
-// --- Attribution d'un proxy fixe (0 ou 1) à un compte ---
-function getProxyForAccount(account) {
-    // Si le compte a déjà un proxyIndex (0 ou 1), on le réutilise
+// --- Obtenir l'URL du proxy pour un compte (index 0 ou 1) ---
+function getProxyUrlForAccount(account) {
     if (account.proxyIndex !== undefined && (account.proxyIndex === 0 || account.proxyIndex === 1)) {
-        const proxyUrl = JP_PROXY_LIST[account.proxyIndex];
-        return parseProxyUrl(proxyUrl);
+        return JP_PROXY_LIST[account.proxyIndex];
     }
     return null;
 }
 
 // --- Login et capture cookies ---
-async function performLoginAndCaptureCookies(account, proxyConfig) {
+async function performLoginAndCaptureCookies(account) {
     const { email, password, platform } = account;
     console.log(`🔐 Login pour ${email}...`);
 
@@ -174,17 +158,24 @@ async function performLoginAndCaptureCookies(account, proxyConfig) {
     const loginUrl = siteUrls[platform];
     if (!loginUrl) throw new Error('Plateforme inconnue');
 
-    if (!proxyConfig) throw new Error('Aucun proxy fourni');
-    console.log(`🔄 Proxy utilisé : ${proxyConfig.server}`);
+    const proxyUrl = getProxyUrlForAccount(account);
+    if (!proxyUrl) throw new Error('Aucun proxy fourni');
+    console.log(`🔄 Proxy utilisé : ${proxyUrl}`);
 
     let browser;
     try {
         const { browser: br, page } = await connect({
             headless: false,
             turnstile: true,
-            proxy: proxyConfig
+            proxy: proxyUrl
         });
         browser = br;
+
+        // Vérification que le proxy fonctionne
+        await page.goto('https://api.ipify.org?format=json', { waitUntil: 'domcontentloaded', timeout: 10000 });
+        const ipText = await page.evaluate(() => document.body.textContent);
+        const ipData = JSON.parse(ipText);
+        console.log(`🌍 IP publique (via proxy) : ${ipData.ip}`);
 
         await page.setViewport({ width: 1280, height: 720 });
         await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 60000 });
@@ -235,7 +226,7 @@ async function performLoginAndCaptureCookies(account, proxyConfig) {
 }
 
 // --- Claim avec cookies (avec relance complète si cookies expirés) ---
-async function claimWithCookies(account, proxyConfig) {
+async function claimWithCookies(account) {
     const { email, cookies, platform } = account;
     console.log(`🍪 Claim pour ${email} via cookies`);
 
@@ -248,29 +239,28 @@ async function claimWithCookies(account, proxyConfig) {
     };
     const faucetUrl = siteUrls[platform] || 'https://tronpick.io/faucet.php';
 
-    if (!proxyConfig) throw new Error('Aucun proxy fourni');
-    console.log(`🔄 Proxy utilisé : ${proxyConfig.server}`);
+    const proxyUrl = getProxyUrlForAccount(account);
+    if (!proxyUrl) throw new Error('Aucun proxy fourni');
+    console.log(`🔄 Proxy utilisé : ${proxyUrl}`);
 
     let browser;
     try {
         const { browser: br, page } = await connect({
             headless: false,
             turnstile: true,
-            proxy: proxyConfig
+            proxy: proxyUrl
         });
         browser = br;
+
+        // Vérification que le proxy fonctionne
+        await page.goto('https://api.ipify.org?format=json', { waitUntil: 'domcontentloaded', timeout: 10000 });
+        const ipText = await page.evaluate(() => document.body.textContent);
+        const ipData = JSON.parse(ipText);
+        console.log(`🌍 IP publique (via proxy) : ${ipData.ip}`);
 
         await page.setCookie(...cookies);
         await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
         await delay(5000);
-
-        // Vérification IP publique
-        await page.goto('https://api.ipify.org?format=json', { waitUntil: 'domcontentloaded', timeout: 10000 });
-        const ipText = await page.evaluate(() => document.body.textContent);
-        const ipData = JSON.parse(ipText);
-        console.log(`🌍 IP publique : ${ipData.ip}`);
-        await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-        await delay(2000);
 
         if (page.url().includes('login.php')) {
             throw new Error('Cookies expirés');
@@ -358,11 +348,11 @@ async function claimWithCookies(account, proxyConfig) {
         if (error.message.includes('Cookies expirés')) {
             console.log(`🔄 Cookies expirés pour ${email}, reconnexion avec le même proxy puis relance du claim...`);
             try {
-                const newCookies = await performLoginAndCaptureCookies(account, proxyConfig);
+                const newCookies = await performLoginAndCaptureCookies(account);
                 account.cookies = newCookies;
                 account.cookiesStatus = 'valid';
                 console.log(`✅ Nouveaux cookies capturés pour ${email}. Relance immédiate du claim.`);
-                return await claimWithCookies(account, proxyConfig);
+                return await claimWithCookies(account);
             } catch (loginError) {
                 console.error(`❌ Échec reconnexion ${email}:`, loginError.message);
                 account.cookiesStatus = 'failed';
@@ -390,9 +380,8 @@ async function claimWithCookies(account, proxyConfig) {
         const now = Date.now();
         let needsSave = false;
 
-        // Pour attribuer les index 0/1 de manière alternée, on compte combien de comptes ont déjà un proxyIndex
         const accountsWithProxy = accounts.filter(a => a.proxyIndex !== undefined);
-        let nextIndex = accountsWithProxy.length % 2; // 0 ou 1
+        let nextIndex = accountsWithProxy.length % 2;
 
         for (const acc of accounts) {
             if (!acc.enabled) {
@@ -402,25 +391,24 @@ async function claimWithCookies(account, proxyConfig) {
 
             console.log(`\n===== Traitement du compte : ${acc.email} =====`);
 
-            // Attribuer un proxy fixe (0 ou 1)
             if (acc.proxyIndex === undefined) {
                 acc.proxyIndex = nextIndex;
                 nextIndex = (nextIndex + 1) % 2;
                 needsSave = true;
             }
 
-            const accountProxy = getProxyForAccount(acc);
-            if (!accountProxy) {
+            const proxyUrl = getProxyUrlForAccount(acc);
+            if (!proxyUrl) {
                 console.error(`❌ Impossible d'obtenir un proxy pour ${acc.email}, compte ignoré.`);
                 continue;
             }
-            console.log(`🔄 Proxy fixe : ${accountProxy.server} (index ${acc.proxyIndex})`);
+            console.log(`🔄 Proxy fixe : ${proxyUrl} (index ${acc.proxyIndex})`);
 
             // 1. Si pas de cookies ou statut expiré/failed, on fait un login
             if (!acc.cookies || acc.cookiesStatus === 'expired' || acc.cookiesStatus === 'failed') {
                 console.log(`🍪 Compte ${acc.email} sans cookies valides, tentative de login...`);
                 try {
-                    const newCookies = await performLoginAndCaptureCookies(acc, accountProxy);
+                    const newCookies = await performLoginAndCaptureCookies(acc);
                     acc.cookies = newCookies;
                     acc.cookiesStatus = 'valid';
                     console.log(`✅ Cookies capturés pour ${acc.email}`);
@@ -447,7 +435,7 @@ async function claimWithCookies(account, proxyConfig) {
             // 3. Exécuter le claim
             console.log(`🚀 Claim éligible pour ${acc.email}`);
             try {
-                const result = await claimWithCookies(acc, accountProxy);
+                const result = await claimWithCookies(acc);
                 if (result.success) {
                     acc.lastClaim = now;
                     console.log(`✅ Claim réussi pour ${acc.email}`);
