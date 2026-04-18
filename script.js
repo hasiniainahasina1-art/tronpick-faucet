@@ -18,45 +18,13 @@ if (!GH_TOKEN || !GH_USERNAME || !GH_REPO) {
 
 const octokit = new Octokit({ auth: GH_TOKEN });
 
-// --- Liste des proxys japonais (depuis variable d'environnement) ---
+// --- Liste des proxys (doit contenir au moins 2 proxys) ---
 const JP_PROXY_LIST = (process.env.JP_PROXY_LIST || '').split(',').filter(p => p.trim() !== '');
-if (JP_PROXY_LIST.length === 0) {
-    console.error('❌ JP_PROXY_LIST est vide ou mal configurée');
+if (JP_PROXY_LIST.length < 2) {
+    console.error('❌ JP_PROXY_LIST doit contenir au moins 2 proxys');
     process.exit(1);
 }
-console.log(`🌐 ${JP_PROXY_LIST.length} proxy(s) japonais chargé(s)`);
-
-// Mélanger un tableau (Fisher–Yates)
-function shuffleArray(array) {
-    for (let i = array.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [array[i], array[j]] = [array[j], array[i]];
-    }
-    return array;
-}
-
-let shuffledProxies = shuffleArray([...JP_PROXY_LIST]);
-let currentProxyIndex = 0;
-
-function getNextProxyConfig() {
-    if (shuffledProxies.length === 0) return null;
-    const proxyUrl = shuffledProxies[currentProxyIndex];
-    currentProxyIndex = (currentProxyIndex + 1) % shuffledProxies.length;
-    if (currentProxyIndex === 0) {
-        shuffledProxies = shuffleArray([...JP_PROXY_LIST]);
-        console.log('🔄 Tour des proxys terminé, nouvelle permutation.');
-    }
-    const match = proxyUrl.match(/^http:\/\/([^:]+):([^@]+)@([^:]+):(\d+)$/);
-    if (!match) {
-        console.error('❌ Format de proxy invalide:', proxyUrl);
-        return null;
-    }
-    return {
-        server: `http://${match[3]}:${match[4]}`,
-        username: match[1],
-        password: match[2]
-    };
-}
+console.log(`🌐 ${JP_PROXY_LIST.length} proxy(s) chargé(s). Utilisation alternée : index 0 et 1.`);
 
 // --- Dossier pour les captures d'écran ---
 const screenshotsDir = path.join(__dirname, 'screenshots');
@@ -167,7 +135,31 @@ async function saveAccounts(accounts) {
     });
 }
 
-// --- Login et capture cookies (reçoit un proxy en paramètre) ---
+// --- Parser une URL de proxy ---
+function parseProxyUrl(proxyUrl) {
+    const match = proxyUrl.match(/^http:\/\/([^:]+):([^@]+)@([^:]+):(\d+)$/);
+    if (!match) {
+        console.error('❌ Format de proxy invalide:', proxyUrl);
+        return null;
+    }
+    return {
+        server: `http://${match[3]}:${match[4]}`,
+        username: match[1],
+        password: match[2]
+    };
+}
+
+// --- Attribution d'un proxy fixe (0 ou 1) à un compte ---
+function getProxyForAccount(account) {
+    // Si le compte a déjà un proxyIndex (0 ou 1), on le réutilise
+    if (account.proxyIndex !== undefined && (account.proxyIndex === 0 || account.proxyIndex === 1)) {
+        const proxyUrl = JP_PROXY_LIST[account.proxyIndex];
+        return parseProxyUrl(proxyUrl);
+    }
+    return null;
+}
+
+// --- Login et capture cookies ---
 async function performLoginAndCaptureCookies(account, proxyConfig) {
     const { email, password, platform } = account;
     console.log(`🔐 Login pour ${email}...`);
@@ -284,7 +276,7 @@ async function claimWithCookies(account, proxyConfig) {
             throw new Error('Cookies expirés');
         }
 
-        // --- SÉQUENCE DE CLAIM (identique) ---
+        // --- SÉQUENCE DE CLAIM ---
         console.log('⏳ Attente de 5 secondes...');
         await delay(5000);
 
@@ -366,13 +358,10 @@ async function claimWithCookies(account, proxyConfig) {
         if (error.message.includes('Cookies expirés')) {
             console.log(`🔄 Cookies expirés pour ${email}, reconnexion avec le même proxy puis relance du claim...`);
             try {
-                // 1. Refaire un login avec le même proxy
                 const newCookies = await performLoginAndCaptureCookies(account, proxyConfig);
                 account.cookies = newCookies;
                 account.cookiesStatus = 'valid';
                 console.log(`✅ Nouveaux cookies capturés pour ${email}. Relance immédiate du claim.`);
-
-                // 2. Rappeler claimWithCookies avec les nouveaux cookies (récursion)
                 return await claimWithCookies(account, proxyConfig);
             } catch (loginError) {
                 console.error(`❌ Échec reconnexion ${email}:`, loginError.message);
@@ -387,7 +376,7 @@ async function claimWithCookies(account, proxyConfig) {
     }
 }
 
-// --- Principal (traitement atomique par compte, proxy dédié) ---
+// --- Principal (traitement atomique par compte, proxy fixe alterné) ---
 (async () => {
     try {
         let accounts = await loadAccounts();
@@ -401,6 +390,10 @@ async function claimWithCookies(account, proxyConfig) {
         const now = Date.now();
         let needsSave = false;
 
+        // Pour attribuer les index 0/1 de manière alternée, on compte combien de comptes ont déjà un proxyIndex
+        const accountsWithProxy = accounts.filter(a => a.proxyIndex !== undefined);
+        let nextIndex = accountsWithProxy.length % 2; // 0 ou 1
+
         for (const acc of accounts) {
             if (!acc.enabled) {
                 console.log(`⏭️ Compte ${acc.email} désactivé, ignoré.`);
@@ -409,14 +402,21 @@ async function claimWithCookies(account, proxyConfig) {
 
             console.log(`\n===== Traitement du compte : ${acc.email} =====`);
 
-            // Attribuer un proxy dédié à ce compte pour toute la durée du traitement
-            const accountProxy = getNextProxyConfig();
+            // Attribuer un proxy fixe (0 ou 1)
+            if (acc.proxyIndex === undefined) {
+                acc.proxyIndex = nextIndex;
+                nextIndex = (nextIndex + 1) % 2;
+                needsSave = true;
+            }
+
+            const accountProxy = getProxyForAccount(acc);
             if (!accountProxy) {
                 console.error(`❌ Impossible d'obtenir un proxy pour ${acc.email}, compte ignoré.`);
                 continue;
             }
+            console.log(`🔄 Proxy fixe : ${accountProxy.server} (index ${acc.proxyIndex})`);
 
-            // 1. Si pas de cookies ou statut expiré/failed, on fait un login avec ce proxy
+            // 1. Si pas de cookies ou statut expiré/failed, on fait un login
             if (!acc.cookies || acc.cookiesStatus === 'expired' || acc.cookiesStatus === 'failed') {
                 console.log(`🍪 Compte ${acc.email} sans cookies valides, tentative de login...`);
                 try {
@@ -444,7 +444,7 @@ async function claimWithCookies(account, proxyConfig) {
                 continue;
             }
 
-            // 3. Exécuter le claim avec le même proxy
+            // 3. Exécuter le claim
             console.log(`🚀 Claim éligible pour ${acc.email}`);
             try {
                 const result = await claimWithCookies(acc, accountProxy);
