@@ -1,4 +1,4 @@
-// script.js
+il// script.js
 const { connect } = require('puppeteer-real-browser');
 const { Octokit } = require('@octokit/rest');
 const fs = require('fs');
@@ -66,8 +66,8 @@ if (!fs.existsSync(screenshotsDir)) {
 
 // --- Coordonnées validées ---
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
-const TURNSTILE_FAUCET_COORDS = { x: 640, y: 158 };
-const CLAIM_COORDS = { x: 640, y: 223 };
+const TURNSTILE_FAUCET_COORDS = { x: 400, y: 158 };
+const CLAIM_COORDS = { x: 400, y: 223 };
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
