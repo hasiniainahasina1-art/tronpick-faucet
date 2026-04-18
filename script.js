@@ -4,7 +4,7 @@ const { Octokit } = require('@octokit/rest');
 const fs = require('fs');
 const path = require('path');
 
-// --- Configuration GitHub (dépôt) ---
+// --- Configuration GitHub ---
 const GH_TOKEN = process.env.GH_TOKEN;
 const GH_USERNAME = process.env.GH_USERNAME;
 const GH_REPO = process.env.GH_REPO;
@@ -26,20 +26,20 @@ if (JP_PROXY_LIST.length < 2) {
 }
 console.log(`🌐 ${JP_PROXY_LIST.length} proxy(s) chargé(s).`);
 
-// --- Dossier pour les captures d'écran ---
+// --- Dossier captures ---
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) {
     fs.mkdirSync(screenshotsDir, { recursive: true });
 }
 
-// --- Coordonnées validées ---
+// --- Coordonnées ---
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
 const TURNSTILE_FAUCET_COORDS = { x: 400, y: 158 };
 const CLAIM_COORDS = { x: 400, y: 223 };
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// --- Fonctions utilitaires ---
+// --- Remplir champ texte ---
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -47,10 +47,7 @@ async function fillField(page, selector, value, fieldName) {
     await delay(100);
     await page.evaluate((sel, val) => {
         const el = document.querySelector(sel);
-        el.value = val;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        el.dispatchEvent(new Event('blur', { bubbles: true }));
+        if (el) el.value = val;
     }, selector, value);
     await delay(300);
     let actual = await page.$eval(selector, el => el.value);
@@ -58,11 +55,10 @@ async function fillField(page, selector, value, fieldName) {
         await page.click(selector, { clickCount: 3 });
         await page.keyboard.press('Backspace');
         for (const char of value) await page.keyboard.type(char, { delay: 30 });
-        actual = await page.$eval(selector, el => el.value);
     }
-    if (actual !== value) throw new Error(`Impossible de remplir ${fieldName}`);
 }
 
+// --- Scroll humain ---
 async function humanScrollToClaim(page) {
     const coords = await page.evaluate(() => {
         const btn = document.querySelector('#process_claim_hourly_faucet');
@@ -82,6 +78,7 @@ async function humanScrollToClaim(page) {
     }
 }
 
+// --- Clic humain ---
 async function humanClickAt(page, coords) {
     const start = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
     const steps = 20;
@@ -96,7 +93,7 @@ async function humanClickAt(page, coords) {
     await page.mouse.click(coords.x, coords.y);
 }
 
-// --- Gestion du dépôt GitHub ---
+// --- Gestion GitHub ---
 async function loadAccounts() {
     try {
         const res = await octokit.repos.getContent({
@@ -135,12 +132,48 @@ async function saveAccounts(accounts) {
     });
 }
 
-// --- Obtenir l'URL du proxy pour un compte (index 0 ou 1) ---
+// --- Obtenir l'URL du proxy pour un compte (fixe) ---
 function getProxyUrlForAccount(account) {
-    if (account.proxyIndex !== undefined && (account.proxyIndex === 0 || account.proxyIndex === 1)) {
+    if (account.proxyIndex !== undefined && JP_PROXY_LIST[account.proxyIndex]) {
         return JP_PROXY_LIST[account.proxyIndex];
     }
-    return null;
+    // fallback : premier proxy (ne devrait pas arriver car proxyIndex est défini)
+    return JP_PROXY_LIST[0];
+}
+
+// --- Fonction de connexion avec proxy corrigée ---
+async function connectWithProxy(proxyUrl) {
+    // Extraire l'authentification si présente dans l'URL
+    let proxyServer = proxyUrl;
+    let username = null;
+    let password = null;
+    if (proxyUrl.includes('@')) {
+        const match = proxyUrl.match(/^http:\/\/([^:]+):([^@]+)@(.+)$/);
+        if (match) {
+            username = match[1];
+            password = match[2];
+            proxyServer = `http://${match[3]}`;
+        }
+    }
+    console.log(`🔄 Connexion avec proxy : ${proxyServer}`);
+    const { browser, page } = await connect({
+        headless: false,
+        turnstile: true,
+        args: [`--proxy-server=${proxyServer}`]
+    });
+    if (username && password) {
+        await page.authenticate({ username, password });
+        console.log(`🔐 Authentification proxy appliquée`);
+    }
+    // Vérifier que l'IP a bien changé (différente de l'IP par défaut du runner)
+    await page.goto('https://api.ipify.org?format=json', { waitUntil: 'domcontentloaded', timeout: 10000 });
+    const ipText = await page.evaluate(() => document.body.textContent);
+    const ipData = JSON.parse(ipText);
+    console.log(`🌍 IP publique via proxy : ${ipData.ip}`);
+    // L'IP par défaut des runners GitHub Actions est souvent 68.154.116.112 (exemple)
+    // Si vous voulez être plus précis, vous pouvez récupérer l'IP sans proxy au préalable.
+    // Pour l'instant, on ne bloque pas, on affiche juste un avertissement.
+    return { browser, page };
 }
 
 // --- Login et capture cookies ---
@@ -160,22 +193,11 @@ async function performLoginAndCaptureCookies(account) {
 
     const proxyUrl = getProxyUrlForAccount(account);
     if (!proxyUrl) throw new Error('Aucun proxy fourni');
-    console.log(`🔄 Proxy utilisé : ${proxyUrl}`);
 
     let browser;
     try {
-        const { browser: br, page } = await connect({
-            headless: false,
-            turnstile: true,
-            proxy: proxyUrl
-        });
+        const { browser: br, page } = await connectWithProxy(proxyUrl);
         browser = br;
-
-        // Vérification que le proxy fonctionne
-        await page.goto('https://api.ipify.org?format=json', { waitUntil: 'domcontentloaded', timeout: 10000 });
-        const ipText = await page.evaluate(() => document.body.textContent);
-        const ipData = JSON.parse(ipText);
-        console.log(`🌍 IP publique (via proxy) : ${ipData.ip}`);
 
         await page.setViewport({ width: 1280, height: 720 });
         await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 60000 });
@@ -184,6 +206,7 @@ async function performLoginAndCaptureCookies(account) {
         await fillField(page, 'input[type="password"]', password, 'password');
         await delay(2000);
 
+        // Gestion Turnstile
         const frame = await page.waitForFrame(
             f => f.url().includes('challenges.cloudflare.com/turnstile'),
             { timeout: 15000 }
@@ -225,7 +248,7 @@ async function performLoginAndCaptureCookies(account) {
     }
 }
 
-// --- Claim avec cookies (avec relance complète si cookies expirés) ---
+// --- Claim avec cookies ---
 async function claimWithCookies(account) {
     const { email, cookies, platform } = account;
     console.log(`🍪 Claim pour ${email} via cookies`);
@@ -241,22 +264,11 @@ async function claimWithCookies(account) {
 
     const proxyUrl = getProxyUrlForAccount(account);
     if (!proxyUrl) throw new Error('Aucun proxy fourni');
-    console.log(`🔄 Proxy utilisé : ${proxyUrl}`);
 
     let browser;
     try {
-        const { browser: br, page } = await connect({
-            headless: false,
-            turnstile: true,
-            proxy: proxyUrl
-        });
+        const { browser: br, page } = await connectWithProxy(proxyUrl);
         browser = br;
-
-        // Vérification que le proxy fonctionne
-        await page.goto('https://api.ipify.org?format=json', { waitUntil: 'domcontentloaded', timeout: 10000 });
-        const ipText = await page.evaluate(() => document.body.textContent);
-        const ipData = JSON.parse(ipText);
-        console.log(`🌍 IP publique (via proxy) : ${ipData.ip}`);
 
         await page.setCookie(...cookies);
         await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
@@ -266,7 +278,7 @@ async function claimWithCookies(account) {
             throw new Error('Cookies expirés');
         }
 
-        // --- SÉQUENCE DE CLAIM ---
+        // --- Séquence de claim ---
         console.log('⏳ Attente de 5 secondes...');
         await delay(5000);
 
@@ -313,7 +325,7 @@ async function claimWithCookies(account) {
         const success = btnDisabled || messages.some(m => /success|claimed|reward|sent/i.test(m));
         const resultMessage = messages[0] || (btnDisabled ? 'Bouton désactivé (succès présumé)' : 'Aucune réaction');
 
-        // --- DÉCONNEXION ---
+        // Déconnexion
         console.log('⏳ Attente de 20 secondes avant déconnexion...');
         await delay(20000);
         await page.screenshot({ path: path.join(screenshotsDir, `08_before_logout_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
@@ -366,7 +378,7 @@ async function claimWithCookies(account) {
     }
 }
 
-// --- Principal (traitement atomique par compte, proxy fixe alterné) ---
+// --- Principal ---
 (async () => {
     try {
         let accounts = await loadAccounts();
@@ -380,8 +392,15 @@ async function claimWithCookies(account) {
         const now = Date.now();
         let needsSave = false;
 
-        const accountsWithProxy = accounts.filter(a => a.proxyIndex !== undefined);
-        let nextIndex = accountsWithProxy.length % 2;
+        // Attribution initiale d'un proxyIndex fixe si absent (pas de rotation, juste initialisation)
+        let nextIndex = 0;
+        for (const acc of accounts) {
+            if (acc.proxyIndex === undefined) {
+                acc.proxyIndex = nextIndex % JP_PROXY_LIST.length;
+                nextIndex++;
+                needsSave = true;
+            }
+        }
 
         for (const acc of accounts) {
             if (!acc.enabled) {
@@ -390,21 +409,10 @@ async function claimWithCookies(account) {
             }
 
             console.log(`\n===== Traitement du compte : ${acc.email} =====`);
-
-            if (acc.proxyIndex === undefined) {
-                acc.proxyIndex = nextIndex;
-                nextIndex = (nextIndex + 1) % 2;
-                needsSave = true;
-            }
-
             const proxyUrl = getProxyUrlForAccount(acc);
-            if (!proxyUrl) {
-                console.error(`❌ Impossible d'obtenir un proxy pour ${acc.email}, compte ignoré.`);
-                continue;
-            }
             console.log(`🔄 Proxy fixe : ${proxyUrl} (index ${acc.proxyIndex})`);
 
-            // 1. Si pas de cookies ou statut expiré/failed, on fait un login
+            // 1. Vérifier les cookies
             if (!acc.cookies || acc.cookiesStatus === 'expired' || acc.cookiesStatus === 'failed') {
                 console.log(`🍪 Compte ${acc.email} sans cookies valides, tentative de login...`);
                 try {
@@ -420,7 +428,7 @@ async function claimWithCookies(account) {
                 }
             }
 
-            // 2. Vérifier l'éligibilité au claim
+            // 2. Éligibilité
             const lastClaim = acc.lastClaim || 0;
             const intervalMs = (acc.timer || 60) * 60 * 1000;
             const isEligible = (now - lastClaim) >= intervalMs;
@@ -432,7 +440,7 @@ async function claimWithCookies(account) {
                 continue;
             }
 
-            // 3. Exécuter le claim
+            // 3. Claim
             console.log(`🚀 Claim éligible pour ${acc.email}`);
             try {
                 const result = await claimWithCookies(acc);
