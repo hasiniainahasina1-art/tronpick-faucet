@@ -110,7 +110,7 @@
     "platform": "tronpick",
     "proxy": null,
     "enabled": true,
-    "cookiesStatus": "valid",
+    "cookiesStatus": "failed",
     "lastClaim": 1776549152882,
     "cookies": [
       {
