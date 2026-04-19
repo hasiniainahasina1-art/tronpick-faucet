@@ -98,7 +98,7 @@
         "sourceScheme": "Secure"
       }
     ],
-    "cookiesStatus": "valid",
+    "cookiesStatus": "failed",
     "lastClaim": 1776623152654,
     "timer": 60,
     "proxyIndex": 0
@@ -202,7 +202,7 @@
         "sourceScheme": "Secure"
       }
     ],
-    "cookiesStatus": "valid",
+    "cookiesStatus": "failed",
     "lastClaim": 1776628606489,
     "timer": 60,
     "proxyIndex": 0
