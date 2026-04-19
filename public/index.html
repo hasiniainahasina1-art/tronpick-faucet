@@ -42,7 +42,7 @@
 <div class="container">
     <h1>⚙️ Finoana Auto Claim</h1>
 
-    <!-- Configuration GitHub (pré-remplie) -->
+    <!-- Configuration GitHub (pré‑remplie) -->
     <div class="card">
         <h2>🔐 Configuration GitHub</h2>
         <div class="form-row">
@@ -97,11 +97,11 @@
 
 <script>
 (function() {
-    // --- Configuration stockée localement ---
+    // Configuration stockée localement
     let ghToken = localStorage.getItem('gh_token') || '';
     let ghUsername = localStorage.getItem('gh_username') || 'hasiniainahasina1-art';
     let ghRepo = localStorage.getItem('gh_repo') || 'tronpick-faucet';
-    const workflowId = '263104494'; // ID fixe de test-account.yml
+    const workflowId = '263104494'; // ID de test-account.yml
     const branch = 'main';
     const filePath = 'accounts.json';
 
@@ -110,7 +110,6 @@
     document.getElementById('ghRepo').value = ghRepo;
     document.getElementById('workflowId').value = workflowId;
 
-    // Sauvegarde configuration
     document.getElementById('saveConfigBtn').addEventListener('click', () => {
         ghToken = document.getElementById('ghToken').value.trim();
         ghUsername = document.getElementById('ghUsername').value.trim();
@@ -122,7 +121,7 @@
         loadAccounts();
     });
 
-    // --- API GitHub pour accounts.json ---
+    // API GitHub avec gestion d'erreur améliorée
     async function githubApi(method, body = null) {
         if (!ghToken || !ghUsername || !ghRepo) throw new Error('Configuration GitHub manquante');
         const url = `https://api.github.com/repos/${ghUsername}/${ghRepo}/contents/${filePath}`;
@@ -134,8 +133,15 @@
         }
         const res = await fetch(url, options);
         if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.message || `HTTP ${res.status}`);
+            let errorMsg = `HTTP ${res.status}`;
+            if (res.status === 401) errorMsg = 'Token invalide (401) – Vérifiez votre token GitHub';
+            else if (res.status === 403) errorMsg = 'Permission refusée (403) – Token manque de droits (repo + workflow)';
+            else if (res.status === 404) errorMsg = 'Dépôt ou fichier introuvable (404) – Vérifiez nom utilisateur/dépôt';
+            else {
+                const err = await res.json().catch(() => ({}));
+                errorMsg = err.message || errorMsg;
+            }
+            throw new Error(errorMsg);
         }
         return res.json();
     }
@@ -163,7 +169,6 @@
         await githubApi('PUT', body);
     }
 
-    // --- Déclencher le workflow GitHub Actions ---
     async function triggerWorkflowTest(email, password, platform, proxyIndex) {
         if (!ghToken || !ghUsername || !ghRepo) throw new Error('Configuration GitHub incomplète');
         const apiUrl = `https://api.github.com/repos/${ghUsername}/${ghRepo}/actions/workflows/${workflowId}/dispatches`;
@@ -188,11 +193,10 @@
             const errorText = await response.text();
             throw new Error(`GitHub API error (${response.status}): ${errorText}`);
         }
-        // 204 signifie succès
         console.log('Workflow déclenché avec succès');
     }
 
-    // --- UI Helpers ---
+    // UI Helpers
     function showMessage(text, type) {
         const div = document.createElement('div');
         div.className = `message ${type}`;
@@ -293,17 +297,23 @@
             showMessage('❌ Token GitHub non configuré', 'error');
             return;
         }
-        showMessage(`🔐 Test manuel pour ${account.email}... (30s)`, 'success');
+        showMessage(`🔐 Test manuel pour ${account.email}... (max 2 min)`, 'success');
         try {
             await triggerWorkflowTest(account.email, account.password, account.platform, account.proxyIndex !== undefined ? account.proxyIndex : '');
-            showMessage(`⏳ Workflow déclenché. Attente de mise à jour...`, 'success');
-            await new Promise(resolve => setTimeout(resolve, 30000));
-            await loadAccounts();
-            const updated = currentAccounts.find(a => a.email === account.email);
-            if (updated && updated.cookiesStatus === 'valid') {
-                showMessage(`✅ Test réussi pour ${account.email} ! Cookies valides.`, 'success');
+            showMessage(`⏳ Workflow déclenché. Vérification des cookies...`, 'success');
+            // Polling : vérifie toutes les 5s pendant 2 min
+            let maxAttempts = 24;
+            let updated = null;
+            for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                await loadAccounts();
+                updated = currentAccounts.find(a => a.email === account.email);
+                if (updated && updated.cookies && updated.cookies.length > 0) break;
+            }
+            if (updated && updated.cookies && updated.cookies.length > 0) {
+                showMessage(`✅ Test réussi pour ${account.email} (${updated.cookies.length} cookies)`, 'success');
             } else {
-                showMessage(`❌ Test échoué pour ${account.email}. Vérifiez les logs GitHub Actions.`, 'error');
+                showMessage(`❌ Test échoué pour ${account.email} : aucun cookie récupéré. Vérifiez les logs.`, 'error');
             }
         } catch (err) {
             showMessage(`❌ Erreur : ${err.message}`, 'error');
@@ -363,7 +373,7 @@
         await saveAccounts(newAccounts);
     }
 
-    // --- Formulaire d'ajout avec auto-login via workflow ---
+    // Formulaire d'ajout avec polling
     const form = document.getElementById('accountForm');
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -380,23 +390,26 @@
             lastClaim: 0
         };
 
-        showMessage(`🔐 Test de connexion pour ${email}... (environ 30 secondes)`, 'success');
-        let loginSuccess = false;
+        showMessage(`🔐 Test de connexion pour ${email}... (max 2 min)`, 'success');
         try {
             await triggerWorkflowTest(email, password, platform, '');
-            showMessage('⏳ Workflow déclenché. Attente de mise à jour...', 'success');
-            // Attendre 30 secondes puis recharger les comptes
-            await new Promise(resolve => setTimeout(resolve, 30000));
-            await loadAccounts();
-            const updated = currentAccounts.find(a => a.email === email);
-            if (updated && updated.cookiesStatus === 'valid') {
-                loginSuccess = true;
-                showMessage(`✅ Connexion réussie pour ${email} ! Cookies enregistrés.`, 'success');
+            showMessage('⏳ Workflow déclenché. Vérification des cookies...', 'success');
+            // Polling : 24 tentatives espacées de 5 secondes = 2 minutes
+            let maxAttempts = 24;
+            let updated = null;
+            for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                await loadAccounts();
+                updated = currentAccounts.find(a => a.email === email);
+                if (updated && updated.cookies && updated.cookies.length > 0) break;
+            }
+            if (updated && updated.cookies && updated.cookies.length > 0) {
+                showMessage(`✅ Connexion réussie pour ${email} (${updated.cookies.length} cookies)`, 'success');
                 newAccount.cookies = updated.cookies;
                 newAccount.cookiesStatus = 'valid';
                 newAccount.lastClaim = updated.lastClaim || 0;
             } else {
-                showMessage(`❌ Échec de connexion pour ${email}. Vérifiez les logs GitHub Actions.`, 'error');
+                showMessage(`❌ Échec de connexion pour ${email} : aucun cookie récupéré. Vérifiez les logs.`, 'error');
                 newAccount.cookies = [];
                 newAccount.cookiesStatus = 'failed';
             }
@@ -406,7 +419,7 @@
             newAccount.cookiesStatus = 'failed';
         }
 
-        // Sauvegarder le compte (si le workflow ne l'a pas déjà fait)
+        // Sauvegarde du compte (si le workflow ne l'a pas déjà fait)
         let accounts = [...currentAccounts];
         const idx = document.getElementById('accountIndex').value;
         if (idx !== '') {
