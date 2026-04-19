@@ -6,7 +6,8 @@
     "platform": "tronpick",
     "proxy": null,
     "enabled": true,
-    "cookiesStatus": "pending",
-    "lastClaim": 0
+    "cookiesStatus": "failed",
+    "lastClaim": 0,
+    "proxyIndex": 0
   }
 ]
