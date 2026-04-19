@@ -15,7 +15,6 @@ const JP_PROXY_LIST = (process.env.JP_PROXY_LIST || '').split(',').filter(p => p
 async function run() {
   let browser;
   try {
-    // Sélection du proxy
     let proxyUrl = JP_PROXY_LIST[0];
     if (proxyIndex !== undefined && JP_PROXY_LIST[proxyIndex]) {
       proxyUrl = JP_PROXY_LIST[proxyIndex];
@@ -34,7 +33,19 @@ async function run() {
     await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 30000 });
     await page.type('input[type="email"], input[name="email"]', email);
     await page.type('input[type="password"]', password);
-    await page.click('button:contains("Log in")');
+    
+    // Correction : trouver et cliquer sur "Log in" sans :contains()
+    const clicked = await page.evaluate(() => {
+      const btns = Array.from(document.querySelectorAll('button'));
+      const loginBtn = btns.find(btn => btn.textContent.trim().toLowerCase() === 'log in');
+      if (loginBtn) {
+        loginBtn.click();
+        return true;
+      }
+      return false;
+    });
+    if (!clicked) throw new Error('Bouton Log in introuvable');
+
     await page.waitForNavigation({ timeout: 15000 }).catch(() => {});
 
     const success = !page.url().includes('login.php');
