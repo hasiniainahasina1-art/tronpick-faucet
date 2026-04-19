@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Finoana Auto Claim</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f4f9ff; margin: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1, h2 { color: #1e293b; text-align: center; }
+        .card { background: white; border-radius: 12px; padding: 25px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+        .form-row { display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end; }
+        .form-group { flex: 1 1 200px; }
+        label { display: block; font-weight: bold; margin-bottom: 5px; color: #334155; }
+        input, select { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
+        button { padding: 12px 25px; background: #28a745; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
+        button:hover { background: #218838; }
+        button.secondary { background: #6c757d; }
+        button.danger { background: #dc3545; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { text-align: left; padding: 12px 8px; border-bottom: 1px solid #dee2e6; }
+        th { background: #f8f9fa; }
+        .status-badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; }
+        .status-active { background: #d4edda; color: #155724; }
+        .status-inactive { background: #f8d7da; color: #721c24; }
+        .cookie-status { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 20px; font-size: 12px; font-weight: bold; }
+        .cookie-pending { background: #fff3cd; color: #856404; }
+        .cookie-valid   { background: #d4edda; color: #155724; }
+        .cookie-expired { background: #f8d7da; color: #721c24; }
+        .cookie-failed  { background: #f8d7da; color: #721c24; }
+        .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+        .actions button { padding: 5px 10px; font-size: 12px; }
+        .countdown { font-weight: bold; color: #2563eb; }
+        .message { padding: 12px; border-radius: 6px; margin-bottom: 20px; }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .hidden { display: none; }
+        .text-center { text-align: center; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>⚙️ Finoana Auto Claim</h1>
+
+    <!-- Configuration GitHub et API -->
+    <div class="card">
+        <h2>🔐 Configuration</h2>
+        <div class="form-row">
+            <div class="form-group"><label>Token GitHub (scope repo)</label><input type="password" id="ghToken" placeholder="ghp_..."></div>
+            <div class="form-group"><label>Nom d'utilisateur</label><input type="text" id="ghUsername" value="hasiniainahasina1-art"></div>
+            <div class="form-group"><label>Dépôt</label><input type="text" id="ghRepo" value="tronpick-faucet"></div>
+            <div class="form-group"><label>API Login URL (fly.io)</label><input type="text" id="apiUrl" placeholder="https://votre-api.fly.dev/test-login"></div>
+            <button id="saveConfigBtn">💾 Enregistrer</button>
+        </div>
+    </div>
+
+    <!-- Formulaire d'ajout -->
+    <div class="card">
+        <h2 id="formTitle">➕ Ajouter un compte</h2>
+        <form id="accountForm">
+            <input type="hidden" id="accountIndex">
+            <div class="form-row">
+                <div class="form-group"><label>Email *</label><input type="email" id="email" required></div>
+                <div class="form-group"><label>Mot de passe *</label><input type="password" id="password" required></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Intervalle (min) *</label><input type="number" id="timer" min="1" value="60" required></div>
+                <div class="form-group"><label>Plateforme *</label><select id="platform" required>
+                    <option value="tronpick">TronPick</option>
+                    <option value="litepick">LitePick</option>
+                    <option value="dogepick">DogePick</option>
+                    <option value="solpick">SolPick</option>
+                    <option value="binpick">BinPick</option>
+                </select></div>
+                <div class="form-group"><label>Proxy (optionnel)</label><input type="text" id="proxy" placeholder="http://user:pass@host:port"></div>
+            </div>
+            <div class="form-row">
+                <button type="submit" id="saveBtn">💾 Ajouter</button>
+                <button type="button" id="cancelBtn" class="secondary hidden">Annuler</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Liste des comptes -->
+    <div class="card">
+        <h2>📋 Comptes configurés</h2>
+        <div id="messageArea"></div>
+        <div class="text-center"><button id="refreshBtn" class="secondary">🔄 Rafraîchir</button></div>
+        <table id="accountsTable">
+            <thead><tr><th>Email</th><th>Intervalle</th><th>Plateforme</th><th>Proxy</th><th>Cookies</th><th>Prochain claim</th><th>Statut</th><th>Actions</th></tr></thead>
+            <tbody id="accountsBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    (function() {
+        // Configuration stockée localement
+        let ghToken = localStorage.getItem('gh_token') || '';
+        let ghUsername = localStorage.getItem('gh_username') || 'hasiniainahasina1-art';
+        let ghRepo = localStorage.getItem('gh_repo') || 'tronpick-faucet';
+        let apiLoginUrl = localStorage.getItem('api_login_url') || '';
+        const branch = 'main';
+        const filePath = 'accounts.json';
+
+        document.getElementById('ghToken').value = ghToken;
+        document.getElementById('ghUsername').value = ghUsername;
+        document.getElementById('ghRepo').value = ghRepo;
+        document.getElementById('apiUrl').value = apiLoginUrl;
+
+        document.getElementById('saveConfigBtn').addEventListener('click', () => {
+            ghToken = document.getElementById('ghToken').value.trim();
+            ghUsername = document.getElementById('ghUsername').value.trim();
+            ghRepo = document.getElementById('ghRepo').value.trim();
+            apiLoginUrl = document.getElementById('apiUrl').value.trim();
+            localStorage.setItem('gh_token', ghToken);
+            localStorage.setItem('gh_username', ghUsername);
+            localStorage.setItem('gh_repo', ghRepo);
+            localStorage.setItem('api_login_url', apiLoginUrl);
+            showMessage('✅ Configuration enregistrée', 'success');
+            loadAccounts();
+        });
+
+        // API GitHub
+        async function githubApi(method, body = null) {
+            if (!ghToken || !ghUsername || !ghRepo) throw new Error('Configuration GitHub manquante');
+            const url = `https://api.github.com/repos/${ghUsername}/${ghRepo}/contents/${filePath}`;
+            const headers = { 'Authorization': `token ${ghToken}`, 'Accept': 'application/vnd.github.v3+json' };
+            const options = { method, headers };
+            if (body) {
+                options.body = JSON.stringify(body);
+                headers['Content-Type'] = 'application/json';
+            }
+            const res = await fetch(url, options);
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.message || `HTTP ${res.status}`);
+            }
+            return res.json();
+        }
+
+        async function loadAccountsFromGitHub() {
+            try {
+                const data = await githubApi('GET');
+                const content = atob(data.content);
+                return JSON.parse(content);
+            } catch (e) {
+                if (e.message.includes('404')) return [];
+                throw e;
+            }
+        }
+
+        async function saveAccountsToGitHub(accounts) {
+            let sha = null;
+            try {
+                const data = await githubApi('GET');
+                sha = data.sha;
+            } catch (e) {}
+            const content = btoa(unescape(encodeURIComponent(JSON.stringify(accounts, null, 2))));
+            const body = { message: 'Mise à jour comptes', content, branch };
+            if (sha) body.sha = sha;
+            await githubApi('PUT', body);
+        }
+
+        // Auto-login via API fly.io
+        async function instantLoginAndGetCookies(account) {
+            if (!apiLoginUrl) {
+                return { success: false, error: 'URL API non configurée' };
+            }
+            try {
+                const response = await fetch(apiLoginUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: account.email,
+                        password: account.password,
+                        platform: account.platform,
+                        proxyUrl: account.proxy || ''
+                    })
+                });
+                return await response.json();
+            } catch (err) {
+                return { success: false, error: err.message };
+            }
+        }
+
+        // UI Helpers
+        function showMessage(text, type) {
+            const div = document.createElement('div');
+            div.className = `message ${type}`;
+            div.textContent = text;
+            document.getElementById('messageArea').appendChild(div);
+            setTimeout(() => div.remove(), 5000);
+        }
+
+        function getCookieStatusClass(acc) {
+            const status = acc.cookiesStatus || 'pending';
+            const map = { pending: 'cookie-pending', valid: 'cookie-valid', expired: 'cookie-expired', failed: 'cookie-failed' };
+            return map[status] || 'cookie-pending';
+        }
+        function getCookieStatusIcon(acc) {
+            const status = acc.cookiesStatus || 'pending';
+            const map = { pending: '⏳', valid: '✅', expired: '⚠️', failed: '❌' };
+            return map[status] || '⏳';
+        }
+        function getCookieStatusText(acc) {
+            const status = acc.cookiesStatus || 'pending';
+            const map = { pending: 'En attente', valid: 'Valides', expired: 'Expirés', failed: 'Échec' };
+            return map[status] || 'En attente';
+        }
+
+        let currentAccounts = [];
+        let countdownIntervals = [];
+
+        function renderAccounts() {
+            countdownIntervals.forEach(clearInterval);
+            countdownIntervals = [];
+            const tbody = document.getElementById('accountsBody');
+            tbody.innerHTML = '';
+            if (!currentAccounts.length) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">Aucun compte configuré</td></tr>';
+                return;
+            }
+            currentAccounts.forEach((acc, idx) => {
+                const row = tbody.insertRow();
+                const now = Date.now();
+                const last = acc.lastClaim || 0;
+                const intervalMs = (acc.timer || 60) * 60 * 1000;
+                const nextClaimTime = last + intervalMs;
+                let remainingMs = Math.max(0, nextClaimTime - now);
+                const formatTime = (ms) => {
+                    if (ms <= 0) return '0:00';
+                    const totalSeconds = Math.floor(ms / 1000);
+                    const h = Math.floor(totalSeconds / 3600);
+                    const m = Math.floor((totalSeconds % 3600) / 60);
+                    const s = totalSeconds % 60;
+                    if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+                    return `${m}:${s.toString().padStart(2, '0')}`;
+                };
+                row.insertCell().textContent = acc.email;
+                row.insertCell().textContent = (acc.timer || 60) + ' min';
+                row.insertCell().textContent = acc.platform || 'tronpick';
+                row.insertCell().textContent = acc.proxy || 'Défaut';
+                const cookieCell = row.insertCell();
+                cookieCell.innerHTML = `<span class="cookie-status ${getCookieStatusClass(acc)}">${getCookieStatusIcon(acc)} ${getCookieStatusText(acc)}</span>`;
+                const countdownCell = row.insertCell();
+                const countdownSpan = document.createElement('span');
+                countdownSpan.className = 'countdown';
+                countdownSpan.id = `cd-${idx}`;
+                countdownSpan.textContent = formatTime(remainingMs);
+                countdownCell.appendChild(countdownSpan);
+                const statusCell = row.insertCell();
+                statusCell.innerHTML = `<span class="status-badge ${acc.enabled !== false ? 'status-active' : 'status-inactive'}">${acc.enabled !== false ? 'Actif' : 'Inactif'}</span>`;
+                const actionsCell = row.insertCell();
+                actionsCell.className = 'actions';
+                actionsCell.innerHTML = `
+                    <button class="secondary" data-index="${idx}" data-action="edit">✏️</button>
+                    <button class="danger" data-index="${idx}" data-action="delete">🗑️</button>
+                    <button class="secondary" data-index="${idx}" data-action="toggle">${acc.enabled !== false ? '⏸️' : '▶️'}</button>
+                    <button class="secondary" data-index="${idx}" data-action="test">🔍 Tester</button>
+                `;
+                const interval = setInterval(() => {
+                    const n = Date.now();
+                    const r = Math.max(0, nextClaimTime - n);
+                    const sp = document.getElementById(`cd-${idx}`);
+                    if (sp) {
+                        sp.textContent = formatTime(r);
+                        sp.style.color = r === 0 ? '#dc3545' : '#2563eb';
+                    }
+                }, 1000);
+                countdownIntervals.push(interval);
+            });
+            document.querySelectorAll('[data-action="edit"]').forEach(b => b.addEventListener('click', e => editAccount(e.currentTarget.dataset.index)));
+            document.querySelectorAll('[data-action="delete"]').forEach(b => b.addEventListener('click', e => deleteAccount(e.currentTarget.dataset.index)));
+            document.querySelectorAll('[data-action="toggle"]').forEach(b => b.addEventListener('click', e => toggleAccount(e.currentTarget.dataset.index)));
+            document.querySelectorAll('[data-action="test"]').forEach(b => b.addEventListener('click', async (e) => {
+                const idx = e.currentTarget.dataset.index;
+                const acc = currentAccounts[idx];
+                await triggerManualTest(acc);
+            }));
+        }
+
+        async function triggerManualTest(account) {
+            showMessage(`🔐 Test de connexion pour ${account.email}...`, 'success');
+            const result = await instantLoginAndGetCookies(account);
+            if (result.success) {
+                showMessage(`✅ Connexion réussie pour ${account.email} ! Cookies valides.`, 'success');
+                // Optionnel : mettre à jour le compte avec les nouveaux cookies
+                account.cookies = result.cookies;
+                account.cookiesStatus = 'valid';
+                await saveAccounts(currentAccounts);
+                renderAccounts();
+            } else {
+                showMessage(`❌ Échec pour ${account.email} : ${result.error || 'Inconnu'}`, 'error');
+            }
+        }
+
+        async function loadAccounts() {
+            try {
+                currentAccounts = await loadAccountsFromGitHub();
+                renderAccounts();
+            } catch (e) {
+                showMessage(`❌ Erreur chargement: ${e.message}`, 'error');
+            }
+        }
+
+        async function saveAccounts(accounts) {
+            try {
+                await saveAccountsToGitHub(accounts);
+                showMessage('✅ Comptes sauvegardés.', 'success');
+                await loadAccounts();
+            } catch (e) {
+                showMessage(`❌ Erreur sauvegarde: ${e.message}`, 'error');
+            }
+        }
+
+        function resetForm() {
+            document.getElementById('accountForm').reset();
+            document.getElementById('accountIndex').value = '';
+            document.getElementById('formTitle').textContent = '➕ Ajouter un compte';
+            document.getElementById('saveBtn').textContent = '💾 Ajouter';
+            document.getElementById('cancelBtn').classList.add('hidden');
+        }
+
+        function editAccount(index) {
+            const acc = currentAccounts[index];
+            document.getElementById('accountIndex').value = index;
+            document.getElementById('email').value = acc.email;
+            document.getElementById('password').value = acc.password;
+            document.getElementById('timer').value = acc.timer || 60;
+            document.getElementById('platform').value = acc.platform || 'tronpick';
+            document.getElementById('proxy').value = acc.proxy || '';
+            document.getElementById('formTitle').textContent = `✏️ Modifier ${acc.email}`;
+            document.getElementById('saveBtn').textContent = '💾 Mettre à jour';
+            document.getElementById('cancelBtn').classList.remove('hidden');
+        }
+
+        async function deleteAccount(index) {
+            if (!confirm('Supprimer définitivement ce compte ?')) return;
+            const newAccounts = [...currentAccounts];
+            newAccounts.splice(index, 1);
+            await saveAccounts(newAccounts);
+        }
+
+        async function toggleAccount(index) {
+            const newAccounts = [...currentAccounts];
+            newAccounts[index].enabled = !(newAccounts[index].enabled !== false);
+            await saveAccounts(newAccounts);
+        }
+
+        const form = document.getElementById('accountForm');
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const newAccount = {
+                email: document.getElementById('email').value.trim(),
+                password: document.getElementById('password').value,
+                timer: parseInt(document.getElementById('timer').value) || 60,
+                platform: document.getElementById('platform').value,
+                proxy: document.getElementById('proxy').value.trim() || null,
+                enabled: true,
+                cookiesStatus: 'pending',
+                lastClaim: 0
+            };
+            // Auto-login instantané
+            if (apiLoginUrl) {
+                showMessage('🔐 Test de connexion en cours... (20-30 secondes)', 'success');
+                const loginResult = await instantLoginAndGetCookies(newAccount);
+                if (loginResult.success) {
+                    newAccount.cookies = loginResult.cookies;
+                    newAccount.cookiesStatus = 'valid';
+                    showMessage('✅ Connexion réussie ! Cookies enregistrés.', 'success');
+                } else {
+                    newAccount.cookies = [];
+                    newAccount.cookiesStatus = 'failed';
+                    showMessage(`❌ Échec de connexion : ${loginResult.error || 'Inconnu'}`, 'error');
+                }
+            } else {
+                showMessage('⚠️ Aucune API URL configurée, pas de test automatique', 'error');
+            }
+            let accounts = [...currentAccounts];
+            const idx = document.getElementById('accountIndex').value;
+            if (idx !== '') {
+                newAccount.lastClaim = accounts[idx].lastClaim || 0;
+                if (!newAccount.cookies && accounts[idx].cookies) {
+                    newAccount.cookies = accounts[idx].cookies;
+                    newAccount.cookiesStatus = accounts[idx].cookiesStatus;
+                }
+                accounts[idx] = newAccount;
+            } else {
+                accounts.push(newAccount);
+            }
+            await saveAccounts(accounts);
+            resetForm();
+        });
+
+        document.getElementById('cancelBtn').addEventListener('click', resetForm);
+        document.getElementById('refreshBtn').addEventListener('click', loadAccounts);
+
+        // Initialisation
+        if (ghToken) loadAccounts(); else showMessage('Veuillez configurer votre token GitHub.', 'error');
+    })();
+</script>
+</body>
+</html>
