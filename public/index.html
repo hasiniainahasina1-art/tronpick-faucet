@@ -42,14 +42,17 @@
 <div class="container">
     <h1>⚙️ Finoana Auto Claim</h1>
 
-    <!-- Configuration GitHub -->
+    <!-- Configuration GitHub (pré-remplie) -->
     <div class="card">
         <h2>🔐 Configuration GitHub</h2>
         <div class="form-row">
             <div class="form-group"><label>Token GitHub (scope repo + workflow)</label><input type="password" id="ghToken" placeholder="ghp_..."></div>
-            <div class="form-group"><label>Nom d'utilisateur</label><input type="text" id="ghUsername" placeholder="votre-nom"></div>
-            <div class="form-group"><label>Dépôt</label><input type="text" id="ghRepo" placeholder="tronpick-faucet"></div>
+            <div class="form-group"><label>Nom d'utilisateur</label><input type="text" id="ghUsername" value="hasiniainahasina1-art"></div>
+            <div class="form-group"><label>Dépôt</label><input type="text" id="ghRepo" value="tronpick-faucet"></div>
             <button id="saveConfigBtn">💾 Enregistrer</button>
+        </div>
+        <div class="form-row" style="margin-top:10px;">
+            <div class="form-group"><label>Workflow ID (test-account.yml)</label><input type="text" id="workflowId" value="263104494" readonly style="background:#e9ecef;"></div>
         </div>
     </div>
 
@@ -96,15 +99,18 @@
 (function() {
     // --- Configuration stockée localement ---
     let ghToken = localStorage.getItem('gh_token') || '';
-    let ghUsername = localStorage.getItem('gh_username') || '';
-    let ghRepo = localStorage.getItem('gh_repo') || '';
+    let ghUsername = localStorage.getItem('gh_username') || 'hasiniainahasina1-art';
+    let ghRepo = localStorage.getItem('gh_repo') || 'tronpick-faucet';
+    const workflowId = '263104494'; // ID fixe de test-account.yml
     const branch = 'main';
     const filePath = 'accounts.json';
 
     document.getElementById('ghToken').value = ghToken;
     document.getElementById('ghUsername').value = ghUsername;
     document.getElementById('ghRepo').value = ghRepo;
+    document.getElementById('workflowId').value = workflowId;
 
+    // Sauvegarde configuration
     document.getElementById('saveConfigBtn').addEventListener('click', () => {
         ghToken = document.getElementById('ghToken').value.trim();
         ghUsername = document.getElementById('ghUsername').value.trim();
@@ -120,7 +126,7 @@
     async function githubApi(method, body = null) {
         if (!ghToken || !ghUsername || !ghRepo) throw new Error('Configuration GitHub manquante');
         const url = `https://api.github.com/repos/${ghUsername}/${ghRepo}/contents/${filePath}`;
-        const headers = { 'Authorization': `token ${ghToken}`, 'Accept': 'application/vnd.github.v3+json' };
+        const headers = { 'Authorization': `Bearer ${ghToken}`, 'Accept': 'application/vnd.github.v3+json' };
         const options = { method, headers };
         if (body) {
             options.body = JSON.stringify(body);
@@ -157,14 +163,14 @@
         await githubApi('PUT', body);
     }
 
-    // --- Déclencher le workflow GitHub Actions pour test auto-login ---
+    // --- Déclencher le workflow GitHub Actions ---
     async function triggerWorkflowTest(email, password, platform, proxyIndex) {
         if (!ghToken || !ghUsername || !ghRepo) throw new Error('Configuration GitHub incomplète');
-        const apiUrl = `https://api.github.com/repos/${ghUsername}/${ghRepo}/actions/workflows/test-account.yml/dispatches`;
+        const apiUrl = `https://api.github.com/repos/${ghUsername}/${ghRepo}/actions/workflows/${workflowId}/dispatches`;
         const response = await fetch(apiUrl, {
             method: 'POST',
             headers: {
-                'Authorization': `token ${ghToken}`,
+                'Authorization': `Bearer ${ghToken}`,
                 'Accept': 'application/vnd.github.v3+json',
                 'Content-Type': 'application/json'
             },
@@ -180,8 +186,10 @@
         });
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(`GitHub API error: ${response.status} - ${errorText}`);
+            throw new Error(`GitHub API error (${response.status}): ${errorText}`);
         }
+        // 204 signifie succès
+        console.log('Workflow déclenché avec succès');
     }
 
     // --- UI Helpers ---
@@ -377,6 +385,7 @@
         try {
             await triggerWorkflowTest(email, password, platform, '');
             showMessage('⏳ Workflow déclenché. Attente de mise à jour...', 'success');
+            // Attendre 30 secondes puis recharger les comptes
             await new Promise(resolve => setTimeout(resolve, 30000));
             await loadAccounts();
             const updated = currentAccounts.find(a => a.email === email);
@@ -410,4 +419,13 @@
         resetForm();
     });
 
-    document.getEle
+    document.getElementById('cancelBtn').addEventListener('click', resetForm);
+    document.getElementById('refreshBtn').addEventListener('click', loadAccounts);
+
+    // Initialisation
+    if (ghToken && ghUsername && ghRepo) loadAccounts();
+    else showMessage('Veuillez configurer votre token GitHub, nom d\'utilisateur et dépôt.', 'error');
+})();
+</script>
+</body>
+</html>
