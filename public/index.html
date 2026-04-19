@@ -49,7 +49,6 @@
             <div class="form-group"><label>Token GitHub (scope repo + workflow)</label><input type="password" id="ghToken" placeholder="ghp_..."></div>
             <div class="form-group"><label>Nom d'utilisateur</label><input type="text" id="ghUsername" placeholder="votre-nom"></div>
             <div class="form-group"><label>Dépôt</label><input type="text" id="ghRepo" placeholder="tronpick-faucet"></div>
-            <div class="form-group"><label>API Login URL (optionnel)</label><input type="text" id="apiUrl" placeholder="https://.../test-login"></div>
             <button id="saveConfigBtn">💾 Enregistrer</button>
         </div>
     </div>
@@ -99,26 +98,20 @@
     let ghToken = localStorage.getItem('gh_token') || '';
     let ghUsername = localStorage.getItem('gh_username') || '';
     let ghRepo = localStorage.getItem('gh_repo') || '';
-    let apiLoginUrl = localStorage.getItem('api_login_url') || '';
     const branch = 'main';
     const filePath = 'accounts.json';
 
-    // Remplir les champs de configuration
     document.getElementById('ghToken').value = ghToken;
     document.getElementById('ghUsername').value = ghUsername;
     document.getElementById('ghRepo').value = ghRepo;
-    document.getElementById('apiUrl').value = apiLoginUrl;
 
-    // Sauvegarde configuration
     document.getElementById('saveConfigBtn').addEventListener('click', () => {
         ghToken = document.getElementById('ghToken').value.trim();
         ghUsername = document.getElementById('ghUsername').value.trim();
         ghRepo = document.getElementById('ghRepo').value.trim();
-        apiLoginUrl = document.getElementById('apiUrl').value.trim();
         localStorage.setItem('gh_token', ghToken);
         localStorage.setItem('gh_username', ghUsername);
         localStorage.setItem('gh_repo', ghRepo);
-        localStorage.setItem('api_login_url', apiLoginUrl);
         showMessage('✅ Configuration enregistrée', 'success');
         loadAccounts();
     });
@@ -390,7 +383,6 @@
             if (updated && updated.cookiesStatus === 'valid') {
                 loginSuccess = true;
                 showMessage(`✅ Connexion réussie pour ${email} ! Cookies enregistrés.`, 'success');
-                // Mettre à jour le compte avec les cookies récupérés par le workflow
                 newAccount.cookies = updated.cookies;
                 newAccount.cookiesStatus = 'valid';
                 newAccount.lastClaim = updated.lastClaim || 0;
@@ -400,4 +392,22 @@
                 newAccount.cookiesStatus = 'failed';
             }
         } catch (err) {
-            showMessage(`❌ Impossible de lancer le test : ${err.message}`, 'error
+            showMessage(`❌ Impossible de lancer le test : ${err.message}`, 'error');
+            newAccount.cookies = [];
+            newAccount.cookiesStatus = 'failed';
+        }
+
+        // Sauvegarder le compte (si le workflow ne l'a pas déjà fait)
+        let accounts = [...currentAccounts];
+        const idx = document.getElementById('accountIndex').value;
+        if (idx !== '') {
+            newAccount.lastClaim = accounts[idx].lastClaim || 0;
+            accounts[idx] = newAccount;
+        } else {
+            accounts.push(newAccount);
+        }
+        await saveAccounts(accounts);
+        resetForm();
+    });
+
+    document.getEle
