@@ -1,0 +1,45 @@
+name: Test Account Login
+
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: 'Email du compte'
+        required: true
+        type: string
+      password:
+        description: 'Mot de passe'
+        required: true
+        type: string
+      platform:
+        description: 'Plateforme (tronpick, litepick, dogepick, solpick, binpick)'
+        required: true
+        type: string
+      proxyIndex:
+        description: 'Index du proxy (0 ou 1) – laisse vide pour utiliser le premier'
+        required: false
+        type: string
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - run: npm install puppeteer-real-browser @octokit/rest
+      - name: Run login test
+        env:
+          TEST_EMAIL: ${{ github.event.inputs.email }}
+          TEST_PASSWORD: ${{ github.event.inputs.password }}
+          TEST_PLATFORM: ${{ github.event.inputs.platform }}
+          TEST_PROXY_INDEX: ${{ github.event.inputs.proxyIndex }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_USERNAME: ${{ secrets.GH_USERNAME }}
+          GH_REPO: ${{ secrets.GH_REPO }}
+          GH_BRANCH: ${{ secrets.GH_BRANCH || 'main' }}
+          GH_FILE_PATH: ${{ secrets.GH_FILE_PATH || 'accounts.json' }}
+          JP_PROXY_LIST: ${{ secrets.JP_PROXY_LIST }}
+        run: xvfb-run --auto-servernum node test-login-workflow.js
