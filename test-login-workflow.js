@@ -15,7 +15,7 @@ const GH_BRANCH = process.env.GH_BRANCH;
 const GH_FILE_PATH = process.env.GH_FILE_PATH;
 const JP_PROXY_LIST = (process.env.JP_PROXY_LIST || '').split(',').filter(p => p.trim() !== '');
 
-// --- Dossier pour captures d'écran ---
+// --- Dossier captures d'écran ---
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
@@ -61,7 +61,6 @@ async function humanClickAt(page, coords) {
     await page.mouse.click(coords.x, coords.y);
 }
 
-// --- Parser un proxy (même fonction que dans script.js) ---
 function parseProxyUrl(proxyUrl) {
     const match = proxyUrl.match(/^http:\/\/([^:]+):([^@]+)@([^:]+):(\d+)$/);
     if (!match) {
@@ -75,7 +74,6 @@ function parseProxyUrl(proxyUrl) {
     };
 }
 
-// --- Fonction de login (identique à performLoginAndCaptureCookies de script.js) ---
 async function performLogin(page, email, password) {
     await fillField(page, 'input[type="email"], input[name="email"]', email, 'email');
     await fillField(page, 'input[type="password"]', password, 'password');
@@ -116,11 +114,10 @@ async function performLogin(page, email, password) {
     }
 }
 
-// --- Main ---
 async function run() {
     let browser;
     try {
-        // Sélection du proxy (identique à script.js)
+        // Sélection du proxy
         let proxyUrl = JP_PROXY_LIST[0];
         if (proxyIndex !== undefined && JP_PROXY_LIST[proxyIndex]) {
             proxyUrl = JP_PROXY_LIST[proxyIndex];
@@ -143,12 +140,12 @@ async function run() {
         await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 60000 });
         await page.screenshot({ path: path.join(screenshotsDir, '01_login_page.png'), fullPage: true });
 
-        // Exécuter la séquence de login (copiée de script.js)
         await performLogin(page, email, password);
 
-        // Succès : récupérer les cookies
+        // Récupération des cookies
         const cookies = await page.cookies();
-        console.log(`✅ Connexion réussie pour ${email}`);
+        console.log(`🍪 Cookies récupérés : ${cookies.length}`);
+        if (cookies.length === 0) console.warn('⚠️ Aucun cookie récupéré – la connexion a peut-être échoué');
         await page.screenshot({ path: path.join(screenshotsDir, '02_login_success.png'), fullPage: true });
 
         await browser.close();
@@ -159,7 +156,8 @@ async function run() {
         try {
             const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH });
             accounts = JSON.parse(Buffer.from(res.data.content, 'base64').toString());
-        } catch (e) {}
+            console.log(`📂 accounts.json chargé, ${accounts.length} comptes`);
+        } catch (e) { console.log('Création d’un nouveau accounts.json'); }
 
         const existingIndex = accounts.findIndex(a => a.email === email);
         const newAccount = {
@@ -169,7 +167,7 @@ async function run() {
             proxy: proxyUrl,
             enabled: true,
             cookies: cookies,
-            cookiesStatus: 'valid',
+            cookiesStatus: cookies.length > 0 ? 'valid' : 'failed',
             lastClaim: Date.now(),
             timer: 60,
             proxyIndex: proxyIndex !== undefined ? proxyIndex : 0
@@ -187,19 +185,18 @@ async function run() {
             owner: GH_USERNAME,
             repo: GH_REPO,
             path: GH_FILE_PATH,
-            message: `Test login for ${email} - success`,
+            message: `Test login for ${email} - ${cookies.length} cookies`,
             content,
             branch: GH_BRANCH,
             sha
         });
-
+        console.log(`💾 accounts.json mis à jour avec ${cookies.length} cookies pour ${email}`);
         process.exit(0);
     } catch (err) {
         if (browser) {
             try {
-                // Capture d'écran de l'erreur
                 const screenshotPath = path.join(screenshotsDir, 'error.png');
-                await page.screenshot({ fullPage: true }).then(img => fs.writeFileSync(screenshotPath, img));
+                await browser.screenshot({ fullPage: true }).then(img => fs.writeFileSync(screenshotPath, img));
                 console.log(`📸 Capture d'erreur sauvegardée : ${screenshotPath}`);
             } catch (e) {}
             await browser.close();
