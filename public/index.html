@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Finoana Auto Claim</title>
     <style>
-        /* (gardez le même style que précédemment) */
         body { font-family: Arial, sans-serif; background: #f4f9ff; margin: 20px; }
         .container { max-width: 1200px; margin: 0 auto; }
         h1, h2 { color: #1e293b; text-align: center; }
@@ -167,7 +166,6 @@
         await githubApi('PUT', body);
     }
 
-    // Fonction modifiée pour accepter proxyUrl
     async function triggerWorkflowTest(email, password, platform, proxyUrl, proxyIndex) {
         if (!ghToken || !ghUsername || !ghRepo) throw new Error('Configuration GitHub incomplète');
         const apiUrl = `https://api.github.com/repos/${ghUsername}/${ghRepo}/actions/workflows/${workflowId}/dispatches`;
@@ -178,7 +176,7 @@
                 password: password,
                 platform: platform,
                 proxyIndex: (proxyIndex !== undefined && proxyIndex !== null) ? String(proxyIndex) : '',
-                proxyUrl: proxyUrl || ''   // ← on envoie le proxy personnalisé
+                proxyUrl: proxyUrl || ''
             }
         };
         const response = await fetch(apiUrl, {
@@ -345,7 +343,7 @@
         try {
             await saveAccountsToGitHub(accounts);
             showMessage('✅ Comptes sauvegardés.', 'success');
-            await loadAccounts(); // recharge immédiat
+            await loadAccounts();
         } catch (e) {
             showMessage(`❌ Erreur sauvegarde: ${e.message}`, 'error');
         }
@@ -377,7 +375,6 @@
         const newAccounts = [...currentAccounts];
         newAccounts.splice(index, 1);
         await saveAccounts(newAccounts);
-        // rechargement déjà fait dans saveAccounts
     }
 
     async function toggleAccount(index) {
@@ -386,6 +383,7 @@
         await saveAccounts(newAccounts);
     }
 
+    // Formulaire d'ajout avec validation et polling
     const form = document.getElementById('accountForm');
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -395,60 +393,16 @@
         const platform = document.getElementById('platform').value;
         const proxy = document.getElementById('proxy').value.trim() || null;
 
-        const newAccount = {
-            email, password, timer, platform, proxy,
-            enabled: true,
-            cookiesStatus: 'pending',
-            lastClaim: 0
-        };
+        // 1. Vérifier les doublons
+        if (currentAccounts.some(acc => acc.email === email)) {
+            showMessage(`❌ Un compte avec l'email ${email} existe déjà.`, 'error');
+            return;
+        }
 
+        // 2. Déclencher le workflow de test
         showMessage(`🔐 Test de connexion pour ${email}... (max 2 min)`, 'success');
         try {
-            // On envoie le proxy saisi (si présent)
             await triggerWorkflowTest(email, password, platform, proxy, '');
             showMessage('⏳ Workflow déclenché. Vérification des cookies...', 'success');
-            let maxAttempts = 24;
-            let updated = null;
-            for (let attempt = 0; attempt < maxAttempts; attempt++) {
-                await new Promise(resolve => setTimeout(resolve, 5000));
-                await loadAccounts();
-                updated = currentAccounts.find(a => a.email === email);
-                if (updated && updated.cookies && updated.cookies.length > 0) break;
-            }
-            if (updated && updated.cookies && updated.cookies.length > 0) {
-                showMessage(`✅ Connexion réussie pour ${email} (${updated.cookies.length} cookies)`, 'success');
-                newAccount.cookies = updated.cookies;
-                newAccount.cookiesStatus = 'valid';
-                newAccount.lastClaim = updated.lastClaim || 0;
-            } else {
-                showMessage(`❌ Échec de connexion pour ${email} : aucun cookie récupéré.`, 'error');
-                newAccount.cookies = [];
-                newAccount.cookiesStatus = 'failed';
-            }
-        } catch (err) {
-            showMessage(`❌ Impossible de lancer le test : ${err.message}`, 'error');
-            newAccount.cookies = [];
-            newAccount.cookiesStatus = 'failed';
-        }
 
-        let accounts = [...currentAccounts];
-        const idx = document.getElementById('accountIndex').value;
-        if (idx !== '') {
-            newAccount.lastClaim = accounts[idx].lastClaim || 0;
-            accounts[idx] = newAccount;
-        } else {
-            accounts.push(newAccount);
-        }
-        await saveAccounts(accounts);
-        resetForm();
-    });
-
-    document.getElementById('cancelBtn').addEventListener('click', resetForm);
-    document.getElementById('refreshBtn').addEventListener('click', loadAccounts);
-
-    if (ghToken && ghUsername && ghRepo) loadAccounts();
-    else showMessage('Veuillez configurer votre token GitHub, nom d\'utilisateur et dépôt.', 'error');
-})();
-</script>
-</body>
-</html>
+            // 3. Polling : attendre que le workflow ait mis à jour le compte avec des cook
