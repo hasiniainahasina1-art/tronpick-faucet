@@ -1,25 +1,19 @@
 name: Test Account Login
-
 on:
   workflow_dispatch:
     inputs:
       email:
-        description: 'Email du compte'
         required: true
         type: string
       password:
-        description: 'Mot de passe'
         required: true
         type: string
       platform:
-        description: 'Plateforme (tronpick, litepick, dogepick, solpick, binpick)'
         required: true
         type: string
       proxyIndex:
-        description: 'Index du proxy (0 ou 1) – laisse vide pour utiliser le premier'
         required: false
         type: string
-
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -43,3 +37,9 @@ jobs:
           GH_FILE_PATH: ${{ secrets.GH_FILE_PATH || 'accounts.json' }}
           JP_PROXY_LIST: ${{ secrets.JP_PROXY_LIST }}
         run: xvfb-run --auto-servernum node test-login-workflow.js
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: login-screenshots
+          path: screenshots/
