@@ -9,16 +9,5 @@
     "cookiesStatus": "failed",
     "lastClaim": 0,
     "cookies": []
-  },
-  {
-    "email": "rivoniainafinoana123@gmail.com",
-    "password": "Finoana123.",
-    "timer": 60,
-    "platform": "tronpick",
-    "proxy": null,
-    "enabled": true,
-    "cookiesStatus": "failed",
-    "lastClaim": 0,
-    "cookies": []
   }
 ]
