@@ -1,5 +1,7 @@
 const { connect } = require('puppeteer-real-browser');
 const { Octokit } = require('@octokit/rest');
+const fs = require('fs');
+const path = require('path');
 
 // --- Variables d'environnement ---
 const email = process.env.TEST_EMAIL;
@@ -13,11 +15,15 @@ const GH_BRANCH = process.env.GH_BRANCH;
 const GH_FILE_PATH = process.env.GH_FILE_PATH;
 const JP_PROXY_LIST = (process.env.JP_PROXY_LIST || '').split(',').filter(p => p.trim() !== '');
 
-// --- Coordonnées (copiées de script.js) ---
+// --- Dossier pour captures d'écran ---
+const screenshotsDir = path.join(__dirname, 'screenshots');
+if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
+
+// --- Coordonnées (identiques à script.js) ---
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// --- Fonctions utilitaires (identiques à script.js) ---
+// --- Fonctions copiées de script.js ---
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -25,7 +31,10 @@ async function fillField(page, selector, value, fieldName) {
     await delay(100);
     await page.evaluate((sel, val) => {
         const el = document.querySelector(sel);
-        if (el) el.value = val;
+        el.value = val;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new Event('blur', { bubbles: true }));
     }, selector, value);
     await delay(300);
     let actual = await page.$eval(selector, el => el.value);
@@ -33,7 +42,9 @@ async function fillField(page, selector, value, fieldName) {
         await page.click(selector, { clickCount: 3 });
         await page.keyboard.press('Backspace');
         for (const char of value) await page.keyboard.type(char, { delay: 30 });
+        actual = await page.$eval(selector, el => el.value);
     }
+    if (actual !== value) throw new Error(`Impossible de remplir ${fieldName}`);
 }
 
 async function humanClickAt(page, coords) {
@@ -50,14 +61,26 @@ async function humanClickAt(page, coords) {
     await page.mouse.click(coords.x, coords.y);
 }
 
-// --- Fonction principale de login ---
+// --- Parser un proxy (même fonction que dans script.js) ---
+function parseProxyUrl(proxyUrl) {
+    const match = proxyUrl.match(/^http:\/\/([^:]+):([^@]+)@([^:]+):(\d+)$/);
+    if (!match) {
+        console.error('❌ Format de proxy invalide:', proxyUrl);
+        return null;
+    }
+    return {
+        server: `http://${match[3]}:${match[4]}`,
+        username: match[1],
+        password: match[2]
+    };
+}
+
+// --- Fonction de login (identique à performLoginAndCaptureCookies de script.js) ---
 async function performLogin(page, email, password) {
-    // Remplir les champs comme dans script.js
     await fillField(page, 'input[type="email"], input[name="email"]', email, 'email');
     await fillField(page, 'input[type="password"]', password, 'password');
     await delay(2000);
 
-    // Gestion Turnstile (iframe ou fallback coordonné)
     const frame = await page.waitForFrame(
         f => f.url().includes('challenges.cloudflare.com/turnstile'),
         { timeout: 15000 }
@@ -73,7 +96,6 @@ async function performLogin(page, email, password) {
         await delay(10000);
     }
 
-    // Clic sur "Log in"
     const loginClicked = await page.evaluate(() => {
         const btns = [...document.querySelectorAll('button')];
         const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
@@ -98,34 +120,37 @@ async function performLogin(page, email, password) {
 async function run() {
     let browser;
     try {
-        // Sélection du proxy
+        // Sélection du proxy (identique à script.js)
         let proxyUrl = JP_PROXY_LIST[0];
         if (proxyIndex !== undefined && JP_PROXY_LIST[proxyIndex]) {
             proxyUrl = JP_PROXY_LIST[proxyIndex];
         }
-        console.log(`🔄 Proxy utilisé : ${proxyUrl}`);
+        const proxyConfig = parseProxyUrl(proxyUrl);
+        if (!proxyConfig) throw new Error('Proxy invalide');
+        console.log(`🔄 Proxy utilisé : ${proxyConfig.server}`);
 
         const { browser: br, page } = await connect({
             headless: false,
             turnstile: true,
-            proxy: proxyUrl,
+            proxy: proxyConfig,
             args: ['--no-sandbox', '--disable-setuid-sandbox']
         });
         browser = br;
 
-        // User-agent réaliste
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
         await page.setViewport({ width: 1280, height: 720 });
-
         const loginUrl = `https://${platform}.io/login.php`;
         console.log(`🌐 Connexion à ${loginUrl}`);
         await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+        await page.screenshot({ path: path.join(screenshotsDir, '01_login_page.png'), fullPage: true });
 
         // Exécuter la séquence de login (copiée de script.js)
         await performLogin(page, email, password);
 
         // Succès : récupérer les cookies
         const cookies = await page.cookies();
+        console.log(`✅ Connexion réussie pour ${email}`);
+        await page.screenshot({ path: path.join(screenshotsDir, '02_login_success.png'), fullPage: true });
+
         await browser.close();
 
         // Mise à jour de accounts.json
@@ -168,10 +193,17 @@ async function run() {
             sha
         });
 
-        console.log(`✅ Connexion réussie pour ${email}`);
         process.exit(0);
     } catch (err) {
-        if (browser) await browser.close();
+        if (browser) {
+            try {
+                // Capture d'écran de l'erreur
+                const screenshotPath = path.join(screenshotsDir, 'error.png');
+                await page.screenshot({ fullPage: true }).then(img => fs.writeFileSync(screenshotPath, img));
+                console.log(`📸 Capture d'erreur sauvegardée : ${screenshotPath}`);
+            } catch (e) {}
+            await browser.close();
+        }
         console.error('❌ Erreur :', err.message);
         process.exit(1);
     }
