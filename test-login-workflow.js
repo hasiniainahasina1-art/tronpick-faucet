@@ -3,11 +3,12 @@ const { Octokit } = require('@octokit/rest');
 const fs = require('fs');
 const path = require('path');
 
-// --- Variables d'environnement ---
+// Variables d'environnement
 const email = process.env.TEST_EMAIL;
 const password = process.env.TEST_PASSWORD;
 const platform = process.env.TEST_PLATFORM;
 const proxyIndex = process.env.TEST_PROXY_INDEX !== '' ? parseInt(process.env.TEST_PROXY_INDEX) : undefined;
+const proxyUrlFromInput = process.env.TEST_PROXY_URL || '';
 const GH_TOKEN = process.env.GH_TOKEN;
 const GH_USERNAME = process.env.GH_USERNAME;
 const GH_REPO = process.env.GH_REPO;
@@ -15,15 +16,13 @@ const GH_BRANCH = process.env.GH_BRANCH;
 const GH_FILE_PATH = process.env.GH_FILE_PATH;
 const JP_PROXY_LIST = (process.env.JP_PROXY_LIST || '').split(',').filter(p => p.trim() !== '');
 
-// --- Dossier captures d'écran ---
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
-// --- Coordonnées (identiques à script.js) ---
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// --- Fonctions copiées de script.js ---
+// --- Fonctions utilitaires (identiques à script.js) ---
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -114,14 +113,20 @@ async function performLogin(page, email, password) {
     }
 }
 
+// --- Main ---
 async function run() {
     let browser;
     try {
-        // Sélection du proxy
-        let proxyUrl = JP_PROXY_LIST[0];
-        if (proxyIndex !== undefined && JP_PROXY_LIST[proxyIndex]) {
-            proxyUrl = JP_PROXY_LIST[proxyIndex];
+        // Déterminer le proxy à utiliser
+        let proxyUrl = proxyUrlFromInput;
+        if (!proxyUrl && JP_PROXY_LIST.length > 0) {
+            if (proxyIndex !== undefined && JP_PROXY_LIST[proxyIndex]) {
+                proxyUrl = JP_PROXY_LIST[proxyIndex];
+            } else {
+                proxyUrl = JP_PROXY_LIST[0];
+            }
         }
+        if (!proxyUrl) throw new Error('Aucun proxy disponible');
         const proxyConfig = parseProxyUrl(proxyUrl);
         if (!proxyConfig) throw new Error('Proxy invalide');
         console.log(`🔄 Proxy utilisé : ${proxyConfig.server}`);
@@ -142,56 +147,57 @@ async function run() {
 
         await performLogin(page, email, password);
 
-        // Récupération des cookies
-        const cookies = await page.cookies();
-        console.log(`🍪 Cookies récupérés : ${cookies.length}`);
-        if (cookies.length === 0) console.warn('⚠️ Aucun cookie récupéré – la connexion a peut-être échoué');
+        const freshCookies = await page.cookies();
+        console.log(`🍪 Cookies récupérés : ${freshCookies.length}`);
         await page.screenshot({ path: path.join(screenshotsDir, '02_login_success.png'), fullPage: true });
-
         await browser.close();
 
-        // Mise à jour de accounts.json
-        const octokit = new Octokit({ auth: GH_TOKEN });
-        let accounts = [];
-        try {
-            const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH });
-            accounts = JSON.parse(Buffer.from(res.data.content, 'base64').toString());
-            console.log(`📂 accounts.json chargé, ${accounts.length} comptes`);
-        } catch (e) { console.log('Création d’un nouveau accounts.json'); }
+        // Ne mettre à jour accounts.json que si des cookies sont récupérés (succès)
+        if (freshCookies.length > 0) {
+            const octokit = new Octokit({ auth: GH_TOKEN });
+            let accounts = [];
+            try {
+                const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH });
+                accounts = JSON.parse(Buffer.from(res.data.content, 'base64').toString());
+            } catch (e) {}
 
-        const existingIndex = accounts.findIndex(a => a.email === email);
-        const newAccount = {
-            email,
-            password,
-            platform,
-            proxy: proxyUrl,
-            enabled: true,
-            cookies: cookies,
-            cookiesStatus: cookies.length > 0 ? 'valid' : 'failed',
-            lastClaim: Date.now(),
-            timer: 60,
-            proxyIndex: proxyIndex !== undefined ? proxyIndex : 0
-        };
-        if (existingIndex !== -1) accounts[existingIndex] = newAccount;
-        else accounts.push(newAccount);
+            const existingIndex = accounts.findIndex(a => a.email === email);
+            const newAccount = {
+                email,
+                password,
+                platform,
+                proxy: proxyUrl,
+                enabled: true,
+                cookies: freshCookies,
+                cookiesStatus: 'valid',
+                lastClaim: Date.now(),
+                timer: 60,
+                proxyIndex: proxyIndex !== undefined ? proxyIndex : 0
+            };
+            if (existingIndex !== -1) accounts[existingIndex] = newAccount;
+            else accounts.push(newAccount);
 
-        const content = Buffer.from(JSON.stringify(accounts, null, 2)).toString('base64');
-        let sha = null;
-        try {
-            const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH });
-            sha = res.data.sha;
-        } catch (e) {}
-        await octokit.repos.createOrUpdateFileContents({
-            owner: GH_USERNAME,
-            repo: GH_REPO,
-            path: GH_FILE_PATH,
-            message: `Test login for ${email} - ${cookies.length} cookies`,
-            content,
-            branch: GH_BRANCH,
-            sha
-        });
-        console.log(`💾 accounts.json mis à jour avec ${cookies.length} cookies pour ${email}`);
-        process.exit(0);
+            const content = Buffer.from(JSON.stringify(accounts, null, 2)).toString('base64');
+            let sha = null;
+            try {
+                const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH });
+                sha = res.data.sha;
+            } catch (e) {}
+            await octokit.repos.createOrUpdateFileContents({
+                owner: GH_USERNAME,
+                repo: GH_REPO,
+                path: GH_FILE_PATH,
+                message: `Test login for ${email} - success (${freshCookies.length} cookies)`,
+                content,
+                branch: GH_BRANCH,
+                sha
+            });
+            console.log(`✅ Compte ${email} enregistré avec succès (${freshCookies.length} cookies).`);
+        } else {
+            console.log(`❌ Connexion échouée pour ${email} – aucun cookie récupéré. Compte non enregistré.`);
+            // On ne modifie pas accounts.json
+        }
+        process.exit(freshCookies.length > 0 ? 0 : 1);
     } catch (err) {
         if (browser) {
             try {
@@ -205,5 +211,4 @@ async function run() {
         process.exit(1);
     }
 }
-
 run();
