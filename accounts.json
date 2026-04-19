@@ -2,12 +2,13 @@
   {
     "email": "rivoniainafinoana123@gmail.com",
     "password": "Finoana123.",
-    "timer": 60,
     "platform": "tronpick",
-    "proxy": null,
+    "proxy": "http://Finoana123:Finoana123@23.26.71.145:5628",
     "enabled": true,
+    "cookies": [],
     "cookiesStatus": "failed",
     "lastClaim": 0,
+    "timer": 60,
     "proxyIndex": 0
   }
 ]
