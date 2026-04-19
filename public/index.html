@@ -89,7 +89,7 @@
         <div id="messageArea"></div>
         <div class="text-center"><button id="refreshBtn" class="secondary">🔄 Rafraîchir</button></div>
         <table id="accountsTable">
-            <thead><tr><th>Email</th><th>Intervalle</th><th>Plateforme</th><th>Proxy</th><th>Cookies</th><th>Prochain claim</th><th>Statut</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Email</th><th>Intervalle</th><th>Plateforme</th><th>Proxy (IP)</th><th>Cookies</th><th>Prochain claim</th><th>Statut</th><th>Actions</th></tr></thead>
             <tbody id="accountsBody"></tbody>
         </table>
     </div>
@@ -196,6 +196,24 @@
         console.log('Workflow déclenché avec succès');
     }
 
+    // Fonction pour extraire l'IP publique (et le port) à partir d'une URL de proxy
+    function extractProxyIp(proxyUrl) {
+        if (!proxyUrl || proxyUrl === '') return 'Défaut';
+        try {
+            // Format attendu: http://user:pass@ip:port ou http://ip:port
+            let url = proxyUrl;
+            // Enlever le protocole http://
+            if (url.startsWith('http://')) url = url.substring(7);
+            // Enlever la partie user:pass@ si présente
+            const atIndex = url.indexOf('@');
+            if (atIndex !== -1) url = url.substring(atIndex + 1);
+            // url contient maintenant ip:port (ou juste ip)
+            return url;
+        } catch (e) {
+            return proxyUrl;
+        }
+    }
+
     // UI Helpers
     function showMessage(text, type) {
         const div = document.createElement('div');
@@ -252,7 +270,8 @@
             row.insertCell().textContent = acc.email;
             row.insertCell().textContent = (acc.timer || 60) + ' min';
             row.insertCell().textContent = acc.platform || 'tronpick';
-            row.insertCell().textContent = acc.proxy || 'Défaut';
+            // Afficher l'IP publique du proxy au lieu de l'URL complète
+            row.insertCell().textContent = extractProxyIp(acc.proxy);
             const cookieCell = row.insertCell();
             cookieCell.innerHTML = `<span class="cookie-status ${getCookieStatusClass(acc)}">${getCookieStatusIcon(acc)} ${getCookieStatusText(acc)}</span>`;
             const countdownCell = row.insertCell();
@@ -301,7 +320,6 @@
         try {
             await triggerWorkflowTest(account.email, account.password, account.platform, account.proxyIndex !== undefined ? account.proxyIndex : '');
             showMessage(`⏳ Workflow déclenché. Vérification des cookies...`, 'success');
-            // Polling : vérifie toutes les 5s pendant 2 min
             let maxAttempts = 24;
             let updated = null;
             for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -394,7 +412,6 @@
         try {
             await triggerWorkflowTest(email, password, platform, '');
             showMessage('⏳ Workflow déclenché. Vérification des cookies...', 'success');
-            // Polling : 24 tentatives espacées de 5 secondes = 2 minutes
             let maxAttempts = 24;
             let updated = null;
             for (let attempt = 0; attempt < maxAttempts; attempt++) {
