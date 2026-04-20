@@ -245,25 +245,37 @@ async function claimWithCookies(account) {
         await delay(5000);
         if (page.url().includes('login.php')) throw new Error('Cookies expirés');
 
+        // --- Séquence claim (sans déconnexion) ---
         console.log('⏳ Attente de 5 secondes...');
         await delay(5000);
-        console.log('🔄 Actualisation...');
+        console.log('🔄 Actualisation de la page faucet...');
         await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
         await page.screenshot({ path: path.join(screenshotsDir, `01_after_reload_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
         console.log('⏳ Attente de 20 secondes...');
         await delay(20000);
         await page.screenshot({ path: path.join(screenshotsDir, `02_after_wait_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
         await humanScrollToClaim(page);
         await delay(2000);
         await page.screenshot({ path: path.join(screenshotsDir, `03_turnstile_visible_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
         await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
         await page.screenshot({ path: path.join(screenshotsDir, `04_after_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+        console.log('⏳ Attente de 10 secondes...');
         await delay(10000);
+
         await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
         await page.screenshot({ path: path.join(screenshotsDir, `05_after_second_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+        console.log('⏳ Attente de 10 secondes...');
         await delay(10000);
+
+        console.log('⏳ Attente de 10 secondes avant le clic sur CLAIM...');
         await delay(10000);
         await page.screenshot({ path: path.join(screenshotsDir, `06_before_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
         await humanClickAt(page, CLAIM_COORDS);
         await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
         await delay(5000);
@@ -277,27 +289,7 @@ async function claimWithCookies(account) {
         const success = btnDisabled || messages.some(m => /success|claimed|reward|sent/i.test(m));
         const resultMessage = messages[0] || (btnDisabled ? 'Bouton désactivé (succès présumé)' : 'Aucune réaction');
 
-        console.log('⏳ Attente de 20 secondes avant déconnexion...');
-        await delay(20000);
-        await page.screenshot({ path: path.join(screenshotsDir, `08_before_logout_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-        const logoutClicked = await page.evaluate(() => {
-            const keywords = ['logout', 'sign out', 'déconnexion', 'se déconnecter', 'log out'];
-            const elements = [...document.querySelectorAll('a, button')];
-            const logoutElement = elements.find(el => {
-                const text = (el.textContent || '').toLowerCase();
-                return keywords.some(kw => text.includes(kw));
-            });
-            if (logoutElement) { logoutElement.click(); return true; }
-            return false;
-        });
-        if (logoutClicked) {
-            console.log('✅ Déconnexion effectuée');
-            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {});
-            await delay(3000);
-            await page.screenshot({ path: path.join(screenshotsDir, `09_after_logout_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-        } else {
-            console.log('⚠️ Bouton de déconnexion non trouvé.');
-        }
+        // ⚠️ AUCUNE DÉCONNEXION – on garde les cookies actifs
         return { success, message: resultMessage };
     } catch (error) {
         if (error.message.includes('Cookies expirés')) {
@@ -321,6 +313,7 @@ async function claimWithCookies(account) {
     }
 }
 
+// --- Main ---
 (async () => {
     try {
         let accounts = await loadAccounts();
