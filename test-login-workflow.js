@@ -3,7 +3,7 @@ const { Octokit } = require('@octokit/rest');
 const fs = require('fs');
 const path = require('path');
 
-// Variables d'environnement
+// Variables d'environnement (inchangées)
 const email = process.env.TEST_EMAIL;
 const password = process.env.TEST_PASSWORD;
 const platform = process.env.TEST_PLATFORM;
@@ -22,7 +22,7 @@ if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: tr
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// --- Fonctions utilitaires (identiques à script.js) ---
+// Fonctions utilitaires (fillField, humanClickAt, parseProxyUrl, performLogin) identiques à avant
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -113,7 +113,7 @@ async function performLogin(page, email, password) {
     }
 }
 
-// --- Main ---
+// --- Main avec réessai en cas d'erreur ---
 async function run() {
     let browser;
     try {
@@ -145,14 +145,41 @@ async function run() {
         await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 60000 });
         await page.screenshot({ path: path.join(screenshotsDir, '01_login_page.png'), fullPage: true });
 
-        await performLogin(page, email, password);
+        // Tentative de login avec réessai
+        let loginSuccess = false;
+        let lastError = null;
+        const maxAttempts = 2;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                console.log(`🔄 Tentative de login ${attempt}/${maxAttempts}`);
+                await performLogin(page, email, password);
+                loginSuccess = true;
+                break;
+            } catch (err) {
+                lastError = err;
+                console.log(`❌ Échec tentative ${attempt}: ${err.message}`);
+                if (attempt < maxAttempts) {
+                    console.log('⏳ Attente 5 secondes avant actualisation...');
+                    await delay(5000);
+                    console.log('🔄 Actualisation de la page...');
+                    await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
+                    console.log('⏳ Attente 20 secondes supplémentaires...');
+                    await delay(20000);
+                }
+            }
+        }
 
+        if (!loginSuccess) {
+            throw new Error(`Login échoué après ${maxAttempts} tentatives : ${lastError.message}`);
+        }
+
+        // Succès : récupérer les cookies
         const freshCookies = await page.cookies();
         console.log(`🍪 Cookies récupérés : ${freshCookies.length}`);
         await page.screenshot({ path: path.join(screenshotsDir, '02_login_success.png'), fullPage: true });
         await browser.close();
 
-        // Ne mettre à jour accounts.json que si des cookies sont récupérés (succès)
+        // Ne mettre à jour accounts.json que si des cookies sont récupérés
         if (freshCookies.length > 0) {
             const octokit = new Octokit({ auth: GH_TOKEN });
             let accounts = [];
@@ -193,11 +220,11 @@ async function run() {
                 sha
             });
             console.log(`✅ Compte ${email} enregistré avec succès (${freshCookies.length} cookies).`);
+            process.exit(0);
         } else {
-            console.log(`❌ Connexion échouée pour ${email} – aucun cookie récupéré. Compte non enregistré.`);
-            // On ne modifie pas accounts.json
+            console.log(`❌ Connexion réussie mais aucun cookie récupéré pour ${email}.`);
+            process.exit(1);
         }
-        process.exit(freshCookies.length > 0 ? 0 : 1);
     } catch (err) {
         if (browser) {
             try {
@@ -207,7 +234,7 @@ async function run() {
             } catch (e) {}
             await browser.close();
         }
-        console.error('❌ Erreur :', err.message);
+        console.error('❌ Erreur fatale :', err.message);
         process.exit(1);
     }
 }
