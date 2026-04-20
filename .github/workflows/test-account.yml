@@ -4,23 +4,18 @@ on:
   workflow_dispatch:
     inputs:
       email:
-        description: 'Email du compte'
         required: true
         type: string
       password:
-        description: 'Mot de passe'
         required: true
         type: string
       platform:
-        description: 'Plateforme (tronpick, litepick, dogepick, solpick, binpick)'
         required: true
         type: string
       proxyIndex:
-        description: 'Index du proxy (0 ou 1)'
         required: false
         type: string
-      proxyUrl:                                   # 🟢 NOUVEAU : Input ajouté ici
-        description: 'URL complète du proxy (optionnel)'
+      proxyUrl:
         required: false
         type: string
 
@@ -40,7 +35,7 @@ jobs:
           TEST_PASSWORD: ${{ github.event.inputs.password }}
           TEST_PLATFORM: ${{ github.event.inputs.platform }}
           TEST_PROXY_INDEX: ${{ github.event.inputs.proxyIndex }}
-          TEST_PROXY_URL: ${{ github.event.inputs.proxyUrl }}    # 🟢 On passe la variable au script
+          TEST_PROXY_URL: ${{ github.event.inputs.proxyUrl }}
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GH_USERNAME: ${{ secrets.GH_USERNAME }}
           GH_REPO: ${{ secrets.GH_REPO }}
