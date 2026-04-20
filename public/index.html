@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Finoana Auto Claim</title>
     <style>
-        /* (même style que précédemment) */
         body { font-family: Arial, sans-serif; background: #f4f9ff; margin: 20px; }
         .container { max-width: 1200px; margin: 0 auto; }
         h1, h2 { color: #1e293b; text-align: center; }
@@ -43,7 +42,6 @@
 <div class="container">
     <h1>⚙️ Finoana Auto Claim</h1>
 
-    <!-- Configuration GitHub -->
     <div class="card">
         <h2>🔐 Configuration GitHub</h2>
         <div class="form-row">
@@ -57,7 +55,6 @@
         </div>
     </div>
 
-    <!-- Formulaire d'ajout (sans champ proxy) -->
     <div class="card">
         <h2 id="formTitle">➕ Ajouter un compte</h2>
         <form id="accountForm">
@@ -83,7 +80,6 @@
         </form>
     </div>
 
-    <!-- Liste des comptes -->
     <div class="card">
         <h2>📋 Comptes configurés</h2>
         <div id="messageArea"></div>
@@ -119,7 +115,6 @@
         loadAccounts();
     });
 
-    // API GitHub (identique)
     async function githubApi(method, body = null) {
         if (!ghToken || !ghUsername || !ghRepo) throw new Error('Configuration GitHub manquante');
         const url = `https://api.github.com/repos/${ghUsername}/${ghRepo}/contents/${filePath}`;
@@ -167,7 +162,6 @@
         await githubApi('PUT', body);
     }
 
-    // Déclenchement du workflow (seulement proxyIndex)
     async function triggerWorkflowTest(email, password, platform, proxyIndex) {
         if (!ghToken || !ghUsername || !ghRepo) throw new Error('Configuration GitHub incomplète');
         const apiUrl = `https://api.github.com/repos/${ghUsername}/${ghRepo}/actions/workflows/${workflowId}/dispatches`;
@@ -369,7 +363,6 @@
         await saveAccounts(newAccounts);
     }
 
-    // Formulaire d'ajout avec gestion proxyIndex
     const form = document.getElementById('accountForm');
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -378,15 +371,12 @@
         const timer = parseInt(document.getElementById('timer').value) || 60;
         const platform = document.getElementById('platform').value;
 
-        // Vérification doublon
         if (currentAccounts.some(acc => acc.email === email)) {
             showMessage(`❌ Un compte avec l'email ${email} existe déjà.`, 'error');
             return;
         }
 
-        // Attribuer un proxyIndex cyclique (0 ou 1) basé sur le nombre de comptes existants
-        const proxyIndex = currentAccounts.length % 2; // alterne 0,1,0,1,...
-
+        const proxyIndex = currentAccounts.length % 2;
         showMessage(`🔐 Test de connexion pour ${email} avec proxy index ${proxyIndex}... (max 2 min)`, 'success');
         try {
             await triggerWorkflowTest(email, password, platform, proxyIndex);
@@ -404,7 +394,7 @@
                 resetForm();
             } else {
                 showMessage(`❌ Échec de connexion pour ${email}. Le compte n'a pas été ajouté.`, 'error');
-                await loadAccounts(); // recharger pour effacer toute trace
+                await loadAccounts();
             }
         } catch (err) {
             showMessage(`❌ Impossible de lancer le test : ${err.message}`, 'error');
