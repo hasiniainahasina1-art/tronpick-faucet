@@ -15,8 +15,9 @@ const GH_BRANCH = process.env.GH_BRANCH;
 const GH_FILE_PATH = process.env.GH_FILE_PATH;
 const JP_PROXY_LIST = (process.env.JP_PROXY_LIST || '').split(',').filter(p => p.trim() !== '');
 
-if (JP_PROXY_LIST.length < 2) {
-    console.error('❌ JP_PROXY_LIST doit contenir au moins 2 proxys');
+// Accepter 1 proxy ou plus
+if (JP_PROXY_LIST.length === 0) {
+    console.error('❌ JP_PROXY_LIST doit contenir au moins 1 proxy');
     process.exit(1);
 }
 
@@ -26,8 +27,7 @@ if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: tr
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Fonctions utilitaires (fillField, humanClickAt, parseProxyUrl, performLogin)
-// Note : parseProxyUrl supporte socks5 et http
+// --- parseProxyUrl supporte socks5 et http ---
 function parseProxyUrl(proxyUrl) {
     if (!proxyUrl) return null;
     proxyUrl = proxyUrl.trim();
@@ -55,6 +55,7 @@ function parseProxyUrl(proxyUrl) {
     return null;
 }
 
+// --- Fonctions utilitaires ---
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -132,10 +133,10 @@ async function performLogin(page, email, password) {
     }
 }
 
+// --- Main ---
 async function run() {
     let browser;
     try {
-        // Récupérer l'URL du proxy depuis JP_PROXY_LIST
         const proxyUrl = JP_PROXY_LIST[proxyIndex];
         if (!proxyUrl) throw new Error(`Aucun proxy trouvé pour l'index ${proxyIndex}`);
         const proxyConfig = parseProxyUrl(proxyUrl);
