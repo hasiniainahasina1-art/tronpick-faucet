@@ -3,12 +3,11 @@ const { Octokit } = require('@octokit/rest');
 const fs = require('fs');
 const path = require('path');
 
-// Variables d'environnement (inchangées)
+// Variables d'environnement
 const email = process.env.TEST_EMAIL;
 const password = process.env.TEST_PASSWORD;
 const platform = process.env.TEST_PLATFORM;
-const proxyIndex = process.env.TEST_PROXY_INDEX !== '' ? parseInt(process.env.TEST_PROXY_INDEX) : undefined;
-const proxyUrlFromInput = process.env.TEST_PROXY_URL || '';
+const proxyIndex = process.env.TEST_PROXY_INDEX !== '' ? parseInt(process.env.TEST_PROXY_INDEX) : 0;
 const GH_TOKEN = process.env.GH_TOKEN;
 const GH_USERNAME = process.env.GH_USERNAME;
 const GH_REPO = process.env.GH_REPO;
@@ -16,13 +15,46 @@ const GH_BRANCH = process.env.GH_BRANCH;
 const GH_FILE_PATH = process.env.GH_FILE_PATH;
 const JP_PROXY_LIST = (process.env.JP_PROXY_LIST || '').split(',').filter(p => p.trim() !== '');
 
+if (JP_PROXY_LIST.length < 2) {
+    console.error('❌ JP_PROXY_LIST doit contenir au moins 2 proxys');
+    process.exit(1);
+}
+
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Fonctions utilitaires (fillField, humanClickAt, parseProxyUrl, performLogin) identiques à avant
+// Fonctions utilitaires (fillField, humanClickAt, parseProxyUrl, performLogin)
+// Note : parseProxyUrl supporte socks5 et http
+function parseProxyUrl(proxyUrl) {
+    if (!proxyUrl) return null;
+    proxyUrl = proxyUrl.trim();
+    // Format SOCKS5
+    let match = proxyUrl.match(/^(?:socks5:\/\/)?([^:]+):([^@]+)@([^:]+):(\d+)\/?$/);
+    if (match) {
+        return {
+            type: 'socks5',
+            server: `socks5://${match[3]}:${match[4]}`,
+            username: match[1],
+            password: match[2]
+        };
+    }
+    // Format HTTP
+    match = proxyUrl.match(/^(?:http:\/\/)?([^:]+):([^@]+)@([^:]+):(\d+)\/?$/);
+    if (match) {
+        return {
+            type: 'http',
+            server: `http://${match[3]}:${match[4]}`,
+            username: match[1],
+            password: match[2]
+        };
+    }
+    console.error('❌ Format de proxy non supporté:', proxyUrl);
+    return null;
+}
+
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -58,19 +90,6 @@ async function humanClickAt(page, coords) {
         await delay(15);
     }
     await page.mouse.click(coords.x, coords.y);
-}
-
-function parseProxyUrl(proxyUrl) {
-    const match = proxyUrl.match(/^http:\/\/([^:]+):([^@]+)@([^:]+):(\d+)$/);
-    if (!match) {
-        console.error('❌ Format de proxy invalide:', proxyUrl);
-        return null;
-    }
-    return {
-        server: `http://${match[3]}:${match[4]}`,
-        username: match[1],
-        password: match[2]
-    };
 }
 
 async function performLogin(page, email, password) {
@@ -113,31 +132,31 @@ async function performLogin(page, email, password) {
     }
 }
 
-// --- Main avec réessai en cas d'erreur ---
 async function run() {
     let browser;
     try {
-        // Déterminer le proxy à utiliser
-        let proxyUrl = proxyUrlFromInput;
-        if (!proxyUrl && JP_PROXY_LIST.length > 0) {
-            if (proxyIndex !== undefined && JP_PROXY_LIST[proxyIndex]) {
-                proxyUrl = JP_PROXY_LIST[proxyIndex];
-            } else {
-                proxyUrl = JP_PROXY_LIST[0];
-            }
-        }
-        if (!proxyUrl) throw new Error('Aucun proxy disponible');
+        // Récupérer l'URL du proxy depuis JP_PROXY_LIST
+        const proxyUrl = JP_PROXY_LIST[proxyIndex];
+        if (!proxyUrl) throw new Error(`Aucun proxy trouvé pour l'index ${proxyIndex}`);
         const proxyConfig = parseProxyUrl(proxyUrl);
         if (!proxyConfig) throw new Error('Proxy invalide');
-        console.log(`🔄 Proxy utilisé : ${proxyConfig.server}`);
+        console.log(`🔄 Proxy utilisé : ${proxyConfig.type} ${proxyConfig.server}`);
 
-        const { browser: br, page } = await connect({
-            headless: false,
-            turnstile: true,
-            proxy: proxyConfig,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
-        });
+        let args = ['--no-sandbox', '--disable-setuid-sandbox'];
+        let connectOptions = { headless: false, turnstile: true, args };
+        if (proxyConfig.type === 'http') {
+            connectOptions.proxy = proxyConfig;
+        } else if (proxyConfig.type === 'socks5') {
+            args.push(`--proxy-server=${proxyConfig.server}`);
+        }
+
+        const { browser: br, page } = await connect(connectOptions);
         browser = br;
+
+        if (proxyConfig.type === 'socks5') {
+            await page.authenticate({ username: proxyConfig.username, password: proxyConfig.password });
+            console.log('🔐 Authentification SOCKS5 appliquée');
+        }
 
         await page.setViewport({ width: 1280, height: 720 });
         const loginUrl = `https://${platform}.io/login.php`;
@@ -145,7 +164,6 @@ async function run() {
         await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 60000 });
         await page.screenshot({ path: path.join(screenshotsDir, '01_login_page.png'), fullPage: true });
 
-        // Tentative de login avec réessai
         let loginSuccess = false;
         let lastError = null;
         const maxAttempts = 2;
@@ -173,13 +191,11 @@ async function run() {
             throw new Error(`Login échoué après ${maxAttempts} tentatives : ${lastError.message}`);
         }
 
-        // Succès : récupérer les cookies
         const freshCookies = await page.cookies();
         console.log(`🍪 Cookies récupérés : ${freshCookies.length}`);
         await page.screenshot({ path: path.join(screenshotsDir, '02_login_success.png'), fullPage: true });
         await browser.close();
 
-        // Ne mettre à jour accounts.json que si des cookies sont récupérés
         if (freshCookies.length > 0) {
             const octokit = new Octokit({ auth: GH_TOKEN });
             let accounts = [];
@@ -193,13 +209,12 @@ async function run() {
                 email,
                 password,
                 platform,
-                proxy: proxyUrl,
+                proxyIndex: proxyIndex,
                 enabled: true,
                 cookies: freshCookies,
                 cookiesStatus: 'valid',
                 lastClaim: Date.now(),
-                timer: 60,
-                proxyIndex: proxyIndex !== undefined ? proxyIndex : 0
+                timer: 60
             };
             if (existingIndex !== -1) accounts[existingIndex] = newAccount;
             else accounts.push(newAccount);
