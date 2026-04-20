@@ -7,6 +7,7 @@ const email = process.env.TEST_EMAIL;
 const password = process.env.TEST_PASSWORD;
 const platform = process.env.TEST_PLATFORM;
 const proxyIndex = process.env.TEST_PROXY_INDEX !== '' ? parseInt(process.env.TEST_PROXY_INDEX) : 0;
+const initialTimerStr = process.env.TEST_INITIAL_TIMER || '60:00';
 const GH_TOKEN = process.env.GH_TOKEN;
 const GH_USERNAME = process.env.GH_USERNAME;
 const GH_REPO = process.env.GH_REPO;
@@ -38,6 +39,14 @@ function parseProxyUrl(proxyUrl) {
         username: match[1],
         password: match[2]
     };
+}
+
+function timeStrToMinutes(str) {
+    if (!str || !str.includes(':')) return 60;
+    const parts = str.split(':');
+    const mins = parseInt(parts[0]) || 0;
+    const secs = parseInt(parts[1]) || 0;
+    return mins + secs / 60;
 }
 
 async function fillField(page, selector, value, fieldName) {
@@ -180,18 +189,9 @@ async function run() {
                 accounts = JSON.parse(Buffer.from(res.data.content, 'base64').toString());
             } catch (e) {}
 
-            // IMPORTANT : le timer initial doit venir de l'input de l'utilisateur.
-            // Ce script n'a pas accès à cette valeur. Il laisse le timer à 60 (valeur par défaut).
-            // En réalité, le front-end enverra le timer dans le champ "initialTimer",
-            // mais ce workflow ne le reçoit pas. Pour que l'auto-login enregistre le bon timer,
-            // il faudrait ajouter un input "initialTimer" dans le workflow.
-            // Par simplicité, nous ne modifions pas le timer ici ; le front-end le fera lors de la sauvegarde initiale.
-            // Cependant, pour être cohérent, on va vérifier si le compte existe déjà et conserver son timer.
+            // Convertir le timer saisi (mm:ss) en minutes décimales
+            const timerValue = timeStrToMinutes(initialTimerStr);
             const existingIndex = accounts.findIndex(a => a.email === email);
-            let timerValue = 60; // défaut
-            if (existingIndex !== -1 && accounts[existingIndex].timer) {
-                timerValue = accounts[existingIndex].timer;
-            }
             const newAccount = {
                 email,
                 password,
@@ -221,7 +221,7 @@ async function run() {
                 branch: GH_BRANCH,
                 sha
             });
-            console.log(`✅ Compte ${email} enregistré avec succès (${freshCookies.length} cookies).`);
+            console.log(`✅ Compte ${email} enregistré avec succès (timer initial = ${initialTimerStr})`);
             process.exit(0);
         } else {
             console.log(`❌ Connexion réussie mais aucun cookie récupéré pour ${email}.`);
