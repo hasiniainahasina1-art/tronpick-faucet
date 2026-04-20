@@ -3,7 +3,6 @@ const { Octokit } = require('@octokit/rest');
 const fs = require('fs');
 const path = require('path');
 
-// Variables d'environnement
 const email = process.env.TEST_EMAIL;
 const password = process.env.TEST_PASSWORD;
 const platform = process.env.TEST_PLATFORM;
@@ -15,7 +14,6 @@ const GH_BRANCH = process.env.GH_BRANCH;
 const GH_FILE_PATH = process.env.GH_FILE_PATH;
 const JP_PROXY_LIST = (process.env.JP_PROXY_LIST || '').split(',').filter(p => p.trim() !== '');
 
-// Accepter 1 proxy ou plus
 if (JP_PROXY_LIST.length === 0) {
     console.error('❌ JP_PROXY_LIST doit contenir au moins 1 proxy');
     process.exit(1);
@@ -27,35 +25,24 @@ if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: tr
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// --- parseProxyUrl supporte socks5 et http ---
+// Parse proxy URL pour HTTP uniquement
 function parseProxyUrl(proxyUrl) {
     if (!proxyUrl) return null;
     proxyUrl = proxyUrl.trim();
-    // Format SOCKS5
-    let match = proxyUrl.match(/^(?:socks5:\/\/)?([^:]+):([^@]+)@([^:]+):(\d+)\/?$/);
-    if (match) {
-        return {
-            type: 'socks5',
-            server: `socks5://${match[3]}:${match[4]}`,
-            username: match[1],
-            password: match[2]
-        };
+    // Format attendu : http://user:pass@ip:port
+    const match = proxyUrl.match(/^http:\/\/([^:]+):([^@]+)@([^:]+):(\d+)$/);
+    if (!match) {
+        console.error('❌ Format HTTP invalide (attendu: http://user:pass@ip:port) :', proxyUrl);
+        return null;
     }
-    // Format HTTP
-    match = proxyUrl.match(/^(?:http:\/\/)?([^:]+):([^@]+)@([^:]+):(\d+)\/?$/);
-    if (match) {
-        return {
-            type: 'http',
-            server: `http://${match[3]}:${match[4]}`,
-            username: match[1],
-            password: match[2]
-        };
-    }
-    console.error('❌ Format de proxy non supporté:', proxyUrl);
-    return null;
+    return {
+        type: 'http',
+        server: `http://${match[3]}:${match[4]}`,
+        username: match[1],
+        password: match[2]
+    };
 }
 
-// --- Fonctions utilitaires ---
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -133,7 +120,6 @@ async function performLogin(page, email, password) {
     }
 }
 
-// --- Main ---
 async function run() {
     let browser;
     try {
@@ -141,23 +127,15 @@ async function run() {
         if (!proxyUrl) throw new Error(`Aucun proxy trouvé pour l'index ${proxyIndex}`);
         const proxyConfig = parseProxyUrl(proxyUrl);
         if (!proxyConfig) throw new Error('Proxy invalide');
-        console.log(`🔄 Proxy utilisé : ${proxyConfig.type} ${proxyConfig.server}`);
+        console.log(`🔄 Proxy utilisé : ${proxyConfig.server}`);
 
-        let args = ['--no-sandbox', '--disable-setuid-sandbox'];
-        let connectOptions = { headless: false, turnstile: true, args };
-        if (proxyConfig.type === 'http') {
-            connectOptions.proxy = proxyConfig;
-        } else if (proxyConfig.type === 'socks5') {
-            args.push(`--proxy-server=${proxyConfig.server}`);
-        }
-
-        const { browser: br, page } = await connect(connectOptions);
+        const { browser: br, page } = await connect({
+            headless: false,
+            turnstile: true,
+            proxy: proxyConfig,   // l'objet proxy est passé directement (http avec auth)
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        });
         browser = br;
-
-        if (proxyConfig.type === 'socks5') {
-            await page.authenticate({ username: proxyConfig.username, password: proxyConfig.password });
-            console.log('🔐 Authentification SOCKS5 appliquée');
-        }
 
         await page.setViewport({ width: 1280, height: 720 });
         const loginUrl = `https://${platform}.io/login.php`;
