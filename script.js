@@ -84,7 +84,6 @@ async function humanScrollToClaim(page) {
     }
 }
 
-// Ajout d'un point rouge visible
 async function addRedDot(page, x, y) {
     await page.evaluate((x, y) => {
         const dot = document.createElement('div');
@@ -304,7 +303,6 @@ async function claimWithCookies(account) {
         await delay(5000);
         await page.screenshot({ path: path.join(screenshotsDir, `07_after_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        // Vérification plus complète des messages
         const messages = await page.evaluate(() => {
             return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [role="alert"], .alert, .message, .notification'))
                 .map(el => el.textContent.trim()).filter(t => t);
@@ -356,6 +354,8 @@ async function claimWithCookies(account) {
                 nextIndex++;
                 needsSave = true;
             }
+            // S'assurer que timer est défini (par défaut 60)
+            if (!acc.timer) acc.timer = 60;
         }
         for (const acc of accounts) {
             if (!acc.enabled) continue;
@@ -380,7 +380,7 @@ async function claimWithCookies(account) {
             const isEligible = (now - lastClaim) >= intervalMs;
             if (!isEligible) {
                 const remainingMin = Math.ceil((intervalMs - (now - lastClaim)) / 60000);
-                console.log(`⏳ Prochain claim dans ${remainingMin} min`);
+                console.log(`⏳ Prochain claim dans ${remainingMin} min (timer actuel: ${acc.timer} min)`);
                 continue;
             }
             console.log(`🚀 Claim éligible`);
@@ -388,6 +388,11 @@ async function claimWithCookies(account) {
                 const result = await claimWithCookies(acc);
                 if (result.success) {
                     acc.lastClaim = now;
+                    // Si le timer n'est pas encore 60, on le bascule après le premier claim réussi
+                    if (acc.timer !== 60) {
+                        console.log(`🕒 Premier claim réussi pour ${acc.email} : passage du timer de ${acc.timer} à 60 minutes.`);
+                        acc.timer = 60;
+                    }
                     console.log(`✅ Claim réussi : ${result.message}`);
                 } else {
                     console.log(`❌ Claim échoué : ${result.message}`);
