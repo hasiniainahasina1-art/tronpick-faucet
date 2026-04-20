@@ -27,8 +27,8 @@ const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
-const TURNSTILE_FAUCET_COORDS = { x: 400, y: 158 };
-const CLAIM_COORDS = { x: 400, y: 223 };
+const TURNSTILE_FAUCET_COORDS = { x: 640, y: 158 };
+const CLAIM_COORDS = { x: 640, y: 223 };
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -84,7 +84,27 @@ async function humanScrollToClaim(page) {
     }
 }
 
+// Ajout d'un point rouge visible
+async function addRedDot(page, x, y) {
+    await page.evaluate((x, y) => {
+        const dot = document.createElement('div');
+        dot.style.position = 'fixed';
+        dot.style.left = (x - 5) + 'px';
+        dot.style.top = (y - 5) + 'px';
+        dot.style.width = '10px';
+        dot.style.height = '10px';
+        dot.style.borderRadius = '50%';
+        dot.style.backgroundColor = 'red';
+        dot.style.zIndex = '99999';
+        dot.style.pointerEvents = 'none';
+        dot.id = 'click-dot';
+        document.body.appendChild(dot);
+        setTimeout(() => dot.remove(), 2000);
+    }, x, y);
+}
+
 async function humanClickAt(page, coords) {
+    await addRedDot(page, coords.x, coords.y);
     const start = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
     const steps = 20;
     for (let i = 1; i <= steps; i++) {
@@ -96,6 +116,7 @@ async function humanClickAt(page, coords) {
         await delay(15);
     }
     await page.mouse.click(coords.x, coords.y);
+    console.log(`🖱️ Clic à (${coords.x}, ${coords.y})`);
 }
 
 async function loadAccounts() {
@@ -245,7 +266,6 @@ async function claimWithCookies(account) {
         await delay(5000);
         if (page.url().includes('login.php')) throw new Error('Cookies expirés');
 
-        // --- Séquence claim (sans déconnexion) ---
         console.log('⏳ Attente de 5 secondes...');
         await delay(5000);
         console.log('🔄 Actualisation de la page faucet...');
@@ -260,12 +280,14 @@ async function claimWithCookies(account) {
         await delay(2000);
         await page.screenshot({ path: path.join(screenshotsDir, `03_turnstile_visible_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
+        console.log('🖱️ Premier clic sur Turnstile faucet');
         await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
         await page.screenshot({ path: path.join(screenshotsDir, `04_after_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
         console.log('⏳ Attente de 10 secondes...');
         await delay(10000);
 
+        console.log('🖱️ Second clic sur Turnstile faucet');
         await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
         await page.screenshot({ path: path.join(screenshotsDir, `05_after_second_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
@@ -276,20 +298,26 @@ async function claimWithCookies(account) {
         await delay(10000);
         await page.screenshot({ path: path.join(screenshotsDir, `06_before_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
+        console.log('🖱️ Clic sur CLAIM');
         await humanClickAt(page, CLAIM_COORDS);
         await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
         await delay(5000);
         await page.screenshot({ path: path.join(screenshotsDir, `07_after_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
+        // Vérification plus complète des messages
         const messages = await page.evaluate(() => {
-            return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [role="alert"]'))
+            return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [role="alert"], .alert, .message, .notification'))
                 .map(el => el.textContent.trim()).filter(t => t);
         });
-        const btnDisabled = await page.evaluate(() => document.querySelector('#process_claim_hourly_faucet')?.disabled || false);
-        const success = btnDisabled || messages.some(m => /success|claimed|reward|sent/i.test(m));
+        const btnDisabled = await page.evaluate(() => {
+            const btn = document.querySelector('#process_claim_hourly_faucet');
+            return btn ? btn.disabled : false;
+        });
+        const success = btnDisabled || messages.some(m => /success|claimed|reward|sent|received|thanks/i.test(m));
         const resultMessage = messages[0] || (btnDisabled ? 'Bouton désactivé (succès présumé)' : 'Aucune réaction');
+        console.log(`📢 Messages détectés : ${messages.join(' | ')}`);
+        console.log(`🔘 Bouton désactivé : ${btnDisabled}`);
 
-        // ⚠️ AUCUNE DÉCONNEXION – on garde les cookies actifs
         return { success, message: resultMessage };
     } catch (error) {
         if (error.message.includes('Cookies expirés')) {
@@ -360,7 +388,7 @@ async function claimWithCookies(account) {
                 const result = await claimWithCookies(acc);
                 if (result.success) {
                     acc.lastClaim = now;
-                    console.log(`✅ Claim réussi`);
+                    console.log(`✅ Claim réussi : ${result.message}`);
                 } else {
                     console.log(`❌ Claim échoué : ${result.message}`);
                 }
