@@ -99,7 +99,7 @@
       }
     ],
     "cookiesStatus": "valid",
-    "lastClaim": 1776638612260,
+    "lastClaim": 1776642977967,
     "timer": 60,
     "proxyIndex": 0
   },
@@ -204,6 +204,7 @@
         "priority": "Medium",
         "sourceScheme": "Secure"
       }
-    ]
+    ],
+    "proxyIndex": 0
   }
 ]
