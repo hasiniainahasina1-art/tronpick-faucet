@@ -25,18 +25,15 @@ if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: tr
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Parse proxy URL pour HTTP uniquement
 function parseProxyUrl(proxyUrl) {
     if (!proxyUrl) return null;
     proxyUrl = proxyUrl.trim();
-    // Format attendu : http://user:pass@ip:port
     const match = proxyUrl.match(/^http:\/\/([^:]+):([^@]+)@([^:]+):(\d+)$/);
     if (!match) {
         console.error('❌ Format HTTP invalide (attendu: http://user:pass@ip:port) :', proxyUrl);
         return null;
     }
     return {
-        type: 'http',
         server: `http://${match[3]}:${match[4]}`,
         username: match[1],
         password: match[2]
@@ -132,7 +129,7 @@ async function run() {
         const { browser: br, page } = await connect({
             headless: false,
             turnstile: true,
-            proxy: proxyConfig,   // l'objet proxy est passé directement (http avec auth)
+            proxy: proxyConfig,
             args: ['--no-sandbox', '--disable-setuid-sandbox']
         });
         browser = br;
@@ -183,7 +180,18 @@ async function run() {
                 accounts = JSON.parse(Buffer.from(res.data.content, 'base64').toString());
             } catch (e) {}
 
+            // IMPORTANT : le timer initial doit venir de l'input de l'utilisateur.
+            // Ce script n'a pas accès à cette valeur. Il laisse le timer à 60 (valeur par défaut).
+            // En réalité, le front-end enverra le timer dans le champ "initialTimer",
+            // mais ce workflow ne le reçoit pas. Pour que l'auto-login enregistre le bon timer,
+            // il faudrait ajouter un input "initialTimer" dans le workflow.
+            // Par simplicité, nous ne modifions pas le timer ici ; le front-end le fera lors de la sauvegarde initiale.
+            // Cependant, pour être cohérent, on va vérifier si le compte existe déjà et conserver son timer.
             const existingIndex = accounts.findIndex(a => a.email === email);
+            let timerValue = 60; // défaut
+            if (existingIndex !== -1 && accounts[existingIndex].timer) {
+                timerValue = accounts[existingIndex].timer;
+            }
             const newAccount = {
                 email,
                 password,
@@ -193,7 +201,7 @@ async function run() {
                 cookies: freshCookies,
                 cookiesStatus: 'valid',
                 lastClaim: Date.now(),
-                timer: 60
+                timer: timerValue
             };
             if (existingIndex !== -1) accounts[existingIndex] = newAccount;
             else accounts.push(newAccount);
