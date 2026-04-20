@@ -1,10 +1,8 @@
-// script.js
 const { connect } = require('puppeteer-real-browser');
 const { Octokit } = require('@octokit/rest');
 const fs = require('fs');
 const path = require('path');
 
-// --- Configuration GitHub ---
 const GH_TOKEN = process.env.GH_TOKEN;
 const GH_USERNAME = process.env.GH_USERNAME;
 const GH_REPO = process.env.GH_REPO;
@@ -18,26 +16,37 @@ if (!GH_TOKEN || !GH_USERNAME || !GH_REPO) {
 
 const octokit = new Octokit({ auth: GH_TOKEN });
 
-// --- Liste des proxys ---
 const JP_PROXY_LIST = (process.env.JP_PROXY_LIST || '').split(',').filter(p => p.trim() !== '');
-if (JP_PROXY_LIST.length < 2) {
-    console.error('❌ JP_PROXY_LIST doit contenir au moins 2 proxys');
+if (JP_PROXY_LIST.length === 0) {
+    console.error('❌ JP_PROXY_LIST doit contenir au moins 1 proxy');
     process.exit(1);
 }
 console.log(`🌐 ${JP_PROXY_LIST.length} proxy(s) chargé(s).`);
 
-// --- Dossier captures ---
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
-// --- Coordonnées (ajustez selon votre interface) ---
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
-const TURNSTILE_FAUCET_COORDS = { x: 400, y: 158 };
-const CLAIM_COORDS = { x: 400, y: 223 };
+const TURNSTILE_FAUCET_COORDS = { x: 640, y: 158 };
+const CLAIM_COORDS = { x: 640, y: 223 };
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// --- Utilitaires ---
+function parseProxyUrl(proxyUrl) {
+    if (!proxyUrl) return null;
+    proxyUrl = proxyUrl.trim();
+    const match = proxyUrl.match(/^http:\/\/([^:]+):([^@]+)@([^:]+):(\d+)$/);
+    if (!match) {
+        console.error('❌ Format HTTP invalide (attendu: http://user:pass@ip:port) :', proxyUrl);
+        return null;
+    }
+    return {
+        server: `http://${match[3]}:${match[4]}`,
+        username: match[1],
+        password: match[2]
+    };
+}
+
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -89,7 +98,6 @@ async function humanClickAt(page, coords) {
     await page.mouse.click(coords.x, coords.y);
 }
 
-// --- Gestion GitHub ---
 async function loadAccounts() {
     try {
         const res = await octokit.repos.getContent({
@@ -128,44 +136,27 @@ async function saveAccounts(accounts) {
     });
 }
 
-// --- Gestion des proxies ---
 function getProxyUrlForAccount(account) {
     if (account.proxyIndex !== undefined && JP_PROXY_LIST[account.proxyIndex]) {
         return JP_PROXY_LIST[account.proxyIndex];
     }
-    return JP_PROXY_LIST[0]; // fallback
+    return JP_PROXY_LIST[0];
 }
 
 async function connectWithProxy(proxyUrl) {
-    let proxyServer = proxyUrl;
-    let username = null, password = null;
-    if (proxyUrl.includes('@')) {
-        const match = proxyUrl.match(/^http:\/\/([^:]+):([^@]+)@(.+)$/);
-        if (match) {
-            username = match[1];
-            password = match[2];
-            proxyServer = `http://${match[3]}`;
-        }
-    }
-    console.log(`🔄 Connexion avec proxy : ${proxyServer}`);
+    const proxyConfig = parseProxyUrl(proxyUrl);
+    if (!proxyConfig) throw new Error('Proxy invalide');
+    console.log(`🔄 Connexion avec proxy : ${proxyConfig.server}`);
+
     const { browser, page } = await connect({
         headless: false,
         turnstile: true,
-        args: [`--proxy-server=${proxyServer}`]
+        proxy: proxyConfig,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
-    if (username && password) {
-        await page.authenticate({ username, password });
-        console.log(`🔐 Authentification proxy appliquée`);
-    }
-    // Vérification IP
-    await page.goto('https://api.ipify.org?format=json', { waitUntil: 'domcontentloaded', timeout: 10000 });
-    const ipText = await page.evaluate(() => document.body.textContent);
-    const ipData = JSON.parse(ipText);
-    console.log(`🌍 IP publique via proxy : ${ipData.ip}`);
     return { browser, page };
 }
 
-// --- Login et capture cookies ---
 async function performLoginAndCaptureCookies(account) {
     const { email, password, platform } = account;
     console.log(`🔐 Login pour ${email}...`);
@@ -187,15 +178,16 @@ async function performLoginAndCaptureCookies(account) {
         browser = br;
         await page.setViewport({ width: 1280, height: 720 });
         await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+
         await fillField(page, 'input[type="email"], input[name="email"]', email, 'email');
         await fillField(page, 'input[type="password"]', password, 'password');
         await delay(2000);
 
-        // Turnstile
         const frame = await page.waitForFrame(
             f => f.url().includes('challenges.cloudflare.com/turnstile'),
             { timeout: 15000 }
         ).catch(() => null);
+
         if (frame) {
             console.log('✅ Iframe Turnstile trouvée (login), clic checkbox');
             await frame.click('input[type="checkbox"]');
@@ -230,7 +222,6 @@ async function performLoginAndCaptureCookies(account) {
     }
 }
 
-// --- Claim avec cookies (avec gestion d'expiration) ---
 async function claimWithCookies(account) {
     const { email, cookies, platform } = account;
     console.log(`🍪 Claim pour ${email} via cookies`);
@@ -254,7 +245,6 @@ async function claimWithCookies(account) {
         await delay(5000);
         if (page.url().includes('login.php')) throw new Error('Cookies expirés');
 
-        // Séquence claim (identique à votre version)
         console.log('⏳ Attente de 5 secondes...');
         await delay(5000);
         console.log('🔄 Actualisation...');
@@ -287,7 +277,6 @@ async function claimWithCookies(account) {
         const success = btnDisabled || messages.some(m => /success|claimed|reward|sent/i.test(m));
         const resultMessage = messages[0] || (btnDisabled ? 'Bouton désactivé (succès présumé)' : 'Aucune réaction');
 
-        // Déconnexion
         console.log('⏳ Attente de 20 secondes avant déconnexion...');
         await delay(20000);
         await page.screenshot({ path: path.join(screenshotsDir, `08_before_logout_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
@@ -332,7 +321,6 @@ async function claimWithCookies(account) {
     }
 }
 
-// --- Main ---
 (async () => {
     try {
         let accounts = await loadAccounts();
