@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Finoana Auto Claim</title>
     <style>
+        /* (même style que précédemment) */
         body { font-family: Arial, sans-serif; background: #f4f9ff; margin: 20px; }
         .container { max-width: 1200px; margin: 0 auto; }
         h1, h2 { color: #1e293b; text-align: center; }
@@ -56,7 +57,7 @@
         </div>
     </div>
 
-    <!-- Formulaire d'ajout -->
+    <!-- Formulaire d'ajout (sans champ proxy) -->
     <div class="card">
         <h2 id="formTitle">➕ Ajouter un compte</h2>
         <form id="accountForm">
@@ -74,7 +75,6 @@
                     <option value="solpick">SolPick</option>
                     <option value="binpick">BinPick</option>
                 </select></div>
-                <div class="form-group"><label>Proxy (optionnel)</label><input type="text" id="proxy" placeholder="http://user:pass@ip:port"></div>
             </div>
             <div class="form-row">
                 <button type="submit" id="saveBtn">💾 Ajouter</button>
@@ -89,7 +89,7 @@
         <div id="messageArea"></div>
         <div class="text-center"><button id="refreshBtn" class="secondary">🔄 Rafraîchir</button></div>
         <table id="accountsTable">
-            <thead><tr><th>Email</th><th>Intervalle</th><th>Plateforme</th><th>Proxy (IP)</th><th>Cookies</th><th>Prochain claim</th><th>Statut</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Email</th><th>Intervalle</th><th>Plateforme</th><th>Proxy Index</th><th>Cookies</th><th>Prochain claim</th><th>Statut</th><th>Actions</th></tr></thead>
             <tbody id="accountsBody"></tbody>
         </table>
     </div>
@@ -119,7 +119,7 @@
         loadAccounts();
     });
 
-    // --- API GitHub avec gestion d'erreur ---
+    // API GitHub (identique)
     async function githubApi(method, body = null) {
         if (!ghToken || !ghUsername || !ghRepo) throw new Error('Configuration GitHub manquante');
         const url = `https://api.github.com/repos/${ghUsername}/${ghRepo}/contents/${filePath}`;
@@ -167,8 +167,8 @@
         await githubApi('PUT', body);
     }
 
-    // --- Déclenchement du workflow avec proxy personnalisé ---
-    async function triggerWorkflowTest(email, password, platform, proxyUrl, proxyIndex) {
+    // Déclenchement du workflow (seulement proxyIndex)
+    async function triggerWorkflowTest(email, password, platform, proxyIndex) {
         if (!ghToken || !ghUsername || !ghRepo) throw new Error('Configuration GitHub incomplète');
         const apiUrl = `https://api.github.com/repos/${ghUsername}/${ghRepo}/actions/workflows/${workflowId}/dispatches`;
         const payload = {
@@ -177,8 +177,7 @@
                 email: email,
                 password: password,
                 platform: platform,
-                proxyIndex: (proxyIndex !== undefined && proxyIndex !== null) ? String(proxyIndex) : '',
-                proxyUrl: proxyUrl || ''
+                proxyIndex: (proxyIndex !== undefined && proxyIndex !== null) ? String(proxyIndex) : ''
             }
         };
         const response = await fetch(apiUrl, {
@@ -193,19 +192,6 @@
         if (!response.ok) {
             const errorText = await response.text();
             throw new Error(`GitHub API error (${response.status}): ${errorText}`);
-        }
-    }
-
-    function extractProxyIp(proxyUrl) {
-        if (!proxyUrl || proxyUrl === '') return 'Défaut';
-        try {
-            let url = proxyUrl;
-            if (url.startsWith('http://')) url = url.substring(7);
-            const atIndex = url.indexOf('@');
-            if (atIndex !== -1) url = url.substring(atIndex + 1);
-            return url;
-        } catch (e) {
-            return proxyUrl;
         }
     }
 
@@ -242,7 +228,7 @@
         const tbody = document.getElementById('accountsBody');
         tbody.innerHTML = '';
         if (!currentAccounts.length) {
-            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">Aucun compte configuré</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Aucun compte configuré</td></tr>';
             return;
         }
         currentAccounts.forEach((acc, idx) => {
@@ -264,7 +250,7 @@
             row.insertCell().textContent = acc.email;
             row.insertCell().textContent = (acc.timer || 60) + ' min';
             row.insertCell().textContent = acc.platform || 'tronpick';
-            row.insertCell().textContent = extractProxyIp(acc.proxy);
+            row.insertCell().textContent = (acc.proxyIndex !== undefined) ? `Proxy ${acc.proxyIndex}` : 'Auto';
             const cookieCell = row.insertCell();
             cookieCell.innerHTML = `<span class="cookie-status ${getCookieStatusClass(acc)}">${getCookieStatusIcon(acc)} ${getCookieStatusText(acc)}</span>`;
             const countdownCell = row.insertCell();
@@ -311,7 +297,7 @@
         }
         showMessage(`🔐 Test manuel pour ${account.email}... (max 2 min)`, 'success');
         try {
-            await triggerWorkflowTest(account.email, account.password, account.platform, account.proxy, account.proxyIndex);
+            await triggerWorkflowTest(account.email, account.password, account.platform, account.proxyIndex);
             showMessage(`⏳ Workflow déclenché. Vérification des cookies...`, 'success');
             let maxAttempts = 24;
             let updated = null;
@@ -365,7 +351,6 @@
         document.getElementById('password').value = acc.password;
         document.getElementById('timer').value = acc.timer || 60;
         document.getElementById('platform').value = acc.platform || 'tronpick';
-        document.getElementById('proxy').value = acc.proxy || '';
         document.getElementById('formTitle').textContent = `✏️ Modifier ${acc.email}`;
         document.getElementById('saveBtn').textContent = '💾 Mettre à jour';
         document.getElementById('cancelBtn').classList.remove('hidden');
@@ -384,7 +369,7 @@
         await saveAccounts(newAccounts);
     }
 
-    // Formulaire d'ajout avec validation et polling
+    // Formulaire d'ajout avec gestion proxyIndex
     const form = document.getElementById('accountForm');
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -392,7 +377,6 @@
         const password = document.getElementById('password').value;
         const timer = parseInt(document.getElementById('timer').value) || 60;
         const platform = document.getElementById('platform').value;
-        const proxy = document.getElementById('proxy').value.trim() || null;
 
         // Vérification doublon
         if (currentAccounts.some(acc => acc.email === email)) {
@@ -400,9 +384,12 @@
             return;
         }
 
-        showMessage(`🔐 Test de connexion pour ${email}... (max 2 min)`, 'success');
+        // Attribuer un proxyIndex cyclique (0 ou 1) basé sur le nombre de comptes existants
+        const proxyIndex = currentAccounts.length % 2; // alterne 0,1,0,1,...
+
+        showMessage(`🔐 Test de connexion pour ${email} avec proxy index ${proxyIndex}... (max 2 min)`, 'success');
         try {
-            await triggerWorkflowTest(email, password, platform, proxy, '');
+            await triggerWorkflowTest(email, password, platform, proxyIndex);
             showMessage('⏳ Workflow déclenché. Vérification des cookies...', 'success');
             let maxAttempts = 24;
             let updatedAccount = null;
@@ -413,11 +400,11 @@
                 if (updatedAccount && updatedAccount.cookies && updatedAccount.cookies.length > 0) break;
             }
             if (updatedAccount && updatedAccount.cookies && updatedAccount.cookies.length > 0) {
-                showMessage(`✅ Connexion réussie pour ${email} (${updatedAccount.cookies.length} cookies enregistrés)`, 'success');
+                showMessage(`✅ Connexion réussie pour ${email} (${updatedAccount.cookies.length} cookies)`, 'success');
                 resetForm();
             } else {
                 showMessage(`❌ Échec de connexion pour ${email}. Le compte n'a pas été ajouté.`, 'error');
-                await loadAccounts(); // recharge pour effacer toute trace
+                await loadAccounts(); // recharger pour effacer toute trace
             }
         } catch (err) {
             showMessage(`❌ Impossible de lancer le test : ${err.message}`, 'error');
