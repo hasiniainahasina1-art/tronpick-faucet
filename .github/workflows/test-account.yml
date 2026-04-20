@@ -14,6 +14,10 @@ on:
       proxyIndex:
         required: false
         type: string
+      initialTimer:
+        required: false
+        type: string
+        default: "60:00"
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -30,6 +34,7 @@ jobs:
           TEST_PASSWORD: ${{ github.event.inputs.password }}
           TEST_PLATFORM: ${{ github.event.inputs.platform }}
           TEST_PROXY_INDEX: ${{ github.event.inputs.proxyIndex }}
+          TEST_INITIAL_TIMER: ${{ github.event.inputs.initialTimer }}
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GH_USERNAME: ${{ secrets.GH_USERNAME }}
           GH_REPO: ${{ secrets.GH_REPO }}
