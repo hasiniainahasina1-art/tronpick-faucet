@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Finoana Auto Claim</title>
     <style>
-        /* (gardez le même style que précédemment) */
+        /* (styles inchangés) */
         body { font-family: Arial, sans-serif; background: #f4f9ff; margin: 20px; }
         .container { max-width: 1200px; margin: 0 auto; }
         h1, h2 { color: #1e293b; text-align: center; }
@@ -74,7 +74,7 @@
                     <option value="solpick">SolPick</option>
                     <option value="binpick">BinPick</option>
                 </select></div>
-                <div class="form-group"><label>Temps restant (min) *</label><input type="number" id="initialTimer" min="1" value="60" required></div>
+                <div class="form-group"><label>Temps restant (mm:ss)</label><input type="text" id="initialTimer" placeholder="15:30" pattern="[0-9]{1,2}:[0-5][0-9]" required></div>
             </div>
             <div class="form-row">
                 <button type="submit" id="saveBtn">💾 Ajouter</button>
@@ -166,7 +166,7 @@
         await githubApi('PUT', body);
     }
 
-    async function triggerWorkflowTest(email, password, platform, proxyIndex) {
+    async function triggerWorkflowTest(email, password, platform, proxyIndex, initialTimerStr) {
         if (!ghToken || !ghUsername || !ghRepo) throw new Error('Configuration GitHub incomplète');
         const apiUrl = `https://api.github.com/repos/${ghUsername}/${ghRepo}/actions/workflows/${workflowId}/dispatches`;
         const payload = {
@@ -175,7 +175,8 @@
                 email: email,
                 password: password,
                 platform: platform,
-                proxyIndex: (proxyIndex !== undefined && proxyIndex !== null) ? String(proxyIndex) : ''
+                proxyIndex: (proxyIndex !== undefined && proxyIndex !== null) ? String(proxyIndex) : '',
+                initialTimer: initialTimerStr   // envoi au format mm:ss
             }
         };
         const response = await fetch(apiUrl, {
@@ -220,6 +221,24 @@
     let currentAccounts = [];
     let countdownIntervals = [];
 
+    // Convertit un nombre de minutes (décimal) en chaîne mm:ss
+    function minutesToTimeStr(minutes) {
+        if (isNaN(minutes)) return '0:00';
+        const totalSeconds = Math.floor(minutes * 60);
+        const mins = Math.floor(totalSeconds / 60);
+        const secs = totalSeconds % 60;
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    // Convertit une chaîne mm:ss en minutes décimales
+    function timeStrToMinutes(str) {
+        if (!str || !str.includes(':')) return 60;
+        const parts = str.split(':');
+        const mins = parseInt(parts[0]) || 0;
+        const secs = parseInt(parts[1]) || 0;
+        return mins + secs / 60;
+    }
+
     function renderAccounts() {
         countdownIntervals.forEach(clearInterval);
         countdownIntervals = [];
@@ -239,11 +258,9 @@
             const formatTime = (ms) => {
                 if (ms <= 0) return '0:00';
                 const totalSeconds = Math.floor(ms / 1000);
-                const h = Math.floor(totalSeconds / 3600);
-                const m = Math.floor((totalSeconds % 3600) / 60);
-                const s = totalSeconds % 60;
-                if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-                return `${m}:${s.toString().padStart(2, '0')}`;
+                const mins = Math.floor(totalSeconds / 60);
+                const secs = totalSeconds % 60;
+                return `${mins}:${secs.toString().padStart(2, '0')}`;
             };
             row.insertCell().textContent = acc.email;
             row.insertCell().textContent = acc.platform || 'tronpick';
@@ -294,7 +311,7 @@
         }
         showMessage(`🔐 Test manuel pour ${account.email}... (max 2 min)`, 'success');
         try {
-            await triggerWorkflowTest(account.email, account.password, account.platform, account.proxyIndex);
+            await triggerWorkflowTest(account.email, account.password, account.platform, account.proxyIndex, minutesToTimeStr(account.timer));
             showMessage(`⏳ Workflow déclenché. Vérification des cookies...`, 'success');
             let maxAttempts = 24;
             let updated = null;
@@ -347,7 +364,7 @@
         document.getElementById('email').value = acc.email;
         document.getElementById('password').value = acc.password;
         document.getElementById('platform').value = acc.platform || 'tronpick';
-        document.getElementById('initialTimer').value = acc.timer || 60;
+        document.getElementById('initialTimer').value = minutesToTimeStr(acc.timer);
         document.getElementById('formTitle').textContent = `✏️ Modifier ${acc.email}`;
         document.getElementById('saveBtn').textContent = '💾 Mettre à jour';
         document.getElementById('cancelBtn').classList.remove('hidden');
@@ -372,7 +389,7 @@
         const email = document.getElementById('email').value.trim();
         const password = document.getElementById('password').value;
         const platform = document.getElementById('platform').value;
-        const initialTimer = parseInt(document.getElementById('initialTimer').value) || 60;
+        const initialTimerStr = document.getElementById('initialTimer').value.trim();
 
         if (currentAccounts.some(acc => acc.email === email)) {
             showMessage(`❌ Un compte avec l'email ${email} existe déjà.`, 'error');
@@ -382,7 +399,8 @@
         const proxyIndex = currentAccounts.length % 2;
         showMessage(`🔐 Test de connexion pour ${email} avec proxy index ${proxyIndex}... (max 2 min)`, 'success');
         try {
-            await triggerWorkflowTest(email, password, platform, proxyIndex);
+            // Déclencher le workflow en passant le timer saisi
+            await triggerWorkflowTest(email, password, platform, proxyIndex, initialTimerStr);
             showMessage('⏳ Workflow déclenché. Vérification des cookies...', 'success');
             let maxAttempts = 24;
             let updatedAccount = null;
