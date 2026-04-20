@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Finoana Auto Claim</title>
     <style>
+        /* (gardez le même style que précédemment) */
         body { font-family: Arial, sans-serif; background: #f4f9ff; margin: 20px; }
         .container { max-width: 1200px; margin: 0 auto; }
         h1, h2 { color: #1e293b; text-align: center; }
@@ -42,6 +43,7 @@
 <div class="container">
     <h1>⚙️ Finoana Auto Claim</h1>
 
+    <!-- Configuration GitHub -->
     <div class="card">
         <h2>🔐 Configuration GitHub</h2>
         <div class="form-row">
@@ -55,6 +57,7 @@
         </div>
     </div>
 
+    <!-- Formulaire d'ajout -->
     <div class="card">
         <h2 id="formTitle">➕ Ajouter un compte</h2>
         <form id="accountForm">
@@ -64,7 +67,6 @@
                 <div class="form-group"><label>Mot de passe *</label><input type="password" id="password" required></div>
             </div>
             <div class="form-row">
-                <div class="form-group"><label>Intervalle (min) *</label><input type="number" id="timer" min="1" value="60" required></div>
                 <div class="form-group"><label>Plateforme *</label><select id="platform" required>
                     <option value="tronpick">TronPick</option>
                     <option value="litepick">LitePick</option>
@@ -72,6 +74,7 @@
                     <option value="solpick">SolPick</option>
                     <option value="binpick">BinPick</option>
                 </select></div>
+                <div class="form-group"><label>Temps restant (min) *</label><input type="number" id="initialTimer" min="1" value="60" required></div>
             </div>
             <div class="form-row">
                 <button type="submit" id="saveBtn">💾 Ajouter</button>
@@ -80,12 +83,13 @@
         </form>
     </div>
 
+    <!-- Liste des comptes -->
     <div class="card">
         <h2>📋 Comptes configurés</h2>
         <div id="messageArea"></div>
         <div class="text-center"><button id="refreshBtn" class="secondary">🔄 Rafraîchir</button></div>
         <table id="accountsTable">
-            <thead><tr><th>Email</th><th>Intervalle</th><th>Plateforme</th><th>Proxy Index</th><th>Cookies</th><th>Prochain claim</th><th>Statut</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Email</th><th>Plateforme</th><th>Proxy Index</th><th>Cookies</th><th>Prochain claim</th><th>Statut</th><th>Actions</th></tr></thead>
             <tbody id="accountsBody"></tbody>
         </table>
     </div>
@@ -242,7 +246,6 @@
                 return `${m}:${s.toString().padStart(2, '0')}`;
             };
             row.insertCell().textContent = acc.email;
-            row.insertCell().textContent = (acc.timer || 60) + ' min';
             row.insertCell().textContent = acc.platform || 'tronpick';
             row.insertCell().textContent = (acc.proxyIndex !== undefined) ? `Proxy ${acc.proxyIndex}` : 'Auto';
             const cookieCell = row.insertCell();
@@ -343,8 +346,8 @@
         document.getElementById('accountIndex').value = index;
         document.getElementById('email').value = acc.email;
         document.getElementById('password').value = acc.password;
-        document.getElementById('timer').value = acc.timer || 60;
         document.getElementById('platform').value = acc.platform || 'tronpick';
+        document.getElementById('initialTimer').value = acc.timer || 60;
         document.getElementById('formTitle').textContent = `✏️ Modifier ${acc.email}`;
         document.getElementById('saveBtn').textContent = '💾 Mettre à jour';
         document.getElementById('cancelBtn').classList.remove('hidden');
@@ -368,8 +371,8 @@
         e.preventDefault();
         const email = document.getElementById('email').value.trim();
         const password = document.getElementById('password').value;
-        const timer = parseInt(document.getElementById('timer').value) || 60;
         const platform = document.getElementById('platform').value;
+        const initialTimer = parseInt(document.getElementById('initialTimer').value) || 60;
 
         if (currentAccounts.some(acc => acc.email === email)) {
             showMessage(`❌ Un compte avec l'email ${email} existe déjà.`, 'error');
