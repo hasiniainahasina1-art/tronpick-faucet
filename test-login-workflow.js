@@ -117,7 +117,7 @@ async function performLogin(page, email, password) {
 async function run() {
     let browser;
     try {
-        // Déterminer le proxy à utiliser
+        // Déterminer le proxy à utiliser (proxyUrlFromInput prioritaire)
         let proxyUrl = proxyUrlFromInput;
         if (!proxyUrl && JP_PROXY_LIST.length > 0) {
             if (proxyIndex !== undefined && JP_PROXY_LIST[proxyIndex]) {
@@ -195,7 +195,6 @@ async function run() {
             console.log(`✅ Compte ${email} enregistré avec succès (${freshCookies.length} cookies).`);
         } else {
             console.log(`❌ Connexion échouée pour ${email} – aucun cookie récupéré. Compte non enregistré.`);
-            // On ne modifie pas accounts.json
         }
         process.exit(freshCookies.length > 0 ? 0 : 1);
     } catch (err) {
