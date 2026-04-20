@@ -354,8 +354,7 @@ async function claimWithCookies(account) {
                 nextIndex++;
                 needsSave = true;
             }
-            // S'assurer que timer est défini (par défaut 60)
-            if (!acc.timer) acc.timer = 60;
+            if (!acc.timer) acc.timer = 60; // sécurité
         }
         for (const acc of accounts) {
             if (!acc.enabled) continue;
