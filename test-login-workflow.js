@@ -8,6 +8,7 @@ const password = process.env.TEST_PASSWORD;
 const platform = process.env.TEST_PLATFORM;
 const proxyIndex = process.env.TEST_PROXY_INDEX !== '' ? parseInt(process.env.TEST_PROXY_INDEX) : 0;
 const initialTimerStr = process.env.TEST_INITIAL_TIMER || '60:00';
+const action = process.env.TEST_ACTION || 'login';
 const GH_TOKEN = process.env.GH_TOKEN;
 const GH_USERNAME = process.env.GH_USERNAME;
 const GH_REPO = process.env.GH_REPO;
@@ -31,7 +32,7 @@ function parseProxyUrl(proxyUrl) {
     proxyUrl = proxyUrl.trim();
     const match = proxyUrl.match(/^http:\/\/([^:]+):([^@]+)@([^:]+):(\d+)$/);
     if (!match) {
-        console.error('❌ Format HTTP invalide (attendu: http://user:pass@ip:port) :', proxyUrl);
+        console.error('❌ Format HTTP invalide:', proxyUrl);
         return null;
     }
     return {
@@ -126,7 +127,71 @@ async function performLogin(page, email, password) {
     }
 }
 
+async function performLogout(page, account) {
+    console.log(`🚪 Déconnexion pour ${account.email}`);
+    const siteUrl = `https://${account.platform}.io/faucet.php`;
+    await page.goto(siteUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+    await delay(2000);
+    const logoutClicked = await page.evaluate(() => {
+        const keywords = ['logout', 'sign out', 'déconnexion', 'se déconnecter', 'log out'];
+        const elements = [...document.querySelectorAll('a, button')];
+        const logoutElement = elements.find(el => {
+            const text = (el.textContent || '').toLowerCase();
+            return keywords.some(kw => text.includes(kw));
+        });
+        if (logoutElement) {
+            logoutElement.click();
+            return true;
+        }
+        return false;
+    });
+    if (logoutClicked) {
+        console.log('✅ Déconnexion effectuée');
+        await delay(3000);
+    } else {
+        console.log('⚠️ Bouton de déconnexion non trouvé');
+    }
+}
+
 async function run() {
+    if (action === 'logout') {
+        // Mode déconnexion
+        let browser;
+        try {
+            const octokit = new Octokit({ auth: GH_TOKEN });
+            let accounts = [];
+            try {
+                const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH });
+                accounts = JSON.parse(Buffer.from(res.data.content, 'base64').toString());
+            } catch (e) {}
+            const account = accounts.find(a => a.email === email);
+            if (!account || !account.cookies) {
+                console.log(`Aucun cookie trouvé pour ${email}, impossible de se déconnecter.`);
+                process.exit(0);
+            }
+            const proxyUrl = JP_PROXY_LIST[proxyIndex];
+            const proxyConfig = parseProxyUrl(proxyUrl);
+            if (!proxyConfig) throw new Error('Proxy invalide');
+            const { browser: br, page } = await connect({
+                headless: false,
+                turnstile: true,
+                proxy: proxyConfig,
+                args: ['--no-sandbox', '--disable-setuid-sandbox']
+            });
+            browser = br;
+            await page.setCookie(...account.cookies);
+            await performLogout(page, account);
+            await browser.close();
+            console.log(`Déconnexion terminée pour ${email}`);
+            process.exit(0);
+        } catch (err) {
+            if (browser) await browser.close();
+            console.error('Erreur déconnexion:', err.message);
+            process.exit(1);
+        }
+    }
+
+    // Mode login (reste identique à avant)
     let browser;
     try {
         const proxyUrl = JP_PROXY_LIST[proxyIndex];
@@ -188,15 +253,13 @@ async function run() {
                 const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH });
                 accounts = JSON.parse(Buffer.from(res.data.content, 'base64').toString());
             } catch (e) {}
-
-            // Convertir le timer saisi (mm:ss) en minutes décimales
             const timerValue = timeStrToMinutes(initialTimerStr);
             const existingIndex = accounts.findIndex(a => a.email === email);
             const newAccount = {
                 email,
                 password,
                 platform,
-                proxyIndex: proxyIndex,
+                proxyIndex,
                 enabled: true,
                 cookies: freshCookies,
                 cookiesStatus: 'valid',
