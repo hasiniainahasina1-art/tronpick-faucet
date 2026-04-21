@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Finoana Auto Claim</title>
     <style>
+        /* (même style que précédemment) */
         body { font-family: Arial, sans-serif; background: #f4f9ff; margin: 20px; }
         .container { max-width: 1200px; margin: 0 auto; }
         h1, h2 { color: #1e293b; text-align: center; }
@@ -89,7 +90,7 @@
     const BRANCH = 'main';
     const FILE_PATH = 'accounts.json';
 
-    // --- Appel au proxy Vercel (gère 204 et erreurs) ---
+    // --- Appel au proxy Vercel ---
     async function githubApi(method, path, body = null) {
         const url = `/api/github?path=${encodeURIComponent(path)}`;
         const options = { method, headers: { 'Content-Type': 'application/json' } };
@@ -328,11 +329,11 @@
     async function deleteAccount(index) {
         const acc = currentAccounts[index];
         if (!confirm(`Supprimer définitivement le compte ${acc.email} ?`)) return;
-        // Déconnexion via workflow
+        // Déconnexion via workflow (avec capture)
         showMessage(`🚪 Déconnexion de ${acc.email}...`, 'success');
         try {
             await triggerWorkflowLogout(acc.email, acc.password, acc.platform, acc.proxyIndex);
-            showMessage(`✅ Déconnexion effectuée`, 'success');
+            showMessage(`✅ Déconnexion effectuée (captures dans artefacts)`, 'success');
         } catch (err) {
             console.warn(err);
             showMessage(`⚠️ Échec déconnexion (compte supprimé quand même)`, 'error');
