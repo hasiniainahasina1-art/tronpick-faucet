@@ -18,6 +18,10 @@ on:
         required: false
         type: string
         default: "60:00"
+      action:
+        required: false
+        type: string
+        default: "login"
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -28,13 +32,14 @@ jobs:
           node-version: '20'
       - run: sudo apt-get update && sudo apt-get install -y xvfb
       - run: npm install puppeteer-real-browser @octokit/rest
-      - name: Run login test
+      - name: Run action
         env:
           TEST_EMAIL: ${{ github.event.inputs.email }}
           TEST_PASSWORD: ${{ github.event.inputs.password }}
           TEST_PLATFORM: ${{ github.event.inputs.platform }}
           TEST_PROXY_INDEX: ${{ github.event.inputs.proxyIndex }}
           TEST_INITIAL_TIMER: ${{ github.event.inputs.initialTimer }}
+          TEST_ACTION: ${{ github.event.inputs.action }}
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GH_USERNAME: ${{ secrets.GH_USERNAME }}
           GH_REPO: ${{ secrets.GH_REPO }}
