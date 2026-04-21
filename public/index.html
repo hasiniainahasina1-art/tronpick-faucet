@@ -206,7 +206,7 @@
         const tbody = document.getElementById('accountsBody');
         tbody.innerHTML = '';
         if (!currentAccounts.length) {
-            tbody.innerHTML = '<td><td colspan="7" style="text-align:center;">Aucun compte configuré</td></td>';
+            tbody.innerHTML = '<td><td colspan="7" style="text-align:center;">Aucun compte configuré</td></tr>';
             return;
         }
         currentAccounts.forEach((acc, idx) => {
@@ -330,19 +330,22 @@
     async function deleteAccount(index) {
         const acc = currentAccounts[index];
         if (!confirm(`Supprimer définitivement le compte ${acc.email} ?`)) return;
-        // Déconnexion via workflow (avec capture)
-        showMessage(`🚪 Déconnexion de ${acc.email}...`, 'success');
+        showMessage(`🚪 Déconnexion et suppression de ${acc.email}...`, 'success');
         try {
             await triggerWorkflowLogout(acc.email, acc.password, acc.platform, acc.proxyIndex);
-            showMessage(`✅ Déconnexion effectuée (captures dans artefacts)`, 'success');
+            showMessage(`⏳ Workflow déclenché. Attente de la suppression...`, 'success');
+            // Attendre que le workflow ait le temps de s'exécuter et de supprimer le compte
+            await new Promise(resolve => setTimeout(resolve, 30000));
+            await loadAccounts(); // recharger depuis GitHub
+            const stillExists = currentAccounts.some(a => a.email === acc.email);
+            if (!stillExists) {
+                showMessage(`✅ Compte ${acc.email} supprimé avec succès.`, 'success');
+            } else {
+                showMessage(`⚠️ Échec de la suppression (compte toujours présent).`, 'error');
+            }
         } catch (err) {
-            console.warn(err);
-            showMessage(`⚠️ Échec déconnexion (compte supprimé quand même)`, 'error');
+            showMessage(`❌ Erreur : ${err.message}`, 'error');
         }
-        // Suppression du compte
-        const newAccounts = [...currentAccounts];
-        newAccounts.splice(index, 1);
-        await saveAccounts(newAccounts);
     }
 
     async function toggleAccount(index) {
