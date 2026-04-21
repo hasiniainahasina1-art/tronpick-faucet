@@ -132,6 +132,9 @@ async function performLogout(page, account) {
     const siteUrl = `https://${account.platform}.io/faucet.php`;
     await page.goto(siteUrl, { waitUntil: 'networkidle2', timeout: 30000 });
     await delay(2000);
+    // Capture avant déconnexion
+    await page.screenshot({ path: path.join(screenshotsDir, `logout_before_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+    
     const logoutClicked = await page.evaluate(() => {
         const keywords = ['logout', 'sign out', 'déconnexion', 'se déconnecter', 'log out'];
         const elements = [...document.querySelectorAll('a, button')];
@@ -146,16 +149,19 @@ async function performLogout(page, account) {
         return false;
     });
     if (logoutClicked) {
-        console.log('✅ Déconnexion effectuée');
+        console.log('✅ Clic sur déconnexion effectué');
         await delay(3000);
+        // Capture après déconnexion
+        await page.screenshot({ path: path.join(screenshotsDir, `logout_after_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
     } else {
         console.log('⚠️ Bouton de déconnexion non trouvé');
+        // Capture d'erreur
+        await page.screenshot({ path: path.join(screenshotsDir, `logout_not_found_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
     }
 }
 
 async function run() {
     if (action === 'logout') {
-        // Mode déconnexion
         let browser;
         try {
             const octokit = new Octokit({ auth: GH_TOKEN });
@@ -172,6 +178,7 @@ async function run() {
             const proxyUrl = JP_PROXY_LIST[proxyIndex];
             const proxyConfig = parseProxyUrl(proxyUrl);
             if (!proxyConfig) throw new Error('Proxy invalide');
+            console.log(`🔄 Proxy utilisé pour déconnexion : ${proxyConfig.server}`);
             const { browser: br, page } = await connect({
                 headless: false,
                 turnstile: true,
@@ -191,7 +198,7 @@ async function run() {
         }
     }
 
-    // Mode login (reste identique à avant)
+    // --- Mode login (identique à avant) ---
     let browser;
     try {
         const proxyUrl = JP_PROXY_LIST[proxyIndex];
