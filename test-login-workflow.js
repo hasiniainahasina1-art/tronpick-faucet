@@ -132,9 +132,8 @@ async function performLogout(page, account) {
     const siteUrl = `https://${account.platform}.io/faucet.php`;
     await page.goto(siteUrl, { waitUntil: 'networkidle2', timeout: 30000 });
     await delay(2000);
-    // Capture avant déconnexion
     await page.screenshot({ path: path.join(screenshotsDir, `logout_before_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-    
+
     const logoutClicked = await page.evaluate(() => {
         const keywords = ['logout', 'sign out', 'déconnexion', 'se déconnecter', 'log out'];
         const elements = [...document.querySelectorAll('a, button')];
@@ -151,11 +150,9 @@ async function performLogout(page, account) {
     if (logoutClicked) {
         console.log('✅ Clic sur déconnexion effectué');
         await delay(3000);
-        // Capture après déconnexion
         await page.screenshot({ path: path.join(screenshotsDir, `logout_after_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
     } else {
         console.log('⚠️ Bouton de déconnexion non trouvé');
-        // Capture d'erreur
         await page.screenshot({ path: path.join(screenshotsDir, `logout_not_found_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
     }
 }
@@ -170,15 +167,22 @@ async function run() {
                 const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH });
                 accounts = JSON.parse(Buffer.from(res.data.content, 'base64').toString());
             } catch (e) {}
-            const account = accounts.find(a => a.email === email);
-            if (!account || !account.cookies) {
-                console.log(`Aucun cookie trouvé pour ${email}, impossible de se déconnecter.`);
+
+            const normalizedEmail = email.trim().toLowerCase();
+            console.log(`🔍 Recherche du compte: "${normalizedEmail}"`);
+            console.log(`📋 Comptes présents: ${accounts.map(a => a.email).join(', ')}`);
+
+            const account = accounts.find(a => a.email.toLowerCase() === normalizedEmail);
+            if (!account || !account.cookies || account.cookies.length === 0) {
+                console.log(`❌ Aucun cookie trouvé pour ${email}, impossible de se déconnecter.`);
                 process.exit(0);
             }
+
             const proxyUrl = JP_PROXY_LIST[proxyIndex];
             const proxyConfig = parseProxyUrl(proxyUrl);
             if (!proxyConfig) throw new Error('Proxy invalide');
             console.log(`🔄 Proxy utilisé pour déconnexion : ${proxyConfig.server}`);
+
             const { browser: br, page } = await connect({
                 headless: false,
                 turnstile: true,
@@ -198,7 +202,7 @@ async function run() {
         }
     }
 
-    // --- Mode login (identique à avant) ---
+    // --- Mode login (identique) ---
     let browser;
     try {
         const proxyUrl = JP_PROXY_LIST[proxyIndex];
@@ -261,9 +265,10 @@ async function run() {
                 accounts = JSON.parse(Buffer.from(res.data.content, 'base64').toString());
             } catch (e) {}
             const timerValue = timeStrToMinutes(initialTimerStr);
-            const existingIndex = accounts.findIndex(a => a.email === email);
+            const normalizedEmail = email.trim().toLowerCase();
+            const existingIndex = accounts.findIndex(a => a.email.toLowerCase() === normalizedEmail);
             const newAccount = {
-                email,
+                email: normalizedEmail,
                 password,
                 platform,
                 proxyIndex,
@@ -286,12 +291,12 @@ async function run() {
                 owner: GH_USERNAME,
                 repo: GH_REPO,
                 path: GH_FILE_PATH,
-                message: `Test login for ${email} - success (${freshCookies.length} cookies)`,
+                message: `Test login for ${normalizedEmail} - success (${freshCookies.length} cookies)`,
                 content,
                 branch: GH_BRANCH,
                 sha
             });
-            console.log(`✅ Compte ${email} enregistré avec succès (timer initial = ${initialTimerStr})`);
+            console.log(`✅ Compte ${normalizedEmail} enregistré avec succès (timer initial = ${initialTimerStr})`);
             process.exit(0);
         } else {
             console.log(`❌ Connexion réussie mais aucun cookie récupéré pour ${email}.`);
