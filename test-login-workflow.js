@@ -155,6 +155,7 @@ async function performLogout(page, account) {
         console.log('⚠️ Bouton de déconnexion non trouvé');
         await page.screenshot({ path: path.join(screenshotsDir, `logout_not_found_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
     }
+    return logoutClicked; // retourne true si le clic a été effectué
 }
 
 async function run() {
@@ -166,18 +167,19 @@ async function run() {
             try {
                 const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH });
                 accounts = JSON.parse(Buffer.from(res.data.content, 'base64').toString());
-            } catch (e) {}
-
-            const normalizedEmail = email.trim().toLowerCase();
-            console.log(`🔍 Recherche du compte: "${normalizedEmail}"`);
-            console.log(`📋 Comptes présents: ${accounts.map(a => a.email).join(', ')}`);
-
-            const account = accounts.find(a => a.email.toLowerCase() === normalizedEmail);
-            if (!account || !account.cookies || account.cookies.length === 0) {
-                console.log(`❌ Aucun cookie trouvé pour ${email}, impossible de se déconnecter.`);
-                process.exit(0);
+            } catch (e) {
+                console.log(`Impossible de lire accounts.json : ${e.message}`);
+                process.exit(1);
             }
 
+            const normalizedEmail = email.trim().toLowerCase();
+            const accountIndex = accounts.findIndex(a => a.email.toLowerCase() === normalizedEmail);
+            if (accountIndex === -1 || !accounts[accountIndex].cookies || accounts[accountIndex].cookies.length === 0) {
+                console.log(`❌ Aucun cookie trouvé pour ${email}, impossible de se déconnecter.`);
+                process.exit(1);
+            }
+
+            const account = accounts[accountIndex];
             const proxyUrl = JP_PROXY_LIST[proxyIndex];
             const proxyConfig = parseProxyUrl(proxyUrl);
             if (!proxyConfig) throw new Error('Proxy invalide');
@@ -191,18 +193,41 @@ async function run() {
             });
             browser = br;
             await page.setCookie(...account.cookies);
-            await performLogout(page, account);
+            const logoutSuccess = await performLogout(page, account);
             await browser.close();
-            console.log(`Déconnexion terminée pour ${email}`);
-            process.exit(0);
+
+            if (logoutSuccess) {
+                // Supprimer le compte de accounts.json
+                accounts.splice(accountIndex, 1);
+                const content = Buffer.from(JSON.stringify(accounts, null, 2)).toString('base64');
+                let sha = null;
+                try {
+                    const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH });
+                    sha = res.data.sha;
+                } catch (e) {}
+                await octokit.repos.createOrUpdateFileContents({
+                    owner: GH_USERNAME,
+                    repo: GH_REPO,
+                    path: GH_FILE_PATH,
+                    message: `Logout and remove account ${email}`,
+                    content,
+                    branch: GH_BRANCH,
+                    sha
+                });
+                console.log(`✅ Déconnexion réussie pour ${email}, compte supprimé.`);
+                process.exit(0);
+            } else {
+                console.log(`❌ Déconnexion échouée (bouton non trouvé) pour ${email}, compte non supprimé.`);
+                process.exit(1);
+            }
         } catch (err) {
             if (browser) await browser.close();
-            console.error('Erreur déconnexion:', err.message);
+            console.error('❌ Erreur lors de la déconnexion :', err.message);
             process.exit(1);
         }
     }
 
-    // --- Mode login (identique) ---
+    // --- Mode login (identique à avant) ---
     let browser;
     try {
         const proxyUrl = JP_PROXY_LIST[proxyIndex];
