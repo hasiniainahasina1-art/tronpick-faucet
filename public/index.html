@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Finoana Auto Claim</title>
     <style>
-        /* (même style que précédemment) */
         body { font-family: Arial, sans-serif; background: #f4f9ff; margin: 20px; }
         .container { max-width: 1200px; margin: 0 auto; }
         h1, h2 { color: #1e293b; text-align: center; }
@@ -135,8 +134,9 @@
         await githubApi('PUT', apiPath, body);
     }
 
-    // --- Déclenchement du workflow (login ou logout) ---
+    // --- Déclenchement du workflow (login ou logout) avec normalisation email ---
     async function triggerWorkflowLogin(email, password, platform, proxyIndex, initialTimerStr) {
+        email = email.trim().toLowerCase();
         const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${WORKFLOW_ID}/dispatches`;
         const payload = {
             ref: BRANCH,
@@ -151,6 +151,7 @@
     }
 
     async function triggerWorkflowLogout(email, password, platform, proxyIndex) {
+        email = email.trim().toLowerCase();
         const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${WORKFLOW_ID}/dispatches`;
         const payload = {
             ref: BRANCH,
@@ -205,7 +206,7 @@
         const tbody = document.getElementById('accountsBody');
         tbody.innerHTML = '';
         if (!currentAccounts.length) {
-            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Aucun compte configuré</td></tr>';
+            tbody.innerHTML = '<td><td colspan="7" style="text-align:center;">Aucun compte configuré</td></td>';
             return;
         }
         currentAccounts.forEach((acc, idx) => {
@@ -353,7 +354,7 @@
     const form = document.getElementById('accountForm');
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const email = document.getElementById('email').value.trim();
+        const email = document.getElementById('email').value.trim().toLowerCase();
         const password = document.getElementById('password').value;
         const platform = document.getElementById('platform').value;
         const initialTimerStr = document.getElementById('initialTimer').value.trim();
