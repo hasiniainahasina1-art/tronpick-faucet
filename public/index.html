@@ -89,18 +89,13 @@
     const BRANCH = 'main';
     const FILE_PATH = 'accounts.json';
 
-    // --- Fonction pour appeler le proxy Vercel (avec gestion 204) ---
+    // --- Appel au proxy Vercel (gère 204 et erreurs) ---
     async function githubApi(method, path, body = null) {
         const url = `/api/github?path=${encodeURIComponent(path)}`;
         const options = { method, headers: { 'Content-Type': 'application/json' } };
         if (body) options.body = JSON.stringify(body);
         const response = await fetch(url, options);
-        
-        // 204 No Content → retourner un objet vide (succès sans données)
-        if (response.status === 204) {
-            return {};
-        }
-        
+        if (response.status === 204) return {};
         const data = await response.json();
         if (!response.ok) {
             let errorMsg = `HTTP ${response.status}`;
@@ -113,7 +108,7 @@
         return data;
     }
 
-    // --- Charger accounts.json ---
+    // --- Chargement / sauvegarde de accounts.json ---
     async function loadAccountsFromGitHub() {
         const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/${FILE_PATH}`;
         try {
@@ -126,7 +121,6 @@
         }
     }
 
-    // --- Sauvegarder accounts.json ---
     async function saveAccountsToGitHub(accounts) {
         let sha = null;
         const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/${FILE_PATH}`;
@@ -140,21 +134,35 @@
         await githubApi('PUT', apiPath, body);
     }
 
-    // --- Déclencher le workflow (via proxy) ---
-    async function triggerWorkflowTest(email, password, platform, proxyIndex, initialTimerStr) {
+    // --- Déclenchement du workflow (login ou logout) ---
+    async function triggerWorkflowLogin(email, password, platform, proxyIndex, initialTimerStr) {
         const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${WORKFLOW_ID}/dispatches`;
         const payload = {
             ref: BRANCH,
             inputs: {
                 email, password, platform,
-                proxyIndex: (proxyIndex !== undefined && proxyIndex !== null) ? String(proxyIndex) : '',
-                initialTimer: initialTimerStr
+                proxyIndex: String(proxyIndex),
+                initialTimer: initialTimerStr,
+                action: 'login'
             }
         };
         await githubApi('POST', apiPath, payload);
     }
 
-    // --- UI Helpers (inchangés) ---
+    async function triggerWorkflowLogout(email, password, platform, proxyIndex) {
+        const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${WORKFLOW_ID}/dispatches`;
+        const payload = {
+            ref: BRANCH,
+            inputs: {
+                email, password, platform,
+                proxyIndex: String(proxyIndex),
+                action: 'logout'
+            }
+        };
+        await githubApi('POST', apiPath, payload);
+    }
+
+    // --- UI Helpers ---
     function showMessage(text, type) {
         const div = document.createElement('div');
         div.className = `message ${type}`;
@@ -258,7 +266,7 @@
     async function manualTestAccount(account) {
         showMessage(`🔐 Test manuel pour ${account.email}... (max 2 min)`, 'success');
         try {
-            await triggerWorkflowTest(account.email, account.password, account.platform, account.proxyIndex, minutesToTimeStr(account.timer));
+            await triggerWorkflowLogin(account.email, account.password, account.platform, account.proxyIndex, minutesToTimeStr(account.timer));
             showMessage(`⏳ Workflow déclenché. Vérification des cookies...`, 'success');
             let maxAttempts = 24;
             let updated = null;
@@ -318,7 +326,18 @@
     }
 
     async function deleteAccount(index) {
-        if (!confirm('Supprimer définitivement ce compte ?')) return;
+        const acc = currentAccounts[index];
+        if (!confirm(`Supprimer définitivement le compte ${acc.email} ?`)) return;
+        // Déconnexion via workflow
+        showMessage(`🚪 Déconnexion de ${acc.email}...`, 'success');
+        try {
+            await triggerWorkflowLogout(acc.email, acc.password, acc.platform, acc.proxyIndex);
+            showMessage(`✅ Déconnexion effectuée`, 'success');
+        } catch (err) {
+            console.warn(err);
+            showMessage(`⚠️ Échec déconnexion (compte supprimé quand même)`, 'error');
+        }
+        // Suppression du compte
         const newAccounts = [...currentAccounts];
         newAccounts.splice(index, 1);
         await saveAccounts(newAccounts);
@@ -346,7 +365,7 @@
         const proxyIndex = currentAccounts.length % 2;
         showMessage(`🔐 Test de connexion pour ${email}... (max 2 min)`, 'success');
         try {
-            await triggerWorkflowTest(email, password, platform, proxyIndex, initialTimerStr);
+            await triggerWorkflowLogin(email, password, platform, proxyIndex, initialTimerStr);
             showMessage('⏳ Workflow déclenché. Vérification des cookies...', 'success');
             let maxAttempts = 24;
             let updatedAccount = null;
