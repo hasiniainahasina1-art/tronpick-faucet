@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Finoana Auto Claim</title>
     <style>
-        /* (styles inchangés) */
+        /* (styles inchangés, identiques à la version précédente) */
         body { font-family: Arial, sans-serif; background: #f4f9ff; margin: 20px; }
         .container { max-width: 1200px; margin: 0 auto; }
         h1, h2 { color: #1e293b; text-align: center; }
@@ -42,20 +42,6 @@
 <body>
 <div class="container">
     <h1>⚙️ Finoana Auto Claim</h1>
-
-    <!-- Configuration GitHub -->
-    <div class="card">
-        <h2>🔐 Configuration GitHub</h2>
-        <div class="form-row">
-            <div class="form-group"><label>Token GitHub (scope repo + workflow)</label><input type="password" id="ghToken" placeholder="ghp_..."></div>
-            <div class="form-group"><label>Nom d'utilisateur</label><input type="text" id="ghUsername" value="hasiniainahasina1-art"></div>
-            <div class="form-group"><label>Dépôt</label><input type="text" id="ghRepo" value="tronpick-faucet"></div>
-            <button id="saveConfigBtn">💾 Enregistrer</button>
-        </div>
-        <div class="form-row" style="margin-top:10px;">
-            <div class="form-group"><label>Workflow ID (test-account.yml)</label><input type="text" id="workflowId" value="263104494" readonly style="background:#e9ecef;"></div>
-        </div>
-    </div>
 
     <!-- Formulaire d'ajout -->
     <div class="card">
@@ -97,55 +83,36 @@
 
 <script>
 (function() {
-    let ghToken = localStorage.getItem('gh_token') || '';
-    let ghUsername = localStorage.getItem('gh_username') || 'hasiniainahasina1-art';
-    let ghRepo = localStorage.getItem('gh_repo') || 'tronpick-faucet';
-    const workflowId = '263104494';
-    const branch = 'main';
-    const filePath = 'accounts.json';
+    // --- Valeurs fixes (non visibles par l'utilisateur) ---
+    const GH_USERNAME = 'hasiniainahasina1-art';
+    const GH_REPO = 'tronpick-faucet';
+    const WORKFLOW_ID = '263104494';
+    const BRANCH = 'main';
+    const FILE_PATH = 'accounts.json';
 
-    document.getElementById('ghToken').value = ghToken;
-    document.getElementById('ghUsername').value = ghUsername;
-    document.getElementById('ghRepo').value = ghRepo;
-
-    document.getElementById('saveConfigBtn').addEventListener('click', () => {
-        ghToken = document.getElementById('ghToken').value.trim();
-        ghUsername = document.getElementById('ghUsername').value.trim();
-        ghRepo = document.getElementById('ghRepo').value.trim();
-        localStorage.setItem('gh_token', ghToken);
-        localStorage.setItem('gh_username', ghUsername);
-        localStorage.setItem('gh_repo', ghRepo);
-        showMessage('✅ Configuration enregistrée', 'success');
-        loadAccounts();
-    });
-
-    async function githubApi(method, body = null) {
-        if (!ghToken || !ghUsername || !ghRepo) throw new Error('Configuration GitHub manquante');
-        const url = `https://api.github.com/repos/${ghUsername}/${ghRepo}/contents/${filePath}`;
-        const headers = { 'Authorization': `Bearer ${ghToken}`, 'Accept': 'application/vnd.github.v3+json' };
-        const options = { method, headers };
-        if (body) {
-            options.body = JSON.stringify(body);
-            headers['Content-Type'] = 'application/json';
-        }
-        const res = await fetch(url, options);
-        if (!res.ok) {
-            let errorMsg = `HTTP ${res.status}`;
-            if (res.status === 401) errorMsg = 'Token invalide (401) – Vérifiez votre token';
-            else if (res.status === 403) errorMsg = 'Permission refusée (403) – Token manque de droits (repo + workflow)';
-            else if (res.status === 404) errorMsg = 'Dépôt ou fichier introuvable (404)';
-            else {
-                const err = await res.json().catch(() => ({}));
-                errorMsg = err.message || errorMsg;
-            }
+    // --- Fonction pour appeler le proxy Vercel ---
+    async function githubApi(method, path, body = null) {
+        const url = `/api/github?path=${encodeURIComponent(path)}`;
+        const options = { method, headers: { 'Content-Type': 'application/json' } };
+        if (body) options.body = JSON.stringify(body);
+        const response = await fetch(url, options);
+        const data = await response.json();
+        if (!response.ok) {
+            let errorMsg = `HTTP ${response.status}`;
+            if (response.status === 401) errorMsg = 'Token invalide – contactez l’administrateur';
+            else if (response.status === 403) errorMsg = 'Permission refusée – token insuffisant';
+            else if (response.status === 404) errorMsg = 'Dépôt ou fichier introuvable';
+            else if (data.message) errorMsg = data.message;
             throw new Error(errorMsg);
         }
-        return res.json();
+        return data;
     }
 
+    // --- Charger accounts.json ---
     async function loadAccountsFromGitHub() {
+        const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/${FILE_PATH}`;
         try {
-            const data = await githubApi('GET');
+            const data = await githubApi('GET', apiPath);
             const content = atob(data.content);
             return JSON.parse(content);
         } catch (e) {
@@ -154,46 +121,35 @@
         }
     }
 
+    // --- Sauvegarder accounts.json ---
     async function saveAccountsToGitHub(accounts) {
         let sha = null;
+        const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/${FILE_PATH}`;
         try {
-            const data = await githubApi('GET');
+            const data = await githubApi('GET', apiPath);
             sha = data.sha;
         } catch (e) {}
         const content = btoa(unescape(encodeURIComponent(JSON.stringify(accounts, null, 2))));
-        const body = { message: 'Mise à jour comptes', content, branch };
+        const body = { message: 'Mise à jour comptes', content, branch: BRANCH };
         if (sha) body.sha = sha;
-        await githubApi('PUT', body);
+        await githubApi('PUT', apiPath, body);
     }
 
+    // --- Déclencher le workflow (via proxy) ---
     async function triggerWorkflowTest(email, password, platform, proxyIndex, initialTimerStr) {
-        if (!ghToken || !ghUsername || !ghRepo) throw new Error('Configuration GitHub incomplète');
-        const apiUrl = `https://api.github.com/repos/${ghUsername}/${ghRepo}/actions/workflows/${workflowId}/dispatches`;
+        const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${WORKFLOW_ID}/dispatches`;
         const payload = {
-            ref: 'main',
+            ref: BRANCH,
             inputs: {
-                email: email,
-                password: password,
-                platform: platform,
+                email, password, platform,
                 proxyIndex: (proxyIndex !== undefined && proxyIndex !== null) ? String(proxyIndex) : '',
-                initialTimer: initialTimerStr   // envoi au format mm:ss
+                initialTimer: initialTimerStr
             }
         };
-        const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${ghToken}`,
-                'Accept': 'application/vnd.github.v3+json',
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-        });
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`GitHub API error (${response.status}): ${errorText}`);
-        }
+        await githubApi('POST', apiPath, payload);
     }
 
+    // --- UI Helpers (inchangés) ---
     function showMessage(text, type) {
         const div = document.createElement('div');
         div.className = `message ${type}`;
@@ -221,22 +177,12 @@
     let currentAccounts = [];
     let countdownIntervals = [];
 
-    // Convertit un nombre de minutes (décimal) en chaîne mm:ss
     function minutesToTimeStr(minutes) {
         if (isNaN(minutes)) return '0:00';
         const totalSeconds = Math.floor(minutes * 60);
         const mins = Math.floor(totalSeconds / 60);
         const secs = totalSeconds % 60;
         return `${mins}:${secs.toString().padStart(2, '0')}`;
-    }
-
-    // Convertit une chaîne mm:ss en minutes décimales
-    function timeStrToMinutes(str) {
-        if (!str || !str.includes(':')) return 60;
-        const parts = str.split(':');
-        const mins = parseInt(parts[0]) || 0;
-        const secs = parseInt(parts[1]) || 0;
-        return mins + secs / 60;
     }
 
     function renderAccounts() {
@@ -305,10 +251,6 @@
     }
 
     async function manualTestAccount(account) {
-        if (!ghToken) {
-            showMessage('❌ Token GitHub non configuré', 'error');
-            return;
-        }
         showMessage(`🔐 Test manuel pour ${account.email}... (max 2 min)`, 'success');
         try {
             await triggerWorkflowTest(account.email, account.password, account.platform, account.proxyIndex, minutesToTimeStr(account.timer));
@@ -397,9 +339,8 @@
         }
 
         const proxyIndex = currentAccounts.length % 2;
-        showMessage(`🔐 Test de connexion pour ${email} avec proxy index ${proxyIndex}... (max 2 min)`, 'success');
+        showMessage(`🔐 Test de connexion pour ${email}... (max 2 min)`, 'success');
         try {
-            // Déclencher le workflow en passant le timer saisi
             await triggerWorkflowTest(email, password, platform, proxyIndex, initialTimerStr);
             showMessage('⏳ Workflow déclenché. Vérification des cookies...', 'success');
             let maxAttempts = 24;
@@ -425,8 +366,7 @@
     document.getElementById('cancelBtn').addEventListener('click', resetForm);
     document.getElementById('refreshBtn').addEventListener('click', loadAccounts);
 
-    if (ghToken && ghUsername && ghRepo) loadAccounts();
-    else showMessage('Veuillez configurer votre token GitHub, nom d\'utilisateur et dépôt.', 'error');
+    loadAccounts();
 })();
 </script>
 </body>
