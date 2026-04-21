@@ -127,35 +127,74 @@ async function performLogin(page, email, password) {
     }
 }
 
+// ========== VERSION FINALE DE performLogout (robuste) ==========
 async function performLogout(page, account) {
     console.log(`🚪 Déconnexion pour ${account.email}`);
-    const siteUrl = `https://${account.platform}.io/faucet.php`;
-    await page.goto(siteUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-    await delay(2000);
-    await page.screenshot({ path: path.join(screenshotsDir, `logout_before_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+    const possiblePaths = ['faucet.php', 'index.php', 'dashboard.php', ''];
+    let logoutClicked = false;
 
-    const logoutClicked = await page.evaluate(() => {
-        const keywords = ['logout', 'sign out', 'déconnexion', 'se déconnecter', 'log out'];
-        const elements = [...document.querySelectorAll('a, button')];
-        const logoutElement = elements.find(el => {
-            const text = (el.textContent || '').toLowerCase();
-            return keywords.some(kw => text.includes(kw));
-        });
-        if (logoutElement) {
-            logoutElement.click();
-            return true;
+    for (const path of possiblePaths) {
+        const siteUrl = `https://${account.platform}.io/${path}`;
+        console.log(`Tentative de déconnexion sur ${siteUrl}`);
+        try {
+            await page.goto(siteUrl, { waitUntil: 'networkidle2', timeout: 20000 });
+            await delay(2000);
+            await page.screenshot({ path: path.join(screenshotsDir, `logout_before_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}_${path || 'root'}.png`), fullPage: true });
+        } catch (err) {
+            console.log(`Impossible d'accéder à ${siteUrl}: ${err.message}`);
+            continue;
         }
-        return false;
-    });
-    if (logoutClicked) {
-        console.log('✅ Clic sur déconnexion effectué');
-        await delay(3000);
-        await page.screenshot({ path: path.join(screenshotsDir, `logout_after_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-    } else {
-        console.log('⚠️ Bouton de déconnexion non trouvé');
-        await page.screenshot({ path: path.join(screenshotsDir, `logout_not_found_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+        logoutClicked = await page.evaluate(() => {
+            const keywords = ['logout', 'sign out', 'déconnexion', 'se déconnecter', 'log out', 'exit', 'signout'];
+            const elements = [...document.querySelectorAll('a, button, [role="button"], .logout, #logout, .signout')];
+            const logoutElement = elements.find(el => {
+                const text = (el.textContent || '').toLowerCase();
+                const id = (el.id || '').toLowerCase();
+                const className = (el.className || '').toLowerCase();
+                return keywords.some(kw => text.includes(kw) || id.includes(kw) || className.includes(kw));
+            });
+            if (logoutElement) {
+                logoutElement.click();
+                return true;
+            }
+            return false;
+        });
+
+        if (logoutClicked) {
+            console.log(`✅ Clic sur déconnexion trouvé sur ${siteUrl}`);
+            await delay(3000);
+            await page.screenshot({ path: path.join(screenshotsDir, `logout_after_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+            break;
+        }
     }
-    return logoutClicked; // retourne true si le clic a été effectué
+
+    if (!logoutClicked) {
+        // Tentative directe vers logout.php
+        try {
+            console.log(`Tentative directe vers logout.php`);
+            const logoutUrl = `https://${account.platform}.io/logout.php`;
+            await page.goto(logoutUrl, { waitUntil: 'networkidle2', timeout: 20000 });
+            await delay(3000);
+            const currentUrl = page.url();
+            if (!currentUrl.includes('login.php') && !currentUrl.includes('logout')) {
+                console.log(`Redirection après logout.php, déconnexion probablement réussie`);
+                logoutClicked = true;
+            } else {
+                console.log(`Logout.php n'a pas provoqué de déconnexion`);
+            }
+            await page.screenshot({ path: path.join(screenshotsDir, `logout_direct_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        } catch (err) {
+            console.log(`Échec tentative directe logout.php: ${err.message}`);
+        }
+    }
+
+    if (logoutClicked) {
+        console.log('✅ Déconnexion effectuée');
+    } else {
+        console.log('⚠️ Bouton de déconnexion non trouvé après toutes les tentatives');
+    }
+    return logoutClicked;
 }
 
 async function run() {
@@ -197,7 +236,6 @@ async function run() {
             await browser.close();
 
             if (logoutSuccess) {
-                // Supprimer le compte de accounts.json
                 accounts.splice(accountIndex, 1);
                 const content = Buffer.from(JSON.stringify(accounts, null, 2)).toString('base64');
                 let sha = null;
@@ -227,7 +265,7 @@ async function run() {
         }
     }
 
-    // --- Mode login (identique à avant) ---
+    // --- Mode login (inchangé) ---
     let browser;
     try {
         const proxyUrl = JP_PROXY_LIST[proxyIndex];
