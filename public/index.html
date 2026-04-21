@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Finoana Auto Claim</title>
     <style>
-        /* (styles inchangés, identiques à la version précédente) */
         body { font-family: Arial, sans-serif; background: #f4f9ff; margin: 20px; }
         .container { max-width: 1200px; margin: 0 auto; }
         h1, h2 { color: #1e293b; text-align: center; }
@@ -90,12 +89,18 @@
     const BRANCH = 'main';
     const FILE_PATH = 'accounts.json';
 
-    // --- Fonction pour appeler le proxy Vercel ---
+    // --- Fonction pour appeler le proxy Vercel (avec gestion 204) ---
     async function githubApi(method, path, body = null) {
         const url = `/api/github?path=${encodeURIComponent(path)}`;
         const options = { method, headers: { 'Content-Type': 'application/json' } };
         if (body) options.body = JSON.stringify(body);
         const response = await fetch(url, options);
+        
+        // 204 No Content → retourner un objet vide (succès sans données)
+        if (response.status === 204) {
+            return {};
+        }
+        
         const data = await response.json();
         if (!response.ok) {
             let errorMsg = `HTTP ${response.status}`;
