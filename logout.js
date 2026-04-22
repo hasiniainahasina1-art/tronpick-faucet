@@ -74,6 +74,26 @@ async function humanClickAt(page, coords) {
     console.log(`🖱️ Clic à (${coords.x}, ${coords.y})`);
 }
 
+// Liste tous les boutons/liens de la page (pour déboguer)
+async function listAllButtons(page) {
+    const buttonsInfo = await page.evaluate(() => {
+        const elements = [...document.querySelectorAll('button, a, [role="button"], input[type="button"], input[type="submit"]')];
+        return elements.map(el => ({
+            tag: el.tagName,
+            text: (el.textContent || '').trim(),
+            id: el.id,
+            className: el.className,
+            href: el.href,
+            rect: el.getBoundingClientRect()
+        }));
+    });
+    console.log(`🔘 Boutons trouvés : ${buttonsInfo.length}`);
+    buttonsInfo.forEach((b, i) => {
+        console.log(`${i+1}. ${b.tag} "${b.text}" (${b.id ? '#'+b.id : ''} ${b.className ? '.'+b.className : ''}) position: (${Math.round(b.rect.x)}, ${Math.round(b.rect.y)})`);
+    });
+    return buttonsInfo;
+}
+
 async function performLogout(page, account) {
     console.log(`🚪 Déconnexion pour ${account.email} selon séquence spécifique`);
 
@@ -87,11 +107,14 @@ async function performLogout(page, account) {
     console.log('⏳ Attente de 15 secondes après actualisation...');
     await delay(15000);
 
-    // 3. Clic à (720, 150) avec point rouge
-    console.log('🖱️ Premier clic à (620, 050)');
-    await humanClickAt(page, { x: 650, y: 80 });
+    // --- Liste des boutons (debug) ---
+    await listAllButtons(page);
 
-    // 4. Capture d'écran
+    // 3. Clic à (720, 150) avec point rouge
+    console.log('🖱️ Premier clic à (720, 150)');
+    await humanClickAt(page, { x: 720, y: 150 });
+
+    // 4. Capture d'écran après premier clic
     const screenshot1 = path.join(screenshotsDir, `logout_step1_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`);
     await page.screenshot({ path: screenshot1, fullPage: true });
     console.log(`📸 Capture après premier clic: ${screenshot1}`);
@@ -104,23 +127,37 @@ async function performLogout(page, account) {
     console.log('🖱️ Second clic à (650, 250)');
     await humanClickAt(page, { x: 650, y: 250 });
 
-    // 7. Capture d'écran
+    // 7. Capture d'écran après second clic
     const screenshot2 = path.join(screenshotsDir, `logout_step2_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`);
     await page.screenshot({ path: screenshot2, fullPage: true });
     console.log(`📸 Capture après second clic: ${screenshot2}`);
 
-    // 8. Attendre 5 secondes
-    console.log('⏳ Attente de 5 secondes...');
-    await delay(5000);
+    // 8. Attendre 6 secondes pour laisser le site réagir
+    console.log('⏳ Attente de 6 secondes pour observer le résultat...');
+    await delay(6000);
 
     // 9. Capture finale
     const screenshot3 = path.join(screenshotsDir, `logout_step3_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`);
     await page.screenshot({ path: screenshot3, fullPage: true });
     console.log(`📸 Capture finale: ${screenshot3}`);
 
-    // La déconnexion est considérée comme réussie (on a suivi la séquence)
-    console.log('✅ Séquence de déconnexion terminée');
-    return true;
+    // 10. Vérifier le résultat de la déconnexion
+    const currentUrl = page.url();
+    const isLoggedOut = currentUrl.includes('login.php') || currentUrl.includes('logout') || currentUrl.includes('index.php');
+    let logoutMessage = '';
+    if (!isLoggedOut) {
+        logoutMessage = await page.evaluate(() => {
+            const msg = document.querySelector('.alert-success, .alert-info, .message, .toast');
+            return msg ? msg.textContent.trim() : '';
+        }).catch(() => '');
+    }
+    const success = isLoggedOut || logoutMessage.toLowerCase().includes('logout') || logoutMessage.toLowerCase().includes('déconnecté');
+    if (success) {
+        console.log(`✅ Déconnexion confirmée (URL: ${currentUrl}, message: "${logoutMessage}")`);
+    } else {
+        console.log(`⚠️ Déconnexion non confirmée (URL: ${currentUrl}, message: "${logoutMessage}")`);
+    }
+    return success;
 }
 
 (async () => {
@@ -161,29 +198,33 @@ async function performLogout(page, account) {
         await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
         await delay(2000);
 
-        // Exécuter la séquence de déconnexion
-        await performLogout(page, account);
+        const logoutSuccess = await performLogout(page, account);
         await browser.close();
 
-        // Supprimer le compte de accounts.json
-        accounts.splice(accountIndex, 1);
-        const content = Buffer.from(JSON.stringify(accounts, null, 2)).toString('base64');
-        let sha = null;
-        try {
-            const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH });
-            sha = res.data.sha;
-        } catch (e) {}
-        await octokit.repos.createOrUpdateFileContents({
-            owner: GH_USERNAME,
-            repo: GH_REPO,
-            path: GH_FILE_PATH,
-            message: `Logout and remove account ${email}`,
-            content,
-            branch: GH_BRANCH,
-            sha
-        });
-        console.log(`✅ Déconnexion réussie pour ${email}, compte supprimé.`);
-        process.exit(0);
+        if (logoutSuccess) {
+            // Supprimer le compte de accounts.json
+            accounts.splice(accountIndex, 1);
+            const content = Buffer.from(JSON.stringify(accounts, null, 2)).toString('base64');
+            let sha = null;
+            try {
+                const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH });
+                sha = res.data.sha;
+            } catch (e) {}
+            await octokit.repos.createOrUpdateFileContents({
+                owner: GH_USERNAME,
+                repo: GH_REPO,
+                path: GH_FILE_PATH,
+                message: `Logout and remove account ${email}`,
+                content,
+                branch: GH_BRANCH,
+                sha
+            });
+            console.log(`✅ Déconnexion réussie pour ${email}, compte supprimé.`);
+            process.exit(0);
+        } else {
+            console.log(`❌ Déconnexion échouée pour ${email}, compte non supprimé.`);
+            process.exit(1);
+        }
     } catch (err) {
         if (browser) await browser.close();
         console.error('❌ Erreur :', err.message);
