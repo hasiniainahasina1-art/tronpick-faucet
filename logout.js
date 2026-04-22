@@ -39,7 +39,7 @@ function parseProxyUrl(proxyUrl) {
     };
 }
 
-// Ajout d'un point rouge visible (optionnel)
+// Ajout d'un point rouge visible
 async function addRedDot(page, x, y) {
     await page.evaluate((x, y) => {
         const dot = document.createElement('div');
@@ -58,42 +58,83 @@ async function addRedDot(page, x, y) {
     }, x, y);
 }
 
-// Liste tous les boutons/liens avec leurs coordonnées
-async function listAllButtons(page) {
-    const buttonsInfo = await page.evaluate(() => {
-        const elements = [...document.querySelectorAll('button, a, [role="button"], input[type="button"], input[type="submit"]')];
-        return elements.map(el => ({
-            tag: el.tagName,
-            text: (el.textContent || '').trim(),
-            id: el.id,
-            className: el.className,
-            href: el.href,
-            rect: el.getBoundingClientRect()
-        }));
-    });
-    console.log(`🔘 Boutons trouvés : ${buttonsInfo.length}`);
-    buttonsInfo.forEach((b, i) => {
-        console.log(`${i+1}. ${b.tag} "${b.text}" (${b.id ? '#'+b.id : ''} ${b.className ? '.'+b.className : ''}) position: (${Math.round(b.rect.x)}, ${Math.round(b.rect.y)})`);
-    });
-    return buttonsInfo;
+async function humanClickAt(page, coords) {
+    await addRedDot(page, coords.x, coords.y);
+    const start = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
+    const steps = 20;
+    for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        const cp = { x: start.x + (Math.random() - 0.5) * 100, y: start.y + (Math.random() - 0.5) * 100 };
+        const x = Math.pow(1 - t, 2) * start.x + 2 * (1 - t) * t * cp.x + Math.pow(t, 2) * coords.x;
+        const y = Math.pow(1 - t, 2) * start.y + 2 * (1 - t) * t * cp.y + Math.pow(t, 2) * coords.y;
+        await page.mouse.move(x, y);
+        await delay(15);
+    }
+    await page.mouse.click(coords.x, coords.y);
+    console.log(`🖱️ Clic à (${coords.x}, ${coords.y})`);
 }
 
-// Clique sur le bouton à l'index donné (0‑based) et retourne ses coordonnées
-async function clickButtonByIndex(page, index) {
-    const elements = await page.$$('button, a, [role="button"], input[type="button"], input[type="submit"]');
-    if (index >= elements.length) {
-        throw new Error(`Bouton index ${index} inexistant (seulement ${elements.length})`);
+async function performLogout(page, account) {
+    console.log(`🚪 Déconnexion pour ${account.email} selon séquence spécifique`);
+
+    // 1. Attendre 5 secondes
+    console.log('⏳ Attente de 5 secondes...');
+    await delay(5000);
+
+    // 2. Actualiser la page et attendre 15 secondes
+    console.log('🔄 Actualisation de la page...');
+    await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
+    console.log('⏳ Attente de 15 secondes après actualisation...');
+    await delay(15000);
+
+    // 3. Clic à (720, 150) avec point rouge
+    console.log('🖱️ Premier clic à (620, 50)');
+    await humanClickAt(page, { x: 620, y: 50 });
+
+    // 4. Capture d'écran après premier clic
+    const screenshot1 = path.join(screenshotsDir, `logout_step1_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`);
+    await page.screenshot({ path: screenshot1, fullPage: true });
+    console.log(`📸 Capture après premier clic: ${screenshot1}`);
+
+    // 5. Attendre 3 secondes
+    console.log('⏳ Attente de 3 secondes...');
+    await delay(3000);
+
+    // 6. Clic à (650, 250) avec point rouge
+    console.log('🖱️ Second clic à (550, 80)');
+    await humanClickAt(page, { x: 550, y: 80 });
+
+    // 7. Capture d'écran après second clic
+    const screenshot2 = path.join(screenshotsDir, `logout_step2_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`);
+    await page.screenshot({ path: screenshot2, fullPage: true });
+    console.log(`📸 Capture après second clic: ${screenshot2}`);
+
+    // 8. Attendre 6 secondes (au lieu de 5) pour laisser le site réagir
+    console.log('⏳ Attente de 6 secondes pour observer le résultat...');
+    await delay(6000);
+
+    // 9. Capture finale
+    const screenshot3 = path.join(screenshotsDir, `logout_step3_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`);
+    await page.screenshot({ path: screenshot3, fullPage: true });
+    console.log(`📸 Capture finale: ${screenshot3}`);
+
+    // 10. Vérifier le résultat de la déconnexion (redirection vers login.php ou message)
+    const currentUrl = page.url();
+    const isLoggedOut = currentUrl.includes('login.php') || currentUrl.includes('logout');
+    let logoutMessage = '';
+    if (!isLoggedOut) {
+        logoutMessage = await page.evaluate(() => {
+            const msg = document.querySelector('.alert-success, .alert-info, .message, .toast');
+            return msg ? msg.textContent.trim() : '';
+        }).catch(() => '');
     }
-    const element = elements[index];
-    const box = await element.boundingBox();
-    if (!box) throw new Error(`Impossible d'obtenir les coordonnées du bouton ${index+1}`);
-    const x = box.x + box.width / 2;
-    const y = box.y + box.height / 2;
-    console.log(`🖱️ Bouton ${index+1} coordonnées : (${Math.round(x)}, ${Math.round(y)})`);
-    await addRedDot(page, x, y);
-    await element.click();
-    console.log(`✅ Clic sur le bouton ${index+1} effectué`);
-    return { x: Math.round(x), y: Math.round(y) };
+    const success = isLoggedOut || logoutMessage.toLowerCase().includes('logout') || logoutMessage.toLowerCase().includes('déconnecté');
+    if (success) {
+        console.log(`✅ Déconnexion confirmée (URL: ${currentUrl}, message: "${logoutMessage}")`);
+    } else {
+        console.log(`⚠️ Déconnexion non confirmée (URL: ${currentUrl}, message: "${logoutMessage}")`);
+    }
+    return success;
 }
 
 (async () => {
@@ -134,55 +175,10 @@ async function clickButtonByIndex(page, index) {
         await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
         await delay(2000);
 
-        // --- Séquence demandée ---
-        console.log('⏳ Attente de 3 secondes...');
-        await delay(3000);
-        console.log('🔄 Actualisation de la page...');
-        await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
-        console.log('⏳ Attente de 5 secondes après actualisation...');
-        await delay(5000);
-
-        // Lister tous les boutons
-        await listAllButtons(page);
-
-        // Cliquer sur le 7ème bouton (index 6)
-        const coords = await clickButtonByIndex(page, 6);
-        console.log(`📌 Coordonnées du bouton 7 : (${coords.x}, ${coords.y})`);
-
-        // Capture après clic
-        const screenshotAfter = path.join(screenshotsDir, `logout_after_click7_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`);
-        await page.screenshot({ path: screenshotAfter, fullPage: true });
-        console.log(`📸 Capture après clic: ${screenshotAfter}`);
-
-        // Attendre 6 secondes pour laisser le site réagir
-        console.log('⏳ Attente de 6 secondes pour observer le résultat...');
-        await delay(6000);
-
-        // Capture finale
-        const screenshotFinal = path.join(screenshotsDir, `logout_final_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`);
-        await page.screenshot({ path: screenshotFinal, fullPage: true });
-        console.log(`📸 Capture finale: ${screenshotFinal}`);
-
-        // Vérifier si déconnecté
-        const currentUrl = page.url();
-        const isLoggedOut = currentUrl.includes('login.php') || currentUrl.includes('logout') || currentUrl.includes('index.php');
-        let logoutMessage = '';
-        if (!isLoggedOut) {
-            logoutMessage = await page.evaluate(() => {
-                const msg = document.querySelector('.alert-success, .alert-info, .message, .toast');
-                return msg ? msg.textContent.trim() : '';
-            }).catch(() => '');
-        }
-        const success = isLoggedOut || logoutMessage.toLowerCase().includes('logout') || logoutMessage.toLowerCase().includes('déconnecté');
-        if (success) {
-            console.log(`✅ Déconnexion confirmée (URL: ${currentUrl}, message: "${logoutMessage}")`);
-        } else {
-            console.log(`⚠️ Déconnexion non confirmée (URL: ${currentUrl}, message: "${logoutMessage}")`);
-        }
-
+        const logoutSuccess = await performLogout(page, account);
         await browser.close();
 
-        if (success) {
+        if (logoutSuccess) {
             // Supprimer le compte de accounts.json
             accounts.splice(accountIndex, 1);
             const content = Buffer.from(JSON.stringify(accounts, null, 2)).toString('base64');
