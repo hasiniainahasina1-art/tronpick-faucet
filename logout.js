@@ -22,6 +22,7 @@ if (JP_PROXY_LIST.length === 0) {
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
+const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 }; // fallback si pas d'iframe
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 function parseProxyUrl(proxyUrl) {
@@ -37,6 +38,25 @@ function parseProxyUrl(proxyUrl) {
         username: match[1],
         password: match[2]
     };
+}
+
+// === Fonctions exactement comme dans script.js ===
+async function fillField(page, selector, value, fieldName) {
+    await page.waitForSelector(selector, { timeout: 10000 });
+    await page.click(selector, { clickCount: 3 });
+    await page.keyboard.press('Backspace');
+    await delay(100);
+    await page.evaluate((sel, val) => {
+        const el = document.querySelector(sel);
+        if (el) el.value = val;
+    }, selector, value);
+    await delay(300);
+    let actual = await page.$eval(selector, el => el.value);
+    if (actual !== value) {
+        await page.click(selector, { clickCount: 3 });
+        await page.keyboard.press('Backspace');
+        for (const char of value) await page.keyboard.type(char, { delay: 30 });
+    }
 }
 
 async function addRedDot(page, x, y) {
@@ -73,8 +93,27 @@ async function humanClickAt(page, coords) {
     console.log(`🖱️ Clic à (${coords.x}, ${coords.y})`);
 }
 
+// Gestion du Turnstile (comme dans performLoginAndCaptureCookies)
+async function handleTurnstile(page, coordsFallback) {
+    const frame = await page.waitForFrame(
+        f => f.url().includes('challenges.cloudflare.com/turnstile'),
+        { timeout: 15000 }
+    ).catch(() => null);
+    if (frame) {
+        console.log('✅ Iframe Turnstile trouvée, clic checkbox');
+        await frame.click('input[type="checkbox"]');
+        await delay(8000);
+        return true;
+    } else {
+        console.log('⚠️ Iframe non trouvée, fallback coordonné');
+        await humanClickAt(page, coordsFallback);
+        await delay(10000);
+        return false;
+    }
+}
+
 async function performLogout(page, account) {
-    console.log(`🚪 Déconnexion pour ${account.email} selon séquence spécifique`);
+    console.log(`🚪 Déconnexion pour ${account.email} selon séquence avec gestion Turnstile`);
 
     // 1. Attendre 5 secondes
     console.log('⏳ Attente de 5 secondes...');
@@ -88,30 +127,34 @@ async function performLogout(page, account) {
     console.log('⏳ Attente de 30 secondes...');
     await delay(30000);
 
-    // 4. Clic à (640, 43)
-    console.log('🖱️ Clic à (640, 43)');
+    // 4. Avant tout clic, gérer un éventuel Turnstile
+    console.log('🔐 Vérification et résolution du Turnstile si présent...');
+    await handleTurnstile(page, TURNSTILE_LOGIN_COORDS);
+
+    // 5. Premier clic à (640, 43)
+    console.log('🖱️ Premier clic à (640, 43)');
     await humanClickAt(page, { x: 640, y: 43 });
     await page.screenshot({ path: path.join(screenshotsDir, `logout_after_first_click_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-    // 5. Attendre 2 secondes
+    // 6. Attendre 2 secondes
     console.log('⏳ Attente de 2 secondes...');
     await delay(2000);
 
-    // 6. Clic à (400, 285)
-    console.log('🖱️ Clic à (400, 285)');
+    // 7. Deuxième clic à (400, 285)
+    console.log('🖱️ Deuxième clic à (400, 285)');
     await humanClickAt(page, { x: 400, y: 285 });
     await page.screenshot({ path: path.join(screenshotsDir, `logout_after_second_click_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-    // 7. Attendre 10 secondes pour observer le résultat
+    // 8. Attendre 10 secondes pour observer le résultat
     console.log('⏳ Attente de 10 secondes pour le résultat...');
     await delay(10000);
 
-    // Capture finale
+    // 9. Capture finale
     const screenshotFinal = path.join(screenshotsDir, `logout_final_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`);
     await page.screenshot({ path: screenshotFinal, fullPage: true });
     console.log(`📸 Capture finale: ${screenshotFinal}`);
 
-    // 8. Vérifier si déconnecté
+    // 10. Vérifier si déconnecté
     const currentUrl = page.url();
     const isLoggedOut = currentUrl.includes('login.php') || currentUrl.includes('logout') || currentUrl.includes('index.php');
     let logoutMessage = '';
@@ -130,6 +173,7 @@ async function performLogout(page, account) {
     return success;
 }
 
+// --- Main ---
 (async () => {
     let browser;
     try {
@@ -172,7 +216,6 @@ async function performLogout(page, account) {
         await browser.close();
 
         if (logoutSuccess) {
-            // Supprimer le compte de accounts.json
             accounts.splice(accountIndex, 1);
             const content = Buffer.from(JSON.stringify(accounts, null, 2)).toString('base64');
             let sha = null;
