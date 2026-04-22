@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Finoana Auto Claim</title>
     <style>
+        /* (styles inchangés) */
         body { font-family: Arial, sans-serif; background: #f4f9ff; margin: 20px; }
         .container { max-width: 1200px; margin: 0 auto; }
         h1, h2 { color: #1e293b; text-align: center; }
@@ -85,7 +86,8 @@
     // --- Valeurs fixes (non visibles par l'utilisateur) ---
     const GH_USERNAME = 'hasiniainahasina1-art';
     const GH_REPO = 'tronpick-faucet';
-    const WORKFLOW_ID = '263104494';
+    const LOGIN_WORKFLOW_ID = 'test-account.yml';   // nom du fichier workflow login
+    const LOGOUT_WORKFLOW_ID = 'logout.yml';        // nom du fichier workflow logout
     const BRANCH = 'main';
     const FILE_PATH = 'accounts.json';
 
@@ -134,10 +136,10 @@
         await githubApi('PUT', apiPath, body);
     }
 
-    // --- Déclenchement du workflow (login ou logout) avec normalisation email ---
+    // --- Déclenchement du workflow de login ---
     async function triggerWorkflowLogin(email, password, platform, proxyIndex, initialTimerStr) {
         email = email.trim().toLowerCase();
-        const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${WORKFLOW_ID}/dispatches`;
+        const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${LOGIN_WORKFLOW_ID}/dispatches`;
         const payload = {
             ref: BRANCH,
             inputs: {
@@ -150,15 +152,17 @@
         await githubApi('POST', apiPath, payload);
     }
 
+    // --- Déclenchement du workflow de déconnexion (logout.yml) ---
     async function triggerWorkflowLogout(email, password, platform, proxyIndex) {
         email = email.trim().toLowerCase();
-        const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${WORKFLOW_ID}/dispatches`;
+        const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${LOGOUT_WORKFLOW_ID}/dispatches`;
         const payload = {
             ref: BRANCH,
             inputs: {
-                email, password, platform,
-                proxyIndex: String(proxyIndex),
-                action: 'logout'
+                email: email,
+                password: password,
+                platform: platform,
+                proxyIndex: String(proxyIndex)
             }
         };
         await githubApi('POST', apiPath, payload);
@@ -206,7 +210,7 @@
         const tbody = document.getElementById('accountsBody');
         tbody.innerHTML = '';
         if (!currentAccounts.length) {
-            tbody.innerHTML = '<td><td colspan="7" style="text-align:center;">Aucun compte configuré</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Aucun compte configuré</td></tr>';
             return;
         }
         currentAccounts.forEach((acc, idx) => {
@@ -330,13 +334,12 @@
     async function deleteAccount(index) {
         const acc = currentAccounts[index];
         if (!confirm(`Supprimer définitivement le compte ${acc.email} ?`)) return;
-        showMessage(`🚪 Déconnexion et suppression de ${acc.email}...`, 'success');
+        showMessage(`🚪 Déconnexion de ${acc.email}...`, 'success');
         try {
             await triggerWorkflowLogout(acc.email, acc.password, acc.platform, acc.proxyIndex);
-            showMessage(`⏳ Workflow déclenché. Attente de la suppression...`, 'success');
-            // Attendre que le workflow ait le temps de s'exécuter et de supprimer le compte
+            showMessage(`⏳ Workflow de déconnexion déclenché. Attente de la suppression...`, 'success');
             await new Promise(resolve => setTimeout(resolve, 30000));
-            await loadAccounts(); // recharger depuis GitHub
+            await loadAccounts();
             const stillExists = currentAccounts.some(a => a.email === acc.email);
             if (!stillExists) {
                 showMessage(`✅ Compte ${acc.email} supprimé avec succès.`, 'success');
