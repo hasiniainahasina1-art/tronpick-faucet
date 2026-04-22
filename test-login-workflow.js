@@ -88,15 +88,11 @@ async function humanClickAt(page, coords) {
 }
 
 async function performLogin(page, email, password) {
+    // ... (identique aux versions précédentes) ...
     await fillField(page, 'input[type="email"], input[name="email"]', email, 'email');
     await fillField(page, 'input[type="password"]', password, 'password');
     await delay(2000);
-
-    const frame = await page.waitForFrame(
-        f => f.url().includes('challenges.cloudflare.com/turnstile'),
-        { timeout: 15000 }
-    ).catch(() => null);
-
+    const frame = await page.waitForFrame(f => f.url().includes('challenges.cloudflare.com/turnstile'), { timeout: 15000 }).catch(() => null);
     if (frame) {
         console.log('✅ Iframe Turnstile trouvée (login), clic checkbox');
         await frame.click('input[type="checkbox"]');
@@ -106,7 +102,6 @@ async function performLogin(page, email, password) {
         await humanClickAt(page, TURNSTILE_LOGIN_COORDS);
         await delay(10000);
     }
-
     const loginClicked = await page.evaluate(() => {
         const btns = [...document.querySelectorAll('button')];
         const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
@@ -114,10 +109,8 @@ async function performLogin(page, email, password) {
         return false;
     });
     if (!loginClicked) throw new Error('Bouton Log in introuvable');
-
     await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
     await delay(5000);
-
     if (page.url().includes('login.php')) {
         const errorMsg = await page.evaluate(() => {
             const el = document.querySelector('.alert-danger, .error');
@@ -127,30 +120,80 @@ async function performLogin(page, email, password) {
     }
 }
 
-// === Déconnexion strictement identique au claim (attente 20s puis clic) ===
-async function performLogout(page) {
-    console.log('⏳ Attente de 20 secondes avant déconnexion (comme pour le claim)...');
-    await delay(20000);
-    const logoutClicked = await page.evaluate(() => {
-        const keywords = ['logout', 'sign out', 'déconnexion', 'se déconnecter', 'log out'];
-        const elements = [...document.querySelectorAll('a, button')];
-        const logoutElement = elements.find(el => {
-            const text = (el.textContent || '').toLowerCase();
-            return keywords.some(kw => text.includes(kw));
-        });
-        if (logoutElement) {
-            logoutElement.click();
-            return true;
+// === DÉCONNEXION ULTRA ROBUSTE ===
+async function performLogout(page, account) {
+    console.log(`🚪 Déconnexion pour ${account.email}`);
+    const possiblePaths = ['faucet.php', 'index.php', 'dashboard.php', ''];
+    let logoutSuccess = false;
+
+    for (const path of possiblePaths) {
+        const url = `https://${account.platform}.io/${path}`;
+        console.log(`Tentative sur ${url}`);
+        try {
+            await page.goto(url, { waitUntil: 'networkidle2', timeout: 20000 });
+        } catch (err) {
+            console.log(`Échec accès à ${url}: ${err.message}`);
+            continue;
         }
-        return false;
-    });
-    if (logoutClicked) {
-        console.log('✅ Clic sur déconnexion effectué');
-        await delay(3000);
-    } else {
-        console.log('⚠️ Bouton de déconnexion non trouvé');
+        await delay(2000);
+        await page.screenshot({ path: path.join(screenshotsDir, `logout_${path || 'root'}_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+        // Recherche élargie
+        logoutSuccess = await page.evaluate(() => {
+            const keywords = ['logout', 'sign out', 'déconnexion', 'se déconnecter', 'log out', 'exit'];
+            const selectors = [
+                'a[href*="logout"]', 'a[href*="signout"]', 'button[onclick*="logout"]',
+                '.logout', '#logout', '.signout', '#signout', '[action*="logout"]'
+            ];
+            let element = null;
+            for (const sel of selectors) {
+                element = document.querySelector(sel);
+                if (element) break;
+            }
+            if (!element) {
+                const all = [...document.querySelectorAll('a, button')];
+                element = all.find(el => {
+                    const text = (el.textContent || '').toLowerCase();
+                    return keywords.some(kw => text.includes(kw));
+                });
+            }
+            if (element) {
+                element.click();
+                return true;
+            }
+            return false;
+        });
+
+        if (logoutSuccess) {
+            console.log(`✅ Déconnexion réussie sur ${url}`);
+            await delay(3000);
+            break;
+        }
     }
-    return logoutClicked;
+
+    // Dernière tentative : aller directement sur /logout.php
+    if (!logoutSuccess) {
+        try {
+            const logoutUrl = `https://${account.platform}.io/logout.php`;
+            await page.goto(logoutUrl, { waitUntil: 'networkidle2', timeout: 20000 });
+            await delay(3000);
+            const currentUrl = page.url();
+            if (!currentUrl.includes('login.php') && !currentUrl.includes('logout')) {
+                console.log(`Redirection après logout.php, déconnexion probablement réussie`);
+                logoutSuccess = true;
+            }
+            await page.screenshot({ path: path.join(screenshotsDir, `logout_direct_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        } catch (err) {
+            console.log(`Échec direct logout.php: ${err.message}`);
+        }
+    }
+
+    if (logoutSuccess) {
+        console.log('✅ Déconnexion effectuée');
+    } else {
+        console.log('⚠️ Aucun bouton de déconnexion trouvé après toutes les tentatives');
+    }
+    return logoutSuccess;
 }
 
 async function run() {
@@ -188,16 +231,7 @@ async function run() {
             });
             browser = br;
             await page.setCookie(...account.cookies);
-            const faucetUrl = `https://${account.platform}.io/faucet.php`;
-            await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-            await delay(5000); // petit délai après chargement
-            await page.screenshot({ path: path.join(screenshotsDir, `logout_before_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-            const logoutSuccess = await performLogout(page);
-            if (logoutSuccess) {
-                await page.screenshot({ path: path.join(screenshotsDir, `logout_after_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-            } else {
-                await page.screenshot({ path: path.join(screenshotsDir, `logout_failed_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-            }
+            const logoutSuccess = await performLogout(page, account);
             await browser.close();
 
             if (logoutSuccess) {
@@ -230,7 +264,7 @@ async function run() {
         }
     }
 
-    // --- Mode login (inchangé) ---
+    // --- Mode login (identique aux versions précédentes) ---
     let browser;
     try {
         const proxyUrl = JP_PROXY_LIST[proxyIndex];
