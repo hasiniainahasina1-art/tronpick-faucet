@@ -88,8 +88,8 @@ async function performLogout(page, account) {
     await delay(15000);
 
     // 3. Clic à (720, 150) avec point rouge
-    console.log('🖱️ Premier clic à (720, 150)');
-    await humanClickAt(page, { x: 720, y: 150 });
+    console.log('🖱️ Premier clic à (620, 050)');
+    await humanClickAt(page, { x: 650, y: 80 });
 
     // 4. Capture d'écran
     const screenshot1 = path.join(screenshotsDir, `logout_step1_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`);
