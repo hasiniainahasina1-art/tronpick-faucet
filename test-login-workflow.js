@@ -127,19 +127,10 @@ async function performLogin(page, email, password) {
     }
 }
 
-// === Fonction de déconnexion avec attente, actualisation et délai ===
+// === Déconnexion strictement identique à celle de script.js ===
 async function performLogout(page) {
-    console.log(`🚪 Tentative de déconnexion avec attente et actualisation`);
-    // Attendre 5 secondes
-    console.log('⏳ Attente de 5 secondes...');
-    await delay(5000);
-    // Actualiser la page
-    console.log('🔄 Actualisation de la page...');
-    await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
-    // Attendre 20 secondes
-    console.log('⏳ Attente de 20 secondes...');
+    console.log('⏳ Attente de 20 secondes avant déconnexion...');
     await delay(20000);
-    // Maintenant chercher le bouton de déconnexion
     const logoutClicked = await page.evaluate(() => {
         const keywords = ['logout', 'sign out', 'déconnexion', 'se déconnecter', 'log out'];
         const elements = [...document.querySelectorAll('a, button')];
@@ -200,7 +191,6 @@ async function run() {
             const faucetUrl = `https://${account.platform}.io/faucet.php`;
             await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
             await delay(5000);
-            // Capture avant déconnexion
             await page.screenshot({ path: path.join(screenshotsDir, `logout_before_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
             const logoutSuccess = await performLogout(page);
             if (logoutSuccess) {
