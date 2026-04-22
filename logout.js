@@ -75,52 +75,46 @@ async function humanClickAt(page, coords) {
 }
 
 async function performLogout(page, account) {
-    console.log(`🚪 Déconnexion pour ${account.email} selon séquence spécifique`);
+    console.log(`🚪 Déconnexion pour ${account.email} selon séquence demandée`);
 
     // 1. Attendre 5 secondes
     console.log('⏳ Attente de 5 secondes...');
     await delay(5000);
 
-    // 2. Actualiser la page et attendre 15 secondes
+    // 2. Actualiser la page
     console.log('🔄 Actualisation de la page...');
     await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
-    console.log('⏳ Attente de 15 secondes après actualisation...');
-    await delay(15000);
 
-    // 3. Clic à (720, 150) avec point rouge
-    console.log('🖱️ Premier clic à (640, 43)');
+    // 3. Attendre 30 secondes
+    console.log('⏳ Attente de 30 secondes...');
+    await delay(30000);
+
+    // 4. Clic à (640, 43)
+    console.log('🖱️ Clic à (640, 43)');
     await humanClickAt(page, { x: 640, y: 43 });
+    await page.screenshot({ path: path.join(screenshotsDir, `logout_after_first_click_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-    // 4. Capture d'écran après premier clic
-    const screenshot1 = path.join(screenshotsDir, `logout_step1_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`);
-    await page.screenshot({ path: screenshot1, fullPage: true });
-    console.log(`📸 Capture après premier clic: ${screenshot1}`);
+    // 5. Attendre 2 secondes
+    console.log('⏳ Attente de 2 secondes...');
+    await delay(2000);
 
-    // 5. Attendre 3 secondes
-    console.log('⏳ Attente de 3 secondes...');
-    await delay(3000);
+    // 6. Clic à (400, 285)
+    console.log('🖱️ Clic à (400, 285)');
+    await humanClickAt(page, { x: 400, y: 285 });
+    await page.screenshot({ path: path.join(screenshotsDir, `logout_after_second_click_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-    // 6. Clic à (650, 250) avec point rouge
-    console.log('🖱️ Second clic à (400, 288)');
-    await humanClickAt(page, { x: 400, y: 288 });
+    // 7. Attendre 10 secondes pour observer le résultat
+    console.log('⏳ Attente de 10 secondes pour le résultat...');
+    await delay(10000);
 
-    // 7. Capture d'écran après second clic
-    const screenshot2 = path.join(screenshotsDir, `logout_step2_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`);
-    await page.screenshot({ path: screenshot2, fullPage: true });
-    console.log(`📸 Capture après second clic: ${screenshot2}`);
+    // Capture finale
+    const screenshotFinal = path.join(screenshotsDir, `logout_final_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`);
+    await page.screenshot({ path: screenshotFinal, fullPage: true });
+    console.log(`📸 Capture finale: ${screenshotFinal}`);
 
-    // 8. Attendre 6 secondes (au lieu de 5) pour laisser le site réagir
-    console.log('⏳ Attente de 6 secondes pour observer le résultat...');
-    await delay(6000);
-
-    // 9. Capture finale
-    const screenshot3 = path.join(screenshotsDir, `logout_step3_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`);
-    await page.screenshot({ path: screenshot3, fullPage: true });
-    console.log(`📸 Capture finale: ${screenshot3}`);
-
-    // 10. Vérifier le résultat de la déconnexion (redirection vers login.php ou message)
+    // 8. Vérifier si déconnecté
     const currentUrl = page.url();
-    const isLoggedOut = currentUrl.includes('login.php') || currentUrl.includes('logout');
+    const isLoggedOut = currentUrl.includes('login.php') || currentUrl.includes('logout') || currentUrl.includes('index.php');
     let logoutMessage = '';
     if (!isLoggedOut) {
         logoutMessage = await page.evaluate(() => {
