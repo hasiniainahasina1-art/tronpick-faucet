@@ -127,9 +127,19 @@ async function performLogin(page, email, password) {
     }
 }
 
-// === Fonction de déconnexion identique à celle de script.js ===
+// === Fonction de déconnexion avec attente, actualisation et délai ===
 async function performLogout(page) {
-    console.log(`🚪 Tentative de déconnexion`);
+    console.log(`🚪 Tentative de déconnexion avec attente et actualisation`);
+    // Attendre 5 secondes
+    console.log('⏳ Attente de 5 secondes...');
+    await delay(5000);
+    // Actualiser la page
+    console.log('🔄 Actualisation de la page...');
+    await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
+    // Attendre 20 secondes
+    console.log('⏳ Attente de 20 secondes...');
+    await delay(20000);
+    // Maintenant chercher le bouton de déconnexion
     const logoutClicked = await page.evaluate(() => {
         const keywords = ['logout', 'sign out', 'déconnexion', 'se déconnecter', 'log out'];
         const elements = [...document.querySelectorAll('a, button')];
@@ -187,11 +197,10 @@ async function run() {
             });
             browser = br;
             await page.setCookie(...account.cookies);
-            // Aller à la page du faucet (comme dans script.js)
             const faucetUrl = `https://${account.platform}.io/faucet.php`;
             await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
             await delay(5000);
-            // Capturer avant déconnexion
+            // Capture avant déconnexion
             await page.screenshot({ path: path.join(screenshotsDir, `logout_before_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
             const logoutSuccess = await performLogout(page);
             if (logoutSuccess) {
@@ -202,7 +211,6 @@ async function run() {
             await browser.close();
 
             if (logoutSuccess) {
-                // Supprimer le compte de accounts.json
                 accounts.splice(accountIndex, 1);
                 const content = Buffer.from(JSON.stringify(accounts, null, 2)).toString('base64');
                 let sha = null;
@@ -232,7 +240,7 @@ async function run() {
         }
     }
 
-    // --- Mode login (identique à la version précédente) ---
+    // --- Mode login ---
     let browser;
     try {
         const proxyUrl = JP_PROXY_LIST[proxyIndex];
