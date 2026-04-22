@@ -127,9 +127,9 @@ async function performLogin(page, email, password) {
     }
 }
 
-// === Déconnexion strictement identique à celle de script.js ===
+// === Déconnexion strictement identique au claim (attente 20s puis clic) ===
 async function performLogout(page) {
-    console.log('⏳ Attente de 20 secondes avant déconnexion...');
+    console.log('⏳ Attente de 20 secondes avant déconnexion (comme pour le claim)...');
     await delay(20000);
     const logoutClicked = await page.evaluate(() => {
         const keywords = ['logout', 'sign out', 'déconnexion', 'se déconnecter', 'log out'];
@@ -190,7 +190,7 @@ async function run() {
             await page.setCookie(...account.cookies);
             const faucetUrl = `https://${account.platform}.io/faucet.php`;
             await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-            await delay(5000);
+            await delay(5000); // petit délai après chargement
             await page.screenshot({ path: path.join(screenshotsDir, `logout_before_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
             const logoutSuccess = await performLogout(page);
             if (logoutSuccess) {
@@ -230,7 +230,7 @@ async function run() {
         }
     }
 
-    // --- Mode login ---
+    // --- Mode login (inchangé) ---
     let browser;
     try {
         const proxyUrl = JP_PROXY_LIST[proxyIndex];
