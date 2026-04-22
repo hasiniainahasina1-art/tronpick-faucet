@@ -39,7 +39,6 @@ function parseProxyUrl(proxyUrl) {
     };
 }
 
-// Ajout d'un point rouge visible
 async function addRedDot(page, x, y) {
     await page.evaluate((x, y) => {
         const dot = document.createElement('div');
@@ -75,7 +74,7 @@ async function humanClickAt(page, coords) {
 }
 
 async function performLogout(page, account) {
-    console.log(`🚪 Déconnexion pour ${account.email} selon séquence demandée`);
+    console.log(`🚪 Déconnexion pour ${account.email} selon séquence spécifique`);
 
     // 1. Attendre 5 secondes
     console.log('⏳ Attente de 5 secondes...');
