@@ -26,7 +26,6 @@ console.log(`🌐 ${JP_PROXY_LIST.length} proxy(s) chargé(s).`);
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
-const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 function parseProxyUrl(proxyUrl) {
@@ -191,7 +190,8 @@ async function performLoginAndCaptureCookies(account) {
             await delay(8000);
         } else {
             console.log('⚠️ Iframe non trouvée, fallback coordonné');
-            await humanClickAt(page, TURNSTILE_LOGIN_COORDS);
+            await addRedDot(page, 640, 615);
+            await page.mouse.click(640, 615);
             await delay(10000);
         }
 
@@ -219,7 +219,7 @@ async function performLoginAndCaptureCookies(account) {
     }
 }
 
-// ========== SÉQUENCE DE DÉCONNEXION AVEC CAPTURES D'ÉCRAN COMPLÈTES ==========
+// ========== SÉQUENCE DE DÉCONNEXION SANS TURNSTILE, AVEC CAPTURES ==========
 async function logoutSequence(account) {
     const { email, cookies, platform } = account;
     console.log(`🚪 Exécution de la séquence de déconnexion pour ${email}`);
@@ -244,51 +244,40 @@ async function logoutSequence(account) {
         await delay(5000);
         if (page.url().includes('login.php')) throw new Error('Cookies expirés');
 
-        // Étape 1 : attente 5s, rechargement, attente 20s
+        // 1. Attendre 5 secondes
         console.log('⏳ Attente de 5 secondes...');
         await delay(5000);
+
+        // 2. Actualiser la page
         console.log('🔄 Actualisation de la page...');
         await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
         await page.screenshot({ path: path.join(screenshotsDir, `01_after_reload_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+        // 3. Attendre 20 secondes
         console.log('⏳ Attente de 20 secondes...');
         await delay(20000);
         await page.screenshot({ path: path.join(screenshotsDir, `02_after_wait_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        // Étape 2 : Turnstile
-        const frame = await page.waitForFrame(
-            f => f.url().includes('challenges.cloudflare.com/turnstile'),
-            { timeout: 15000 }
-        ).catch(() => null);
-        if (frame) {
-            console.log('✅ Iframe Turnstile trouvée, clic checkbox');
-            await frame.click('input[type="checkbox"]');
-            await delay(8000);
-        } else {
-            console.log('⚠️ Iframe non trouvée, fallback coordonné');
-            await humanClickAt(page, TURNSTILE_LOGIN_COORDS);
-            await delay(10000);
-        }
-        await page.screenshot({ path: path.join(screenshotsDir, `03_turnstile_handled_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-
-        // Étape 3 : premier clic (640,42)
+        // 4. Premier clic (640, 42) avec point rouge et capture
         console.log('🖱️ Premier clic à (640, 42)');
         await humanClickAt(page, { x: 640, y: 42 });
-        await page.screenshot({ path: path.join(screenshotsDir, `04_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        await page.screenshot({ path: path.join(screenshotsDir, `03_after_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+        // 5. Attendre 2 secondes
         console.log('⏳ Attente de 2 secondes...');
         await delay(2000);
 
-        // Étape 4 : deuxième clic (400,285)
+        // 6. Deuxième clic (400, 285) avec point rouge et capture
         console.log('🖱️ Deuxième clic à (400, 285)');
         await humanClickAt(page, { x: 400, y: 285 });
-        await page.screenshot({ path: path.join(screenshotsDir, `05_second_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        await page.screenshot({ path: path.join(screenshotsDir, `04_after_second_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        // Étape 5 : attendre 10 secondes pour voir le résultat
-        console.log('⏳ Attente de 10 secondes pour observer le résultat...');
+        // 7. Attendre 10 secondes pour observer le résultat
+        console.log('⏳ Attente de 10 secondes pour le résultat...');
         await delay(10000);
-        await page.screenshot({ path: path.join(screenshotsDir, `06_result_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-        console.log(`📸 Capture finale (résultat) enregistrée`);
+        await page.screenshot({ path: path.join(screenshotsDir, `05_result_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        // Vérification du résultat
+        // Vérification de la déconnexion
         const currentUrl = page.url();
         const isLoggedOut = currentUrl.includes('login.php') || currentUrl.includes('logout') || currentUrl.includes('index.php');
         let logoutMessage = '';
