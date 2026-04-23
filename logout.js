@@ -169,7 +169,7 @@ async function performLogoutSequence(page, account) {
     console.log('⏳ Attente de 15 secondes...');
     await delay(15000);
 
-    // 4. Clic aux coordonnées (640, 43) – censé faire apparaître le bouton logout
+    // 4. Clic préparatoire à (640,43)
     console.log('🖱️ Clic préparatoire à (640, 43)');
     await humanClickAt(page, { x: 640, y: 43 });
     await page.screenshot({ path: path.join(screenshotsDir, `logout_after_prep_click_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
@@ -177,36 +177,37 @@ async function performLogoutSequence(page, account) {
     // Petite pause pour que l'interface se mette à jour
     await delay(2000);
 
-    // 5. Chercher le bouton de déconnexion
-    const logoutButton = await page.evaluate(() => {
+    // 5. Recherche élargie : tous les éléments du DOM (y compris div, span, li, etc.)
+    const logoutElement = await page.evaluate(() => {
         const keywords = ['logout', 'sign out', 'déconnexion', 'se déconnecter', 'log out'];
-        const elements = [...document.querySelectorAll('button, a, [role="button"]')];
-        return elements.find(el => {
-            const text = (el.textContent || '').toLowerCase();
-            return keywords.some(kw => text.includes(kw));
+        const allElements = [...document.querySelectorAll('*')];
+        return allElements.find(el => {
+            const text = (el.textContent || '').trim().toLowerCase();
+            return keywords.some(kw => text === kw || text.includes(kw));
         });
     });
 
-    if (!logoutButton) {
-        console.log('❌ Aucun bouton de déconnexion trouvé après le clic préparatoire');
-        await page.screenshot({ path: path.join(screenshotsDir, `logout_no_button_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+    if (!logoutElement) {
+        console.log('❌ Aucun élément de déconnexion trouvé (recherche élargie)');
+        await page.screenshot({ path: path.join(screenshotsDir, `logout_no_element_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
         return false;
     }
 
-    // Obtenir les coordonnées du bouton pour le point rouge
-    const box = await logoutButton.boundingBox();
+    // Récupérer les coordonnées de l'élément
+    const box = await logoutElement.boundingBox();
     if (box) {
         const x = box.x + box.width / 2;
         const y = box.y + box.height / 2;
-        console.log(`🖱️ Bouton de déconnexion trouvé à (${Math.round(x)}, ${Math.round(y)})`);
+        const text = await logoutElement.evaluate(el => el.textContent.trim());
+        console.log(`🖱️ Élément de déconnexion trouvé à (${Math.round(x)}, ${Math.round(y)}) – texte : "${text}"`);
         await humanClickAt(page, { x, y });
     } else {
-        await logoutButton.click();
-        console.log(`🖱️ Clic sur le bouton de déconnexion (sans coordonnées précises)`);
+        await logoutElement.click();
+        console.log(`🖱️ Clic direct sur l'élément de déconnexion`);
     }
     await page.screenshot({ path: path.join(screenshotsDir, `logout_after_click_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-    // Attendre le résultat (10 secondes)
+    // Attendre 10 secondes pour observer le résultat
     console.log('⏳ Attente de 10 secondes pour le résultat...');
     await delay(10000);
     const finalScreenshot = path.join(screenshotsDir, `logout_final_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`);
