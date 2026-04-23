@@ -167,7 +167,6 @@ async function connectWithProxy(proxyUrl) {
     const proxyConfig = parseProxyUrl(proxyUrl);
     if (!proxyConfig) throw new Error('Proxy invalide');
     console.log(`🔄 Connexion avec proxy : ${proxyConfig.server}`);
-
     const { browser, page } = await connect({
         headless: false,
         turnstile: true,
@@ -279,14 +278,12 @@ async function claimWithCookies(account) {
         await delay(2000);
         await page.screenshot({ path: path.join(screenshotsDir, `03_turnstile_visible_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        console.log('🖱️ Premier clic sur Turnstile faucet');
         await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
         await page.screenshot({ path: path.join(screenshotsDir, `04_after_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
         console.log('⏳ Attente de 10 secondes...');
         await delay(10000);
 
-        console.log('🖱️ Second clic sur Turnstile faucet');
         await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
         await page.screenshot({ path: path.join(screenshotsDir, `05_after_second_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
@@ -297,7 +294,6 @@ async function claimWithCookies(account) {
         await delay(10000);
         await page.screenshot({ path: path.join(screenshotsDir, `06_before_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        console.log('🖱️ Clic sur CLAIM');
         await humanClickAt(page, CLAIM_COORDS);
         await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
         await delay(5000);
@@ -339,7 +335,6 @@ async function claimWithCookies(account) {
     }
 }
 
-// --- Main ---
 (async () => {
     try {
         let accounts = await loadAccounts();
@@ -354,7 +349,7 @@ async function claimWithCookies(account) {
                 nextIndex++;
                 needsSave = true;
             }
-            if (!acc.timer) acc.timer = 60; // sécurité
+            if (!acc.timer) acc.timer = 60;
         }
         for (const acc of accounts) {
             if (!acc.enabled) continue;
@@ -387,7 +382,6 @@ async function claimWithCookies(account) {
                 const result = await claimWithCookies(acc);
                 if (result.success) {
                     acc.lastClaim = now;
-                    // Si le timer n'est pas encore 60, on le bascule après le premier claim réussi
                     if (acc.timer !== 60) {
                         console.log(`🕒 Premier claim réussi pour ${acc.email} : passage du timer de ${acc.timer} à 60 minutes.`);
                         acc.timer = 60;
