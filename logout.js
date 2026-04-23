@@ -28,7 +28,7 @@ if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: tr
 
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
 const TURNSTILE_FAUCET_COORDS = { x: 640, y: 43 };
-const CLAIM_COORDS = { x: 400, y: 230 };
+const CLAIM_COORDS = { x: 400, y: 288 };
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
