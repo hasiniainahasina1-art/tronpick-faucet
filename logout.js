@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 
 const email = process.env.LOGOUT_EMAIL;
-const password = process.env.LOGOUT_PASSWORD;
+const password = process.env.LOGOUT_PASSWORD; // non utilisé mais conservé pour compatibilité
 const platform = process.env.LOGOUT_PLATFORM;
 const proxyIndex = process.env.LOGOUT_PROXY_INDEX !== '' ? parseInt(process.env.LOGOUT_PROXY_INDEX) : 0;
 const GH_TOKEN = process.env.GH_TOKEN;
@@ -18,19 +18,23 @@ if (JP_PROXY_LIST.length === 0) {
     console.error('❌ JP_PROXY_LIST doit contenir au moins 1 proxy');
     process.exit(1);
 }
+console.log(`🌐 ${JP_PROXY_LIST.length} proxy(s) chargé(s).`);
 
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
+// === Coordonnées de fallback pour le Turnstile (comme dans script.js) ===
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 }; // fallback si pas d'iframe
+
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// === Parser proxy (identique) ===
 function parseProxyUrl(proxyUrl) {
     if (!proxyUrl) return null;
     proxyUrl = proxyUrl.trim();
     const match = proxyUrl.match(/^http:\/\/([^:]+):([^@]+)@([^:]+):(\d+)$/);
     if (!match) {
-        console.error('❌ Format HTTP invalide:', proxyUrl);
+        console.error('❌ Format HTTP invalide (attendu: http://user:pass@ip:port) :', proxyUrl);
         return null;
     }
     return {
@@ -40,7 +44,7 @@ function parseProxyUrl(proxyUrl) {
     };
 }
 
-// === Fonctions exactement comme dans script.js ===
+// === Fonction fillField (identique) ===
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -59,6 +63,7 @@ async function fillField(page, selector, value, fieldName) {
     }
 }
 
+// === Point rouge (identique) ===
 async function addRedDot(page, x, y) {
     await page.evaluate((x, y) => {
         const dot = document.createElement('div');
@@ -77,6 +82,7 @@ async function addRedDot(page, x, y) {
     }, x, y);
 }
 
+// === Clic humain avec point rouge (identique) ===
 async function humanClickAt(page, coords) {
     await addRedDot(page, coords.x, coords.y);
     const start = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
@@ -93,8 +99,8 @@ async function humanClickAt(page, coords) {
     console.log(`🖱️ Clic à (${coords.x}, ${coords.y})`);
 }
 
-// Gestion du Turnstile (comme dans performLoginAndCaptureCookies)
-async function handleTurnstile(page, coordsFallback) {
+// === Gestion du Turnstile (identique à performLoginAndCaptureCookies) ===
+async function handleTurnstile(page, fallbackCoords) {
     const frame = await page.waitForFrame(
         f => f.url().includes('challenges.cloudflare.com/turnstile'),
         { timeout: 15000 }
@@ -106,14 +112,77 @@ async function handleTurnstile(page, coordsFallback) {
         return true;
     } else {
         console.log('⚠️ Iframe non trouvée, fallback coordonné');
-        await humanClickAt(page, coordsFallback);
+        await humanClickAt(page, fallbackCoords);
         await delay(10000);
         return false;
     }
 }
 
-async function performLogout(page, account) {
-    console.log(`🚪 Déconnexion pour ${account.email} selon séquence avec gestion Turnstile`);
+// === Chargement / sauvegarde des comptes (identique) ===
+async function loadAccounts() {
+    try {
+        const octokit = new Octokit({ auth: GH_TOKEN });
+        const res = await octokit.repos.getContent({
+            owner: GH_USERNAME,
+            repo: GH_REPO,
+            path: GH_FILE_PATH,
+            ref: GH_BRANCH
+        });
+        return JSON.parse(Buffer.from(res.data.content, 'base64').toString('utf8'));
+    } catch (e) {
+        if (e.status === 404) return [];
+        throw e;
+    }
+}
+
+async function saveAccounts(accounts) {
+    const octokit = new Octokit({ auth: GH_TOKEN });
+    let sha = null;
+    try {
+        const res = await octokit.repos.getContent({
+            owner: GH_USERNAME,
+            repo: GH_REPO,
+            path: GH_FILE_PATH,
+            ref: GH_BRANCH
+        });
+        sha = res.data.sha;
+    } catch (e) {}
+    const content = Buffer.from(JSON.stringify(accounts, null, 2)).toString('base64');
+    await octokit.repos.createOrUpdateFileContents({
+        owner: GH_USERNAME,
+        repo: GH_REPO,
+        path: GH_FILE_PATH,
+        message: 'Mise à jour compte (logout)',
+        content,
+        branch: GH_BRANCH,
+        sha
+    });
+}
+
+// === Connexion avec proxy (identique) ===
+function getProxyUrlForAccount(account) {
+    if (account.proxyIndex !== undefined && JP_PROXY_LIST[account.proxyIndex]) {
+        return JP_PROXY_LIST[account.proxyIndex];
+    }
+    return JP_PROXY_LIST[0];
+}
+
+async function connectWithProxy(proxyUrl) {
+    const proxyConfig = parseProxyUrl(proxyUrl);
+    if (!proxyConfig) throw new Error('Proxy invalide');
+    console.log(`🔄 Connexion avec proxy : ${proxyConfig.server}`);
+    const { browser, page } = await connect({
+        headless: false,
+        turnstile: true,
+        proxy: proxyConfig,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+    return { browser, page };
+}
+
+// === Séquence de déconnexion (reprise exacte de la logique du claim) ===
+async function performLogoutSequence(page, account) {
+    console.log(`🚪 Déconnexion pour ${account.email} – séquence calquée sur le claim`);
 
     // 1. Attendre 5 secondes
     console.log('⏳ Attente de 5 secondes...');
@@ -122,14 +191,16 @@ async function performLogout(page, account) {
     // 2. Actualiser la page
     console.log('🔄 Actualisation de la page...');
     await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
+    await page.screenshot({ path: path.join(screenshotsDir, `logout_after_reload_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
     // 3. Attendre 30 secondes
     console.log('⏳ Attente de 30 secondes...');
     await delay(30000);
 
-    // 4. Avant tout clic, gérer un éventuel Turnstile
-    console.log('🔐 Vérification et résolution du Turnstile si présent...');
+    // 4. Gérer le Turnstile (comme dans le login/claim)
+    console.log('🔐 Vérification et résolution du Turnstile...');
     await handleTurnstile(page, TURNSTILE_LOGIN_COORDS);
+    await page.screenshot({ path: path.join(screenshotsDir, `logout_after_turnstile_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
     // 5. Premier clic à (640, 43)
     console.log('🖱️ Premier clic à (640, 43)');
@@ -154,7 +225,7 @@ async function performLogout(page, account) {
     await page.screenshot({ path: screenshotFinal, fullPage: true });
     console.log(`📸 Capture finale: ${screenshotFinal}`);
 
-    // 10. Vérifier si déconnecté
+    // 10. Vérifier si déconnecté (URL ou message)
     const currentUrl = page.url();
     const isLoggedOut = currentUrl.includes('login.php') || currentUrl.includes('logout') || currentUrl.includes('index.php');
     let logoutMessage = '';
@@ -173,17 +244,13 @@ async function performLogout(page, account) {
     return success;
 }
 
-// --- Main ---
+// === Main (exactement comme dans script.js, mais pour la déconnexion) ===
 (async () => {
-    let browser;
     try {
-        const octokit = new Octokit({ auth: GH_TOKEN });
-        let accounts = [];
-        try {
-            const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH });
-            accounts = JSON.parse(Buffer.from(res.data.content, 'base64').toString());
-        } catch (e) {
-            console.log(`Impossible de lire accounts.json : ${e.message}`);
+        let accounts = await loadAccounts();
+        console.log(`📋 Comptes chargés : ${accounts.length}`);
+        if (!accounts.length) {
+            console.log('Aucun compte.');
             process.exit(1);
         }
 
@@ -195,43 +262,23 @@ async function performLogout(page, account) {
         }
 
         const account = accounts[accountIndex];
-        const proxyUrl = JP_PROXY_LIST[proxyIndex];
-        const proxyConfig = parseProxyUrl(proxyUrl);
-        if (!proxyConfig) throw new Error('Proxy invalide');
-        console.log(`🔄 Proxy utilisé : ${proxyConfig.server}`);
+        const proxyUrl = getProxyUrlForAccount(account);
+        if (!proxyUrl) throw new Error('Aucun proxy trouvé');
+        console.log(`🔄 Proxy fixe : ${proxyUrl} (index ${account.proxyIndex})`);
 
-        const { browser: br, page } = await connect({
-            headless: false,
-            turnstile: true,
-            proxy: proxyConfig,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
-        });
-        browser = br;
+        const { browser, page } = await connectWithProxy(proxyUrl);
         await page.setCookie(...account.cookies);
         const faucetUrl = `https://${account.platform}.io/faucet.php`;
         await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
         await delay(2000);
 
-        const logoutSuccess = await performLogout(page, account);
+        const logoutSuccess = await performLogoutSequence(page, account);
         await browser.close();
 
         if (logoutSuccess) {
+            // Supprimer le compte
             accounts.splice(accountIndex, 1);
-            const content = Buffer.from(JSON.stringify(accounts, null, 2)).toString('base64');
-            let sha = null;
-            try {
-                const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH });
-                sha = res.data.sha;
-            } catch (e) {}
-            await octokit.repos.createOrUpdateFileContents({
-                owner: GH_USERNAME,
-                repo: GH_REPO,
-                path: GH_FILE_PATH,
-                message: `Logout and remove account ${email}`,
-                content,
-                branch: GH_BRANCH,
-                sha
-            });
+            await saveAccounts(accounts);
             console.log(`✅ Déconnexion réussie pour ${email}, compte supprimé.`);
             process.exit(0);
         } else {
@@ -239,8 +286,7 @@ async function performLogout(page, account) {
             process.exit(1);
         }
     } catch (err) {
-        if (browser) await browser.close();
-        console.error('❌ Erreur :', err.message);
+        console.error('❌ Erreur fatale :', err);
         process.exit(1);
     }
 })();
