@@ -23,7 +23,7 @@ console.log(`🌐 ${JP_PROXY_LIST.length} proxy(s) chargé(s).`);
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
-const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
+const TURNSTILE_LOGIN_COORDS = { x: 640, y: 43 };
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // === Parser proxy (identique à script.js) ===
