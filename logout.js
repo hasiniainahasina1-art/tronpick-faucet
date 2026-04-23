@@ -26,7 +26,7 @@ console.log(`🌐 ${JP_PROXY_LIST.length} proxy(s) chargé(s).`);
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
-const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 }; // fallback pour le Turnstile
+const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 function parseProxyUrl(proxyUrl) {
@@ -127,7 +127,7 @@ async function saveAccounts(accounts) {
         owner: GH_USERNAME,
         repo: GH_REPO,
         path: GH_FILE_PATH,
-        message: 'Mise à jour automatique',
+        message: 'Mise à jour automatique (logout)',
         content,
         branch: GH_BRANCH,
         sha
@@ -219,7 +219,7 @@ async function performLoginAndCaptureCookies(account) {
     }
 }
 
-// ================== NOUVELLE SÉQUENCE : 2 clics seulement ==================
+// ========== SÉQUENCE DE DÉCONNEXION AVEC CAPTURES D'ÉCRAN COMPLÈTES ==========
 async function logoutSequence(account) {
     const { email, cookies, platform } = account;
     console.log(`🚪 Exécution de la séquence de déconnexion pour ${email}`);
@@ -244,18 +244,17 @@ async function logoutSequence(account) {
         await delay(5000);
         if (page.url().includes('login.php')) throw new Error('Cookies expirés');
 
-        // --- Séquence modifiée (2 clics) ---
+        // Étape 1 : attente 5s, rechargement, attente 20s
         console.log('⏳ Attente de 5 secondes...');
         await delay(5000);
         console.log('🔄 Actualisation de la page...');
         await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
         await page.screenshot({ path: path.join(screenshotsDir, `01_after_reload_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-
         console.log('⏳ Attente de 20 secondes...');
         await delay(20000);
         await page.screenshot({ path: path.join(screenshotsDir, `02_after_wait_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        // Gestion du Turnstile (si présent)
+        // Étape 2 : Turnstile
         const frame = await page.waitForFrame(
             f => f.url().includes('challenges.cloudflare.com/turnstile'),
             { timeout: 15000 }
@@ -271,32 +270,37 @@ async function logoutSequence(account) {
         }
         await page.screenshot({ path: path.join(screenshotsDir, `03_turnstile_handled_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        // PREMIER CLIC (640, 42)
+        // Étape 3 : premier clic (640,42)
         console.log('🖱️ Premier clic à (640, 42)');
         await humanClickAt(page, { x: 640, y: 42 });
         await page.screenshot({ path: path.join(screenshotsDir, `04_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-
         console.log('⏳ Attente de 2 secondes...');
         await delay(2000);
 
-        // DEUXIÈME CLIC (400, 285)
+        // Étape 4 : deuxième clic (400,285)
         console.log('🖱️ Deuxième clic à (400, 285)');
         await humanClickAt(page, { x: 400, y: 285 });
         await page.screenshot({ path: path.join(screenshotsDir, `05_second_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        // Attente pour laisser le site réagir
-        console.log('⏳ Attente de 10 secondes...');
+        // Étape 5 : attendre 10 secondes pour voir le résultat
+        console.log('⏳ Attente de 10 secondes pour observer le résultat...');
         await delay(10000);
-        await page.screenshot({ path: path.join(screenshotsDir, `06_final_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        await page.screenshot({ path: path.join(screenshotsDir, `06_result_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        console.log(`📸 Capture finale (résultat) enregistrée`);
 
-        const messages = await page.evaluate(() => {
-            return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [role="alert"], .alert, .message, .notification'))
-                .map(el => el.textContent.trim()).filter(t => t);
-        });
-        const success = messages.some(m => /logout|déconnect|sign out/i.test(m)) || page.url().includes('login.php');
-        const resultMessage = messages[0] || (success ? 'Déconnexion réussie' : 'Aucune réaction');
-        console.log(`📢 Messages détectés : ${messages.join(' | ')}`);
-        return { success, message: resultMessage };
+        // Vérification du résultat
+        const currentUrl = page.url();
+        const isLoggedOut = currentUrl.includes('login.php') || currentUrl.includes('logout') || currentUrl.includes('index.php');
+        let logoutMessage = '';
+        if (!isLoggedOut) {
+            logoutMessage = await page.evaluate(() => {
+                const msg = document.querySelector('.alert-success, .alert-info, .message, .toast');
+                return msg ? msg.textContent.trim() : '';
+            }).catch(() => '');
+        }
+        const success = isLoggedOut || logoutMessage.toLowerCase().includes('logout') || logoutMessage.toLowerCase().includes('déconnecté');
+        console.log(`🔍 Résultat : URL=${currentUrl}, message="${logoutMessage}", succès=${success}`);
+        return { success, message: success ? 'Déconnexion réussie' : 'Échec de la déconnexion' };
     } catch (error) {
         if (error.message.includes('Cookies expirés')) {
             console.log(`🔄 Cookies expirés pour ${email}, reconnexion...`);
@@ -319,13 +323,12 @@ async function logoutSequence(account) {
     }
 }
 
-// ========== MAIN (identique à script.js, mais appelle logoutSequence) ==========
+// ========== MAIN ==========
 (async () => {
     try {
         let accounts = await loadAccounts();
         console.log(`📋 Comptes chargés : ${accounts.length}`);
         if (!accounts.length) return;
-        const now = Date.now();
         let needsSave = false;
         let nextIndex = 0;
         for (const acc of accounts) {
@@ -354,17 +357,16 @@ async function logoutSequence(account) {
                     continue;
                 }
             }
-            // On ignore le timer : on exécute la séquence de déconnexion
-            console.log(`🚀 Exécution de la séquence pour ${acc.email}`);
+            console.log(`🚀 Exécution de la séquence de déconnexion...`);
             try {
                 const result = await logoutSequence(acc);
                 if (result.success) {
-                    console.log(`✅ Séquence réussie pour ${acc.email}, suppression du compte.`);
+                    console.log(`✅ Déconnexion réussie pour ${acc.email}, suppression du compte.`);
                     const idx = accounts.findIndex(a => a.email === acc.email);
                     if (idx !== -1) accounts.splice(idx, 1);
                     needsSave = true;
                 } else {
-                    console.log(`❌ Séquence échouée pour ${acc.email}: ${result.message}`);
+                    console.log(`❌ Déconnexion échouée pour ${acc.email}: ${result.message}`);
                 }
             } catch (e) {
                 console.error(`❌ Erreur : ${e.message}`);
