@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 
 const email = process.env.LOGOUT_EMAIL;
-const password = process.env.LOGOUT_PASSWORD; // non utilisé mais conservé pour compatibilité
+const password = process.env.LOGOUT_PASSWORD;
 const platform = process.env.LOGOUT_PLATFORM;
 const proxyIndex = process.env.LOGOUT_PROXY_INDEX !== '' ? parseInt(process.env.LOGOUT_PROXY_INDEX) : 0;
 const GH_TOKEN = process.env.GH_TOKEN;
@@ -23,12 +23,10 @@ console.log(`🌐 ${JP_PROXY_LIST.length} proxy(s) chargé(s).`);
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
-// === Coordonnées de fallback pour le Turnstile (comme dans script.js) ===
-const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 }; // fallback si pas d'iframe
-
+const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// === Parser proxy (identique) ===
+// === Parser proxy (identique à script.js) ===
 function parseProxyUrl(proxyUrl) {
     if (!proxyUrl) return null;
     proxyUrl = proxyUrl.trim();
@@ -44,7 +42,7 @@ function parseProxyUrl(proxyUrl) {
     };
 }
 
-// === Fonction fillField (identique) ===
+// === Fonctions identiques à script.js ===
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -63,7 +61,6 @@ async function fillField(page, selector, value, fieldName) {
     }
 }
 
-// === Point rouge (identique) ===
 async function addRedDot(page, x, y) {
     await page.evaluate((x, y) => {
         const dot = document.createElement('div');
@@ -82,7 +79,6 @@ async function addRedDot(page, x, y) {
     }, x, y);
 }
 
-// === Clic humain avec point rouge (identique) ===
 async function humanClickAt(page, coords) {
     await addRedDot(page, coords.x, coords.y);
     const start = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
@@ -99,7 +95,6 @@ async function humanClickAt(page, coords) {
     console.log(`🖱️ Clic à (${coords.x}, ${coords.y})`);
 }
 
-// === Gestion du Turnstile (identique à performLoginAndCaptureCookies) ===
 async function handleTurnstile(page, fallbackCoords) {
     const frame = await page.waitForFrame(
         f => f.url().includes('challenges.cloudflare.com/turnstile'),
@@ -118,10 +113,10 @@ async function handleTurnstile(page, fallbackCoords) {
     }
 }
 
-// === Chargement / sauvegarde des comptes (identique) ===
+// === Chargement/sauvegarde des comptes ===
 async function loadAccounts() {
+    const octokit = new Octokit({ auth: GH_TOKEN });
     try {
-        const octokit = new Octokit({ auth: GH_TOKEN });
         const res = await octokit.repos.getContent({
             owner: GH_USERNAME,
             repo: GH_REPO,
@@ -152,14 +147,13 @@ async function saveAccounts(accounts) {
         owner: GH_USERNAME,
         repo: GH_REPO,
         path: GH_FILE_PATH,
-        message: 'Mise à jour compte (logout)',
+        message: 'Logout - remove account',
         content,
         branch: GH_BRANCH,
         sha
     });
 }
 
-// === Connexion avec proxy (identique) ===
 function getProxyUrlForAccount(account) {
     if (account.proxyIndex !== undefined && JP_PROXY_LIST[account.proxyIndex]) {
         return JP_PROXY_LIST[account.proxyIndex];
@@ -180,52 +174,60 @@ async function connectWithProxy(proxyUrl) {
     return { browser, page };
 }
 
-// === Séquence de déconnexion (reprise exacte de la logique du claim) ===
+// === Séquence de déconnexion avec recherche dynamique du bouton ===
 async function performLogoutSequence(page, account) {
-    console.log(`🚪 Déconnexion pour ${account.email} – séquence calquée sur le claim`);
+    console.log(`🚪 Déconnexion pour ${account.email} – recherche du bouton Logout`);
 
-    // 1. Attendre 5 secondes
+    // Délais et actualisation (comme demandé)
     console.log('⏳ Attente de 5 secondes...');
     await delay(5000);
-
-    // 2. Actualiser la page
     console.log('🔄 Actualisation de la page...');
     await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
-    await page.screenshot({ path: path.join(screenshotsDir, `logout_after_reload_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-
-    // 3. Attendre 30 secondes
     console.log('⏳ Attente de 30 secondes...');
     await delay(30000);
 
-    // 4. Gérer le Turnstile (comme dans le login/claim)
+    // Gérer le Turnstile (comme dans le claim)
     console.log('🔐 Vérification et résolution du Turnstile...');
     await handleTurnstile(page, TURNSTILE_LOGIN_COORDS);
     await page.screenshot({ path: path.join(screenshotsDir, `logout_after_turnstile_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-    // 5. Premier clic à (640, 43)
-    console.log('🖱️ Premier clic à (640, 43)');
-    await humanClickAt(page, { x: 640, y: 43 });
-    await page.screenshot({ path: path.join(screenshotsDir, `logout_after_first_click_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+    // --- Recherche du bouton de déconnexion ---
+    const logoutButton = await page.evaluate(() => {
+        const keywords = ['logout', 'sign out', 'déconnexion', 'se déconnecter', 'log out'];
+        const elements = [...document.querySelectorAll('button, a, [role="button"]')];
+        return elements.find(el => {
+            const text = (el.textContent || '').toLowerCase();
+            return keywords.some(kw => text.includes(kw));
+        });
+    });
 
-    // 6. Attendre 2 secondes
-    console.log('⏳ Attente de 2 secondes...');
-    await delay(2000);
+    if (!logoutButton) {
+        console.log('❌ Aucun bouton de déconnexion trouvé sur la page');
+        await page.screenshot({ path: path.join(screenshotsDir, `logout_no_button_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        return false;
+    }
 
-    // 7. Deuxième clic à (400, 285)
-    console.log('🖱️ Deuxième clic à (400, 285)');
-    await humanClickAt(page, { x: 400, y: 285 });
-    await page.screenshot({ path: path.join(screenshotsDir, `logout_after_second_click_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+    // Obtenir les coordonnées du bouton pour le point rouge
+    const box = await logoutButton.boundingBox();
+    if (box) {
+        const x = box.x + box.width / 2;
+        const y = box.y + box.height / 2;
+        console.log(`🖱️ Bouton de déconnexion trouvé à (${Math.round(x)}, ${Math.round(y)})`);
+        await humanClickAt(page, { x, y });
+    } else {
+        await logoutButton.click();
+        console.log(`🖱️ Clic sur le bouton de déconnexion (sans coordonnées précises)`);
+    }
+    await page.screenshot({ path: path.join(screenshotsDir, `logout_after_click_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-    // 8. Attendre 10 secondes pour observer le résultat
+    // Attendre 10 secondes pour observer le résultat
     console.log('⏳ Attente de 10 secondes pour le résultat...');
     await delay(10000);
+    const finalScreenshot = path.join(screenshotsDir, `logout_final_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`);
+    await page.screenshot({ path: finalScreenshot, fullPage: true });
+    console.log(`📸 Capture finale: ${finalScreenshot}`);
 
-    // 9. Capture finale
-    const screenshotFinal = path.join(screenshotsDir, `logout_final_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`);
-    await page.screenshot({ path: screenshotFinal, fullPage: true });
-    console.log(`📸 Capture finale: ${screenshotFinal}`);
-
-    // 10. Vérifier si déconnecté (URL ou message)
+    // Vérifier si déconnecté
     const currentUrl = page.url();
     const isLoggedOut = currentUrl.includes('login.php') || currentUrl.includes('logout') || currentUrl.includes('index.php');
     let logoutMessage = '';
@@ -244,7 +246,7 @@ async function performLogoutSequence(page, account) {
     return success;
 }
 
-// === Main (exactement comme dans script.js, mais pour la déconnexion) ===
+// === Main ===
 (async () => {
     try {
         let accounts = await loadAccounts();
@@ -276,7 +278,6 @@ async function performLogoutSequence(page, account) {
         await browser.close();
 
         if (logoutSuccess) {
-            // Supprimer le compte
             accounts.splice(accountIndex, 1);
             await saveAccounts(accounts);
             console.log(`✅ Déconnexion réussie pour ${email}, compte supprimé.`);
