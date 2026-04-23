@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 
 const email = process.env.LOGOUT_EMAIL;
-const password = process.env.LOGOUT_PASSWORD;
+const password = process.env.LOGOUT_PASSWORD; // non utilisé mais conservé
 const platform = process.env.LOGOUT_PLATFORM;
 const proxyIndex = process.env.LOGOUT_PROXY_INDEX !== '' ? parseInt(process.env.LOGOUT_PROXY_INDEX) : 0;
 const GH_TOKEN = process.env.GH_TOKEN;
@@ -23,9 +23,11 @@ console.log(`🌐 ${JP_PROXY_LIST.length} proxy(s) chargé(s).`);
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
+// Coordonnées de fallback pour le Turnstile (comme dans script.js)
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// === Parser proxy (identique) ===
 function parseProxyUrl(proxyUrl) {
     if (!proxyUrl) return null;
     proxyUrl = proxyUrl.trim();
@@ -41,6 +43,7 @@ function parseProxyUrl(proxyUrl) {
     };
 }
 
+// === Fonctions identiques à script.js ===
 async function addRedDot(page, x, y) {
     await page.evaluate((x, y) => {
         const dot = document.createElement('div');
@@ -153,31 +156,35 @@ async function connectWithProxy(proxyUrl) {
     return { browser, page };
 }
 
+// === Séquence de déconnexion calquée sur le claim ===
 async function performLogoutSequence(page, account) {
-    console.log(`🚪 Déconnexion pour ${account.email} – séquence spécifique`);
+    console.log(`🚪 Déconnexion pour ${account.email} – comme le claim`);
 
-    // 1. Attendre 5 secondes
+    // 1. Attendre 5 secondes (comme dans claim)
     console.log('⏳ Attente de 5 secondes...');
     await delay(5000);
 
-    // 2. Actualiser la page
+    // 2. Actualiser la page (comme dans claim)
     console.log('🔄 Actualisation de la page...');
     await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
     await page.screenshot({ path: path.join(screenshotsDir, `logout_after_reload_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-    // 3. Attendre 15 secondes
+    // 3. Attendre 15 secondes (au lieu de 20 pour le claim, mais on suit votre demande)
     console.log('⏳ Attente de 15 secondes...');
     await delay(15000);
 
-    // 4. Clic préparatoire à (640,43)
+    // 4. Résoudre le Turnstile (comme dans le login/claim)
+    console.log('🔐 Vérification et résolution du Turnstile...');
+    await handleTurnstile(page, TURNSTILE_LOGIN_COORDS);
+    await page.screenshot({ path: path.join(screenshotsDir, `logout_after_turnstile_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+    // 5. Clic préparatoire à (640, 43) – affiche le menu
     console.log('🖱️ Clic préparatoire à (640, 43)');
     await humanClickAt(page, { x: 640, y: 43 });
     await page.screenshot({ path: path.join(screenshotsDir, `logout_after_prep_click_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+    await delay(2000); // petite pause pour que le menu apparaisse
 
-    // Petite pause pour que l'interface se mette à jour
-    await delay(2000);
-
-    // 5. Recherche élargie : tous les éléments du DOM (y compris div, span, li, etc.)
+    // 6. Recherche de l'élément "Logout" (comme on cherche "Log in" dans le claim)
     const logoutElement = await page.evaluate(() => {
         const keywords = ['logout', 'sign out', 'déconnexion', 'se déconnecter', 'log out'];
         const allElements = [...document.querySelectorAll('*')];
@@ -187,34 +194,39 @@ async function performLogoutSequence(page, account) {
         });
     });
 
-    if (!logoutElement) {
-        console.log('❌ Aucun élément de déconnexion trouvé (recherche élargie)');
-        await page.screenshot({ path: path.join(screenshotsDir, `logout_no_element_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-        return false;
+    let logoutClicked = false;
+    if (logoutElement) {
+        // Cliquer sur l'élément trouvé (avec point rouge)
+        const box = await logoutElement.boundingBox();
+        if (box) {
+            const x = box.x + box.width / 2;
+            const y = box.y + box.height / 2;
+            const text = await logoutElement.evaluate(el => el.textContent.trim());
+            console.log(`🖱️ Élément "Logout" trouvé à (${Math.round(x)}, ${Math.round(y)}) – texte : "${text}"`);
+            await humanClickAt(page, { x, y });
+            logoutClicked = true;
+        } else {
+            await logoutElement.click();
+            console.log(`🖱️ Clic direct sur l'élément "Logout"`);
+            logoutClicked = true;
+        }
+    } else {
+        // Fallback : si le texte n'est pas trouvé, utiliser le second clic demandé (400,285)
+        console.log('⚠️ Aucun élément Logout trouvé → clic de secours à (400, 285)');
+        await humanClickAt(page, { x: 400, y: 285 });
+        logoutClicked = true; // on considère que le clic est fait
     }
 
-    // Récupérer les coordonnées de l'élément
-    const box = await logoutElement.boundingBox();
-    if (box) {
-        const x = box.x + box.width / 2;
-        const y = box.y + box.height / 2;
-        const text = await logoutElement.evaluate(el => el.textContent.trim());
-        console.log(`🖱️ Élément de déconnexion trouvé à (${Math.round(x)}, ${Math.round(y)}) – texte : "${text}"`);
-        await humanClickAt(page, { x, y });
-    } else {
-        await logoutElement.click();
-        console.log(`🖱️ Clic direct sur l'élément de déconnexion`);
-    }
     await page.screenshot({ path: path.join(screenshotsDir, `logout_after_click_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-    // Attendre 10 secondes pour observer le résultat
-    console.log('⏳ Attente de 10 secondes pour le résultat...');
+    // 7. Attendre 10 secondes pour le résultat
+    console.log('⏳ Attente de 10 secondes pour observer la déconnexion...');
     await delay(10000);
     const finalScreenshot = path.join(screenshotsDir, `logout_final_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`);
     await page.screenshot({ path: finalScreenshot, fullPage: true });
     console.log(`📸 Capture finale: ${finalScreenshot}`);
 
-    // Vérifier si déconnecté
+    // 8. Vérifier si déconnecté (URL ou message)
     const currentUrl = page.url();
     const isLoggedOut = currentUrl.includes('login.php') || currentUrl.includes('logout') || currentUrl.includes('index.php');
     let logoutMessage = '';
@@ -233,6 +245,7 @@ async function performLogoutSequence(page, account) {
     return success;
 }
 
+// === Main ===
 (async () => {
     try {
         let accounts = await loadAccounts();
