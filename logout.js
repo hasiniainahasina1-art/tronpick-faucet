@@ -23,10 +23,9 @@ console.log(`🌐 ${JP_PROXY_LIST.length} proxy(s) chargé(s).`);
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
-const TURNSTILE_LOGIN_COORDS = { x: 640, y: 43 };
+const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// === Parser proxy (identique à script.js) ===
 function parseProxyUrl(proxyUrl) {
     if (!proxyUrl) return null;
     proxyUrl = proxyUrl.trim();
@@ -40,25 +39,6 @@ function parseProxyUrl(proxyUrl) {
         username: match[1],
         password: match[2]
     };
-}
-
-// === Fonctions identiques à script.js ===
-async function fillField(page, selector, value, fieldName) {
-    await page.waitForSelector(selector, { timeout: 10000 });
-    await page.click(selector, { clickCount: 3 });
-    await page.keyboard.press('Backspace');
-    await delay(100);
-    await page.evaluate((sel, val) => {
-        const el = document.querySelector(sel);
-        if (el) el.value = val;
-    }, selector, value);
-    await delay(300);
-    let actual = await page.$eval(selector, el => el.value);
-    if (actual !== value) {
-        await page.click(selector, { clickCount: 3 });
-        await page.keyboard.press('Backspace');
-        for (const char of value) await page.keyboard.type(char, { delay: 30 });
-    }
 }
 
 async function addRedDot(page, x, y) {
@@ -113,7 +93,6 @@ async function handleTurnstile(page, fallbackCoords) {
     }
 }
 
-// === Chargement/sauvegarde des comptes ===
 async function loadAccounts() {
     const octokit = new Octokit({ auth: GH_TOKEN });
     try {
@@ -174,24 +153,31 @@ async function connectWithProxy(proxyUrl) {
     return { browser, page };
 }
 
-// === Séquence de déconnexion avec recherche dynamique du bouton ===
 async function performLogoutSequence(page, account) {
-    console.log(`🚪 Déconnexion pour ${account.email} – recherche du bouton Logout`);
+    console.log(`🚪 Déconnexion pour ${account.email} – séquence spécifique`);
 
-    // Délais et actualisation (comme demandé)
+    // 1. Attendre 5 secondes
     console.log('⏳ Attente de 5 secondes...');
     await delay(5000);
+
+    // 2. Actualiser la page
     console.log('🔄 Actualisation de la page...');
     await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
-    console.log('⏳ Attente de 30 secondes...');
-    await delay(30000);
+    await page.screenshot({ path: path.join(screenshotsDir, `logout_after_reload_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-    // Gérer le Turnstile (comme dans le claim)
-    console.log('🔐 Vérification et résolution du Turnstile...');
-    await handleTurnstile(page, TURNSTILE_LOGIN_COORDS);
-    await page.screenshot({ path: path.join(screenshotsDir, `logout_after_turnstile_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+    // 3. Attendre 15 secondes
+    console.log('⏳ Attente de 15 secondes...');
+    await delay(15000);
 
-    // --- Recherche du bouton de déconnexion ---
+    // 4. Clic aux coordonnées (640, 43) – censé faire apparaître le bouton logout
+    console.log('🖱️ Clic préparatoire à (640, 43)');
+    await humanClickAt(page, { x: 640, y: 43 });
+    await page.screenshot({ path: path.join(screenshotsDir, `logout_after_prep_click_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+    // Petite pause pour que l'interface se mette à jour
+    await delay(2000);
+
+    // 5. Chercher le bouton de déconnexion
     const logoutButton = await page.evaluate(() => {
         const keywords = ['logout', 'sign out', 'déconnexion', 'se déconnecter', 'log out'];
         const elements = [...document.querySelectorAll('button, a, [role="button"]')];
@@ -202,7 +188,7 @@ async function performLogoutSequence(page, account) {
     });
 
     if (!logoutButton) {
-        console.log('❌ Aucun bouton de déconnexion trouvé sur la page');
+        console.log('❌ Aucun bouton de déconnexion trouvé après le clic préparatoire');
         await page.screenshot({ path: path.join(screenshotsDir, `logout_no_button_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
         return false;
     }
@@ -220,7 +206,7 @@ async function performLogoutSequence(page, account) {
     }
     await page.screenshot({ path: path.join(screenshotsDir, `logout_after_click_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-    // Attendre 10 secondes pour observer le résultat
+    // Attendre le résultat (10 secondes)
     console.log('⏳ Attente de 10 secondes pour le résultat...');
     await delay(10000);
     const finalScreenshot = path.join(screenshotsDir, `logout_final_${account.email.replace(/[^a-zA-Z0-9]/g, '_')}.png`);
@@ -246,7 +232,6 @@ async function performLogoutSequence(page, account) {
     return success;
 }
 
-// === Main ===
 (async () => {
     try {
         let accounts = await loadAccounts();
