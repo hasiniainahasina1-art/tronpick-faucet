@@ -289,6 +289,14 @@ async function claimWithCookies(account) {
 
         console.log('⏳ Attente de 10 secondes...');
         await delay(5000);
+
+        // --- PREMIER CLIC TURNSTILE (400, 280) ---
+        console.log(`🖱️ Premier clic Turnstile à (${TURNSTILE_FAUCET_COORDS_1.x}, ${TURNSTILE_FAUCET_COORDS_1.y})`);
+        await humanClickAt(page, TURNSTILE_FAUCET_COORDS_1);
+        await page.screenshot({ path: path.join(screenshotsDir, `05_after_first_turnstile_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+        console.log('⏳ Attente de 10 secondes...');
+        await delay(5000);
         
         // Étape 5 : chercher l'élément "Logout"
         const logoutElement = await page.evaluate(() => {
