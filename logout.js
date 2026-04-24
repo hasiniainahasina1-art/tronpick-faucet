@@ -32,7 +32,7 @@ function parseProxyUrl(proxyUrl) {
     proxyUrl = proxyUrl.trim();
     const match = proxyUrl.match(/^http:\/\/([^:]+):([^@]+)@([^:]+):(\d+)$/);
     if (!match) {
-        console.error('❌ Format HTTP invalide (attendu: http://user:pass@ip:port) :', proxyUrl);
+        console.error('❌ Format HTTP invalide :', proxyUrl);
         return null;
     }
     return {
@@ -57,84 +57,62 @@ async function loadAccounts() {
     }
 }
 
-function getProxyUrlForAccount(account) {
-    if (account.proxyIndex !== undefined && JP_PROXY_LIST[account.proxyIndex]) {
-        return JP_PROXY_LIST[account.proxyIndex];
-    }
-    return JP_PROXY_LIST[0];
-}
-
-async function connectWithProxy(proxyUrl) {
-    const proxyConfig = parseProxyUrl(proxyUrl);
-    if (!proxyConfig) throw new Error('Proxy invalide');
-    console.log(`🔄 Connexion avec proxy : ${proxyConfig.server}`);
-    const { browser, page } = await connect({
-        headless: false,
-        turnstile: true,
-        proxy: proxyConfig,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
-    return { browser, page };
-}
-
 (async () => {
     try {
-        let accounts = await loadAccounts();
-        if (!accounts.length) {
+        const accounts = await loadAccounts();
+        if (accounts.length === 0) {
             console.log('Aucun compte.');
             process.exit(1);
         }
-        const targetEmail = process.env.LOGOUT_EMAIL;
-        if (!targetEmail) {
-            console.error('❌ Aucun email fourni (LOGOUT_EMAIL)');
-            process.exit(1);
-        }
-        const normalizedEmail = targetEmail.trim().toLowerCase();
-        const account = accounts.find(a => a.email.toLowerCase() === normalizedEmail);
+        // Prendre le premier compte actif avec des cookies
+        const account = accounts.find(a => a.enabled !== false && a.cookies && a.cookies.length > 0);
         if (!account) {
-            console.log(`❌ Compte ${normalizedEmail} non trouvé`);
+            console.log('Aucun compte avec cookies valides.');
             process.exit(1);
         }
-        if (!account.cookies || account.cookies.length === 0) {
-            console.log(`❌ Aucun cookie pour ${account.email}`);
-            process.exit(1);
-        }
+        console.log(`Utilisation du compte : ${account.email}`);
 
-        const proxyUrl = getProxyUrlForAccount(account);
-        const { browser, page } = await connectWithProxy(proxyUrl);
+        const proxyUrl = JP_PROXY_LIST[account.proxyIndex || 0];
+        const proxyConfig = parseProxyUrl(proxyUrl);
+        if (!proxyConfig) throw new Error('Proxy invalide');
+        console.log(`🔄 Proxy : ${proxyConfig.server}`);
+
+        const { browser, page } = await connect({
+            headless: false,
+            turnstile: true,
+            proxy: proxyConfig,
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        });
         await page.setCookie(...account.cookies);
         await page.goto('https://tronpick.io/faucet.php', { waitUntil: 'networkidle2', timeout: 30000 });
         await delay(5000);
 
-        // Étape 1 : attendre 5s
-        console.log('⏳ Attente de 5 secondes...');
+        // Attendre 5s et actualiser
+        console.log('Attente 5s...');
         await delay(5000);
-
-        // Étape 2 : actualiser
-        console.log('🔄 Actualisation...');
         await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
         await page.screenshot({ path: path.join(screenshotsDir, '01_after_reload.png'), fullPage: true });
 
-        // Étape 3 : attendre 20s
-        console.log('⏳ Attente de 20 secondes...');
+        // Attendre 20s
+        console.log('Attente 20s...');
         await delay(20000);
-        await page.screenshot({ path: path.join(screenshotsDir, '02_after_wait.png'), fullPage: true });
+        await page.screenshot({ path: path.join(screenshotsDir, '02_before_click.png'), fullPage: true });
 
-        // Étape 4 : un seul clic simple (sans point rouge)
-        console.log('🖱️ Clic unique à (645, 40)');
+        // Un seul clic (sans point rouge, sans animation)
+        console.log('Clic simple à (645,40)');
         await page.mouse.click(645, 40);
         await page.screenshot({ path: path.join(screenshotsDir, '03_after_click.png'), fullPage: true });
 
-        // Étape 5 : attendre 10 secondes
-        console.log('⏳ Attente de 10 secondes...');
+        // Attendre 10 secondes
+        console.log('Attente 10 secondes...');
         await delay(10000);
         await page.screenshot({ path: path.join(screenshotsDir, '04_final.png'), fullPage: true });
 
         await browser.close();
-        console.log('Test terminé. Vérifiez les captures dans les artefacts.');
+        console.log('Test terminé. Vérifiez les captures.');
         process.exit(0);
     } catch (err) {
-        console.error(err);
+        console.error('Erreur :', err);
         process.exit(1);
     }
 })();
