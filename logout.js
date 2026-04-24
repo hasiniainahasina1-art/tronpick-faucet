@@ -26,12 +26,11 @@ console.log(`🌐 ${JP_PROXY_LIST.length} proxy(s) chargé(s).`);
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
-// Anciennes coordonnées (conservées pour le login si besoin)
+// Coordonnées
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
-// NOUVELLES COORDONNÉES POUR LES DEUX CLICS TURNSTILE
 const TURNSTILE_FAUCET_COORDS_1 = { x: 640, y: 43 };
 const TURNSTILE_FAUCET_COORDS_2 = { x: 400, y: 282 };
-const CLAIM_COORDS = { x: 400, y: 223 }; // inchangé
+const CLAIM_COORDS = { x: 400, y: 223 };
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -87,6 +86,7 @@ async function humanScrollToClaim(page) {
     }
 }
 
+// Point rouge visible 5 secondes + délai pour capture
 async function addRedDot(page, x, y) {
     await page.evaluate((x, y) => {
         const dot = document.createElement('div');
@@ -101,8 +101,9 @@ async function addRedDot(page, x, y) {
         dot.style.pointerEvents = 'none';
         dot.id = 'click-dot';
         document.body.appendChild(dot);
-        setTimeout(() => dot.remove(), 2000);
+        setTimeout(() => dot.remove(), 5000);
     }, x, y);
+    await delay(500); // laisser le temps au point d'apparaître
 }
 
 async function humanClickAt(page, coords) {
@@ -118,7 +119,8 @@ async function humanClickAt(page, coords) {
         await delay(15);
     }
     await page.mouse.click(coords.x, coords.y);
-    console.log(`🖱️ Clic à (${coords.x}, ${coords.y})`);
+    console.log(`🖱️ Clic à (${coords.x}, ${coords.y}) avec point rouge`);
+    await delay(500); // laisser le point visible avant capture
 }
 
 async function loadAccounts() {
@@ -244,7 +246,6 @@ async function performLoginAndCaptureCookies(account) {
     }
 }
 
-// ========== CLAIM AVEC DEUX CLICS TURNSTILE AUX NOUVELLES COORDONNÉES ==========
 async function claimWithCookies(account) {
     const { email, cookies, platform } = account;
     console.log(`🍪 Claim pour ${email} via cookies`);
@@ -282,7 +283,7 @@ async function claimWithCookies(account) {
         await delay(2000);
         await page.screenshot({ path: path.join(screenshotsDir, `03_before_turnstile_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        // --- PREMIER CLIC TURNSTILE (640, 43) ---
+        // Premier clic Turnstile (640,43)
         console.log(`🖱️ Premier clic Turnstile à (${TURNSTILE_FAUCET_COORDS_1.x}, ${TURNSTILE_FAUCET_COORDS_1.y})`);
         await humanClickAt(page, TURNSTILE_FAUCET_COORDS_1);
         await page.screenshot({ path: path.join(screenshotsDir, `04_after_first_turnstile_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
@@ -290,7 +291,7 @@ async function claimWithCookies(account) {
         console.log('⏳ Attente de 10 secondes...');
         await delay(10000);
 
-        // --- DEUXIÈME CLIC TURNSTILE (400, 282) ---
+        // Deuxième clic Turnstile (400,282)
         console.log(`🖱️ Deuxième clic Turnstile à (${TURNSTILE_FAUCET_COORDS_2.x}, ${TURNSTILE_FAUCET_COORDS_2.y})`);
         await humanClickAt(page, TURNSTILE_FAUCET_COORDS_2);
         await page.screenshot({ path: path.join(screenshotsDir, `05_after_second_turnstile_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
@@ -298,10 +299,12 @@ async function claimWithCookies(account) {
         console.log('⏳ Attente de 10 secondes...');
         await delay(10000);
 
+        // Clic CLAIM
         console.log('⏳ Attente de 10 secondes avant le clic sur CLAIM...');
         await delay(10000);
         await page.screenshot({ path: path.join(screenshotsDir, `06_before_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
+        console.log(`🖱️ Clic CLAIM à (${CLAIM_COORDS.x}, ${CLAIM_COORDS.y})`);
         await humanClickAt(page, CLAIM_COORDS);
         await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
         await delay(5000);
@@ -343,7 +346,6 @@ async function claimWithCookies(account) {
     }
 }
 
-// ========== MAIN ==========
 (async () => {
     try {
         let accounts = await loadAccounts();
