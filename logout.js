@@ -28,7 +28,7 @@ if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: tr
 
 // Coordonnées
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
-const TURNSTILE_FAUCET_COORDS_1 = { x: 640, y: 43 };
+const TURNSTILE_FAUCET_COORDS_1 = { x: 645, y: 40 };
 const TURNSTILE_FAUCET_COORDS_2 = { x: 400, y: 282 };
 const CLAIM_COORDS = { x: 400, y: 223 };
 
