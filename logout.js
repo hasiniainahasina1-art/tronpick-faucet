@@ -1,6 +1,5 @@
 const { connect } = require('puppeteer-real-browser');
 const { Octokit } = require('@octokit/rest');
-const { PuppeteerScreenRecorder } = require('puppeteer-screen-recorder');
 const fs = require('fs');
 const path = require('path');
 
@@ -27,7 +26,6 @@ console.log(`🌐 ${JP_PROXY_LIST.length} proxy(s) chargé(s).`);
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
-const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 function parseProxyUrl(proxyUrl) {
@@ -136,7 +134,7 @@ async function performLoginAndCaptureCookies(account) {
             await frame.click('input[type="checkbox"]');
             await delay(8000);
         } else {
-            await page.mouse.click(TURNSTILE_LOGIN_COORDS.x, TURNSTILE_LOGIN_COORDS.y);
+            await page.mouse.click(640, 615);
             await delay(10000);
         }
         const loginClicked = await page.evaluate(() => {
@@ -162,145 +160,72 @@ async function performLoginAndCaptureCookies(account) {
     }
 }
 
-// ========== DÉCONNEXION SANS INTERACTION SOURIS ==========
+// ========== DÉCONNEXION PAR REQUÊTE POST (avec CSRF) ==========
 async function logoutSequence(account) {
     const { email, cookies, platform } = account;
-    console.log(`🚪 Déconnexion pour ${email}`);
+    console.log(`🚪 Déconnexion pour ${email} via requête POST`);
 
-    const faucetUrl = `https://${platform}.io/faucet.php`;
     const proxyUrl = getProxyUrlForAccount(account);
     if (!proxyUrl) throw new Error('Aucun proxy fourni');
 
     let browser;
-    let recorder;
     try {
         const { browser: br, page } = await connectWithProxy(proxyUrl);
         browser = br;
         await page.setCookie(...cookies);
-        await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-        await delay(5000);
-        if (page.url().includes('login.php')) throw new Error('Cookies expirés');
 
-        // Attente initiale
-        console.log('⏳ Attente de 5 secondes...');
-        await delay(5000);
-        console.log('🔄 Actualisation de la page...');
-        await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
-        await page.screenshot({ path: path.join(screenshotsDir, `01_after_reload_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-        console.log('⏳ Attente de 20 secondes...');
-        await delay(20000);
-        await page.screenshot({ path: path.join(screenshotsDir, `02_after_wait_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        // Aller sur la page du faucet pour récupérer le jeton CSRF
+        await page.goto(`https://${platform}.io/faucet.php`, { waitUntil: 'networkidle2', timeout: 30000 });
+        await delay(2000);
 
-        // Démarrer la vidéo
-        const videoPath = path.join(screenshotsDir, `logout_video_${email.replace(/[^a-zA-Z0-9]/g, '_')}.mp4`);
-        recorder = new PuppeteerScreenRecorder(page);
-        await recorder.start(videoPath);
-
-        // Recherche directe de "Logout" dans tout le DOM
-        const logoutSelector = await page.evaluate(() => {
-            const keywords = ['logout', 'sign out', 'déconnexion', 'se déconnecter', 'log out'];
-            const all = [...document.querySelectorAll('*')];
-            const element = all.find(el => {
-                const text = (el.textContent || '').trim().toLowerCase();
-                return keywords.some(kw => text === kw || text.includes(kw));
-            });
-            if (element) {
-                const rect = element.getBoundingClientRect();
-                return { found: true, x: rect.x + rect.width/2, y: rect.y + rect.height/2, visible: rect.width > 0 && rect.height > 0 };
-            }
-            return { found: false };
+        // Récupérer le jeton CSRF (soit depuis un cookie, soit depuis un champ caché)
+        const csrfToken = await page.evaluate(() => {
+            // Essayer de lire le cookie csrf_cookie_name
+            const cookieValue = document.cookie.split('; ').find(row => row.startsWith('csrf_cookie_name='));
+            if (cookieValue) return cookieValue.split('=')[1];
+            // Sinon chercher un champ caché avec name="csrf_test_name"
+            const hiddenField = document.querySelector('input[name="csrf_test_name"]');
+            if (hiddenField) return hiddenField.value;
+            return null;
         });
 
-        let logoutClicked = false;
-        if (logoutSelector.found) {
-            console.log(`✅ Logout trouvé directement (visible: ${logoutSelector.visible}) à (${Math.round(logoutSelector.x)}, ${Math.round(logoutSelector.y)})`);
-            if (!logoutSelector.visible) {
-                // Rendre visible
-                await page.evaluate(() => {
-                    const el = document.elementFromPoint(logoutSelector.x, logoutSelector.y);
-                    if (el) el.style.display = 'block';
-                });
-            }
-            // Cliquer via DOM
-            await page.evaluate((x, y) => {
-                const el = document.elementFromPoint(x, y);
-                if (el) el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-            }, logoutSelector.x, logoutSelector.y);
-            logoutClicked = true;
-        } else {
-            // Fallback : ouvrir le menu via clic DOM à (645,40) puis rechercher
-            console.log('⚠️ Logout non trouvé directement, tentative d\'ouverture du menu');
-            await page.evaluate(() => {
-                const el = document.elementFromPoint(645, 40);
-                if (el) el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-            });
-            await delay(2000);
-            const retry = await page.evaluate(() => {
-                const keywords = ['logout', 'sign out', 'déconnexion', 'se déconnecter', 'log out'];
-                const all = [...document.querySelectorAll('*')];
-                const el = all.find(el => {
-                    const text = (el.textContent || '').trim().toLowerCase();
-                    return keywords.some(kw => text === kw || text.includes(kw));
-                });
-                if (el) {
-                    const rect = el.getBoundingClientRect();
-                    return { found: true, x: rect.x + rect.width/2, y: rect.y + rect.height/2 };
-                }
-                return { found: false };
-            });
-            if (retry.found) {
-                console.log(`✅ Logout trouvé après ouverture à (${Math.round(retry.x)}, ${Math.round(retry.y)})`);
-                await page.evaluate((x, y) => {
-                    const el = document.elementFromPoint(x, y);
-                    if (el) el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-                }, retry.x, retry.y);
-                logoutClicked = true;
-            }
-        }
-
-        if (!logoutClicked) {
-            console.log('❌ Impossible de trouver Logout');
-            await page.screenshot({ path: path.join(screenshotsDir, `03_logout_not_found_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-            await recorder.stop();
+        if (!csrfToken) {
+            console.error('❌ Impossible de récupérer le jeton CSRF');
+            await browser.close();
             return false;
         }
+        console.log(`🔑 Jeton CSRF récupéré: ${csrfToken}`);
 
-        await page.screenshot({ path: path.join(screenshotsDir, `04_after_logout_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-        console.log('⏳ Attente de 10 secondes...');
-        await delay(10000);
-        await page.screenshot({ path: path.join(screenshotsDir, `05_final_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-        await recorder.stop();
+        // Construire les données POST
+        const postData = new URLSearchParams();
+        postData.append('action', 'logout');
+        postData.append('csrf_test_name', csrfToken);
 
-        const currentUrl = page.url();
-        const isLoggedOut = currentUrl.includes('login.php') || currentUrl.includes('logout') || currentUrl.includes('index.php');
-        let logoutMessage = '';
-        if (!isLoggedOut) {
-            logoutMessage = await page.evaluate(() => {
-                const msg = document.querySelector('.alert-success, .alert-info, .message, .toast');
-                return msg ? msg.textContent.trim() : '';
-            }).catch(() => '');
+        // Envoyer la requête POST avec les cookies actifs
+        const response = await page.evaluate(async (data) => {
+            const res = await fetch('/process.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: data
+            });
+            return { status: res.status, text: await res.text() };
+        }, postData.toString());
+
+        console.log(`📡 Réponse du serveur: status ${response.status}, body: "${response.text}"`);
+
+        if (response.status === 200 && response.text.includes('success')) {
+            console.log('✅ Déconnexion confirmée par le serveur');
+            await browser.close();
+            return true;
+        } else {
+            console.log('❌ La requête de déconnexion n\'a pas abouti');
+            await browser.close();
+            return false;
         }
-        const success = isLoggedOut || logoutMessage.toLowerCase().includes('logout') || logoutMessage.toLowerCase().includes('déconnecté');
-        console.log(`🔍 Résultat : URL=${currentUrl}, message="${logoutMessage}", succès=${success}`);
-        return success;
     } catch (error) {
-        if (recorder) await recorder.stop().catch(() => {});
-        if (error.message.includes('Cookies expirés')) {
-            console.log(`🔄 Cookies expirés pour ${email}, reconnexion...`);
-            try {
-                const newCookies = await performLoginAndCaptureCookies(account);
-                account.cookies = newCookies;
-                account.cookiesStatus = 'valid';
-                return await logoutSequence(account);
-            } catch (loginError) {
-                console.error(`❌ Échec reconnexion : ${loginError.message}`);
-                return false;
-            }
-        }
-        console.error(`❌ Erreur : ${error.message}`);
+        if (browser) await browser.close();
+        console.error(`❌ Erreur lors de la déconnexion : ${error.message}`);
         return false;
-    } finally {
-        if (browser) await browser.close().catch(() => {});
     }
 }
 
@@ -351,7 +276,7 @@ async function logoutSequence(account) {
             process.exit(1);
         }
     } catch (err) {
-        console.error('❌ Erreur fatale :', err);
+        console.error('❌ Erreur fatale:', err);
         process.exit(1);
     }
 })();
