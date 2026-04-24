@@ -27,7 +27,7 @@ console.log(`🌐 ${JP_PROXY_LIST.length} proxy(s) chargé(s).`);
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
-const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 }; // fallback
+const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 function parseProxyUrl(proxyUrl) {
@@ -221,7 +221,7 @@ async function performLoginAndCaptureCookies(account) {
     }
 }
 
-// ========== SÉQUENCE DE DÉCONNEXION AVEC VIDÉO ==========
+// ========== SÉQUENCE DE DÉCONNEXION AVEC CLIC SIMPLE ET VIDÉO ==========
 async function logoutSequence(account) {
     const { email, cookies, platform } = account;
     console.log(`🚪 Déconnexion pour ${email}`);
@@ -259,24 +259,53 @@ async function logoutSequence(account) {
         recorder = new PuppeteerScreenRecorder(page);
         await recorder.start(videoPath);
 
-        // Étape 4 : premier clic (645,40)
-        console.log(`🖱️ Premier clic à (645, 40)`);
-        await humanClickAt(page, { x: 645, y: 40 });
+        // Étape 4 : PREMIER CLIC SIMPLE (sans animation) à (645,40)
+        console.log(`🖱️ Premier clic simple à (645, 40)`);
+        await page.mouse.click(645, 40);
         await page.screenshot({ path: path.join(screenshotsDir, `03_after_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        // Attendre 5 secondes (délai entre les deux clics)
-        console.log('⏳ Attente de 5 secondes avant le deuxième clic...');
-        await delay(5000);
+        // Attendre 2 secondes pour que le menu reste affiché (au lieu de 5s)
+        console.log('⏳ Attente de 2 secondes pour stabiliser le menu...');
+        await delay(2000);
 
-        // Étape 5 : deuxième clic (450,270)
-        console.log(`🖱️ Deuxième clic à (450, 270)`);
-        await humanClickAt(page, { x: 450, y: 270 });
-        await page.screenshot({ path: path.join(screenshotsDir, `04_after_second_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        // Prendre une capture du menu ouvert
+        await page.screenshot({ path: path.join(screenshotsDir, `04_menu_open_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        // Attendre que la déconnexion se produise
-        console.log('⏳ Attente de 10 secondes pour observer le résultat...');
+        // Étape 5 : rechercher le bouton Logout
+        const logoutElement = await page.evaluate(() => {
+            const keywords = ['logout', 'sign out', 'déconnexion', 'se déconnecter', 'log out'];
+            const all = [...document.querySelectorAll('*')];
+            return all.find(el => {
+                const text = (el.textContent || '').trim().toLowerCase();
+                return keywords.some(kw => text === kw || text.includes(kw));
+            });
+        });
+
+        if (!logoutElement) {
+            console.log('❌ Aucun élément Logout trouvé après le premier clic');
+            await page.screenshot({ path: path.join(screenshotsDir, `05_logout_not_found_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+            await recorder.stop();
+            return false;
+        }
+
+        // Cliquer sur l'élément trouvé (avec point rouge)
+        const box = await logoutElement.boundingBox();
+        if (box) {
+            const x = box.x + box.width / 2;
+            const y = box.y + box.height / 2;
+            const text = await logoutElement.evaluate(el => el.textContent.trim());
+            console.log(`🖱️ Clic sur "Logout" à (${Math.round(x)}, ${Math.round(y)}) – texte : "${text}"`);
+            await humanClickAt(page, { x, y });
+        } else {
+            await logoutElement.click();
+            console.log(`🖱️ Clic direct sur l'élément "Logout"`);
+        }
+        await page.screenshot({ path: path.join(screenshotsDir, `06_after_logout_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+        // Attendre 10 secondes pour le résultat
+        console.log('⏳ Attente de 10 secondes pour observer la déconnexion...');
         await delay(10000);
-        await page.screenshot({ path: path.join(screenshotsDir, `05_final_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        await page.screenshot({ path: path.join(screenshotsDir, `07_final_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
         // Arrêter la vidéo
         await recorder.stop();
