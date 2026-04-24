@@ -5,7 +5,7 @@ const path = require('path');
 
 // ---------- Variables d'environnement ----------
 const email = process.env.LOGOUT_EMAIL;
-const password = process.env.LOGOUT_PASSWORD;        // conservé mais non utilisé si cookies valides
+const password = process.env.LOGOUT_PASSWORD;        // conservé mais inutile si cookies valides
 const platform = process.env.LOGOUT_PLATFORM;
 const proxyIndex = process.env.LOGOUT_PROXY_INDEX !== undefined ? parseInt(process.env.LOGOUT_PROXY_INDEX) : 0;
 
@@ -36,6 +36,7 @@ if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: tr
 const octokit = new Octokit({ auth: GH_TOKEN });
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// ---------- Parsing du proxy ----------
 function parseProxyUrl(proxyUrl) {
     if (!proxyUrl) return null;
     proxyUrl = proxyUrl.trim();
@@ -90,7 +91,7 @@ async function saveAccounts(accounts) {
     });
 }
 
-// ---------- Clic humain (identique à script.js) ----------
+// ---------- Clic humain ----------
 async function humanClickAt(page, coords) {
     const start = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
     const steps = 20;
@@ -105,7 +106,7 @@ async function humanClickAt(page, coords) {
     await page.mouse.click(coords.x, coords.y);
 }
 
-// ---------- Déconnexion réaliste ----------
+// ---------- Déconnexion réaliste améliorée ----------
 async function performNormalLogout(accountCookies) {
     const proxyUrl = JP_PROXY_LIST[proxyIndex] || JP_PROXY_LIST[0];
     const proxyConfig = parseProxyUrl(proxyUrl);
@@ -123,18 +124,18 @@ async function performNormalLogout(accountCookies) {
     try {
         await page.setViewport({ width: 1280, height: 720 });
 
-        // 1) Injecter les cookies pour restaurer la session
+        // 1) Injecter les cookies
         if (accountCookies && accountCookies.length > 0) {
             await page.setCookie(...accountCookies);
             console.log(`🍪 ${accountCookies.length} cookie(s) injecté(s)`);
         }
 
-        // 2) Aller sur la page faucet (le site redirige vers login si session invalide)
+        // 2) Aller sur la page faucet (redirigera vers login si session invalide)
         const faucetUrl = `https://${platform}.io/faucet.php`;
         await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
         await delay(3000);
 
-        // Si on est déjà redirigé vers login.php → session déjà morte = succès
+        // Si déjà sur login.php → session déjà morte
         if (page.url().includes('login.php')) {
             console.log('ℹ️ Session déjà expirée, pas de déconnexion nécessaire');
             return true;
@@ -142,38 +143,81 @@ async function performNormalLogout(accountCookies) {
 
         await page.screenshot({ path: path.join(screenshotsDir, `01_before_logout_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`) });
 
-        // 3) Chercher un bouton "Log out" / "Déconnexion" / "Sign out"
-        const logoutBtnCoords = await page.evaluate(() => {
-            const candidates = [...document.querySelectorAll('button, a, div, span')];
-            const btn = candidates.find(el => /log\s*out|déconnexion|sign\s*out/i.test(el.textContent));
+        // 3) Recherche intelligente du bouton de déconnexion
+        const logoutBtnInfo = await page.evaluate(() => {
+            // Cibler les éléments interactifs uniquement
+            const candidates = [...document.querySelectorAll('button, a, input[type="submit"], div[role="button"]')];
+            const btn = candidates.find(el => {
+                const txt = el.textContent?.toLowerCase() || '';
+                return txt.includes('log out') || txt.includes('logout') || txt.includes('déconnexion') || txt.includes('sign out');
+            });
             if (btn) {
                 const rect = btn.getBoundingClientRect();
-                return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+                return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, tag: btn.tagName, text: btn.textContent.trim() };
             }
             return null;
         });
 
-        if (!logoutBtnCoords) {
-            // Fallback : essayer d'aller sur logout.php quand même
+        if (!logoutBtnInfo) {
+            // Fallback : aller directement sur logout.php
             console.log('⚠️ Aucun bouton trouvé, tentative via /logout.php');
             await page.goto(`https://${platform}.io/logout.php`, { waitUntil: 'networkidle2', timeout: 15000 });
             await delay(3000);
         } else {
-            console.log(`🖱️ Clic sur le bouton de déconnexion (${Math.round(logoutBtnCoords.x)},${Math.round(logoutBtnCoords.y)})`);
-            await humanClickAt(page, logoutBtnCoords);
+            console.log(`🖱️ Clic sur "${logoutBtnInfo.text}" (${Math.round(logoutBtnInfo.x)},${Math.round(logoutBtnInfo.y)})`);
+            await humanClickAt(page, { x: logoutBtnInfo.x, y: logoutBtnInfo.y });
+
+            // Gérer une éventuelle boîte de dialogue (modal/confirm)
+            await delay(1000);
+            const dialogVisible = await page.evaluate(() => {
+                const modals = document.querySelectorAll('.modal, .dialog, [role="dialog"], .popup');
+                for (let m of modals) {
+                    if (m.offsetParent !== null) return true; // visible
+                }
+                return false;
+            });
+            if (dialogVisible) {
+                console.log('🔔 Boîte de dialogue détectée, recherche bouton de confirmation');
+                const confirmClicked = await page.evaluate(() => {
+                    const btns = [...document.querySelectorAll('.modal button, .dialog button, .popup button, button')];
+                    const confirmBtn = btns.find(b => /yes|ok|confirm|oui|valider/i.test(b.textContent));
+                    if (confirmBtn) { confirmBtn.click(); return true; }
+                    return false;
+                });
+                if (!confirmClicked) {
+                    // Essayer Échap
+                    await page.keyboard.press('Escape');
+                }
+                await delay(2000);
+            }
         }
 
-        // 4) Attendre la redirection vers login.php
+        // 4) Attendre la redirection vers login.php (timeout élargi)
+        let redirectSuccess = false;
         try {
             await page.waitForFunction(
                 () => window.location.href.includes('login.php'),
-                { timeout: 15000 }
+                { timeout: 20000 }
             );
+            redirectSuccess = true;
         } catch {
-            const finalUrl = page.url();
-            if (!finalUrl.includes('login.php')) {
-                throw new Error('Redirection vers login.php absente après déconnexion');
+            console.log('⚠️ Redirection non détectée, vérification URL actuelle...');
+            const currentUrl = page.url();
+            if (currentUrl.includes('login.php')) {
+                redirectSuccess = true;
+            } else {
+                // Recharger faucet.php pour voir si on est déconnecté
+                console.log('🔄 Re-vérification en chargeant faucet.php...');
+                await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 15000 });
+                await delay(3000);
+                if (page.url().includes('login.php')) {
+                    redirectSuccess = true;
+                }
             }
+        }
+
+        if (!redirectSuccess) {
+            throw new Error('Redirection vers login.php absente après déconnexion');
         }
 
         console.log('✅ Déconnexion confirmée (redirigé vers login.php)');
@@ -198,15 +242,15 @@ async function performNormalLogout(accountCookies) {
         const account = accounts[idx];
         console.log(`🔍 Compte trouvé : ${account.email}`);
 
-        // Si les cookies sont déjà marqués comme expirés ou absents, on peut supprimer directement
+        // Si les cookies sont déjà expirés ou absents, on supprime directement
         if (!account.cookies || account.cookiesStatus === 'expired') {
             console.log('⏩ Cookies déjà expirés, suppression directe sans navigateur.');
         } else {
-            // Tenter une vraie déconnexion avec les cookies
+            // Effectuer une vraie déconnexion avec les cookies
             await performNormalLogout(account.cookies);
         }
 
-        // Suppression du compte
+        // Supprimer le compte du tableau et sauvegarder
         accounts.splice(idx, 1);
         await saveAccounts(accounts);
         console.log(`🗑️ Compte ${normalizedEmail} supprimé avec succès.`);
