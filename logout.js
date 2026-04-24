@@ -30,7 +30,7 @@ if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: tr
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
 // NOUVELLES COORDONNÉES POUR LES DEUX CLICS TURNSTILE
 const TURNSTILE_FAUCET_COORDS_1 = { x: 645, y: 40 };
-const TURNSTILE_FAUCET_COORDS_2 = { x: 400, y: 280 };
+const TURNSTILE_FAUCET_COORDS_2 = { x: 400, y: 275 };
 const CLAIM_COORDS = { x: 400, y: 223 }; // inchangé
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
