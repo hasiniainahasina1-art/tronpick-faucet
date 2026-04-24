@@ -292,7 +292,7 @@ async function claimWithCookies(account) {
 
         // --- PREMIER CLIC TURNSTILE (400, 280) ---
         console.log(`🖱️ Premier clic Turnstile à (${TURNSTILE_FAUCET_COORDS_1.x}, ${TURNSTILE_FAUCET_COORDS_1.y})`);
-        await humanClickAt(page, TURNSTILE_FAUCET_COORDS_1);
+        await humanClickAt(page, TURNSTILE_FAUCET_COORDS_2);
         await page.screenshot({ path: path.join(screenshotsDir, `05_after_first_turnstile_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
         console.log('⏳ Attente de 10 secondes...');
