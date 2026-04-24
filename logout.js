@@ -26,9 +26,12 @@ console.log(`🌐 ${JP_PROXY_LIST.length} proxy(s) chargé(s).`);
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
+// Anciennes coordonnées (conservées pour le login si besoin)
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
-const TURNSTILE_FAUCET_COORDS = { x: 640, y: 43 };
-const CLAIM_COORDS = { x: 400, y: 350 };
+// NOUVELLES COORDONNÉES POUR LES DEUX CLICS TURNSTILE
+const TURNSTILE_FAUCET_COORDS_1 = { x: 640, y: 43 };
+const TURNSTILE_FAUCET_COORDS_2 = { x: 400, y: 282 };
+const CLAIM_COORDS = { x: 400, y: 223 }; // inchangé
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -241,6 +244,7 @@ async function performLoginAndCaptureCookies(account) {
     }
 }
 
+// ========== CLAIM AVEC DEUX CLICS TURNSTILE AUX NOUVELLES COORDONNÉES ==========
 async function claimWithCookies(account) {
     const { email, cookies, platform } = account;
     console.log(`🍪 Claim pour ${email} via cookies`);
@@ -276,25 +280,32 @@ async function claimWithCookies(account) {
 
         await humanScrollToClaim(page);
         await delay(2000);
-        await page.screenshot({ path: path.join(screenshotsDir, `03_turnstile_visible_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        await page.screenshot({ path: path.join(screenshotsDir, `03_before_turnstile_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        // --- UN SEUL CLIC SUR LE TURNSTILE (au lieu de deux) ---
-        await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
-        await page.screenshot({ path: path.join(screenshotsDir, `04_after_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        // --- PREMIER CLIC TURNSTILE (640, 43) ---
+        console.log(`🖱️ Premier clic Turnstile à (${TURNSTILE_FAUCET_COORDS_1.x}, ${TURNSTILE_FAUCET_COORDS_1.y})`);
+        await humanClickAt(page, TURNSTILE_FAUCET_COORDS_1);
+        await page.screenshot({ path: path.join(screenshotsDir, `04_after_first_turnstile_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
         console.log('⏳ Attente de 10 secondes...');
         await delay(10000);
 
-        // Deuxième clic Turnstile supprimé
+        // --- DEUXIÈME CLIC TURNSTILE (400, 282) ---
+        console.log(`🖱️ Deuxième clic Turnstile à (${TURNSTILE_FAUCET_COORDS_2.x}, ${TURNSTILE_FAUCET_COORDS_2.y})`);
+        await humanClickAt(page, TURNSTILE_FAUCET_COORDS_2);
+        await page.screenshot({ path: path.join(screenshotsDir, `05_after_second_turnstile_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+        console.log('⏳ Attente de 10 secondes...');
+        await delay(10000);
 
         console.log('⏳ Attente de 10 secondes avant le clic sur CLAIM...');
         await delay(10000);
-        await page.screenshot({ path: path.join(screenshotsDir, `05_before_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        await page.screenshot({ path: path.join(screenshotsDir, `06_before_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
         await humanClickAt(page, CLAIM_COORDS);
         await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
         await delay(5000);
-        await page.screenshot({ path: path.join(screenshotsDir, `06_after_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        await page.screenshot({ path: path.join(screenshotsDir, `07_after_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
         const messages = await page.evaluate(() => {
             return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [role="alert"], .alert, .message, .notification'))
@@ -332,6 +343,7 @@ async function claimWithCookies(account) {
     }
 }
 
+// ========== MAIN ==========
 (async () => {
     try {
         let accounts = await loadAccounts();
