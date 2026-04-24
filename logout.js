@@ -5,7 +5,7 @@ const path = require('path');
 
 // ---------- Variables d'environnement ----------
 const email = process.env.LOGOUT_EMAIL;
-const password = process.env.LOGOUT_PASSWORD;
+const password = process.env.LOGOUT_PASSWORD;        // conservé mais inutile si cookies valides
 const platform = process.env.LOGOUT_PLATFORM;
 const proxyIndex = process.env.LOGOUT_PROXY_INDEX !== undefined ? parseInt(process.env.LOGOUT_PROXY_INDEX) : 0;
 
@@ -51,6 +51,7 @@ function parseProxyUrl(proxyUrl) {
     };
 }
 
+// ---------- Fonctions GitHub (inchangées) ----------
 async function loadAccounts() {
     try {
         const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH });
@@ -79,26 +80,13 @@ async function saveAccounts(accounts) {
     });
 }
 
-async function humanClickAt(page, coords) {
-    const start = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
-    const steps = 20;
-    for (let i = 1; i <= steps; i++) {
-        const t = i / steps;
-        const cp = { x: start.x + (Math.random() - 0.5) * 100, y: start.y + (Math.random() - 0.5) * 100 };
-        const x = Math.pow(1 - t, 2) * start.x + 2 * (1 - t) * t * cp.x + Math.pow(t, 2) * coords.x;
-        const y = Math.pow(1 - t, 2) * start.y + 2 * (1 - t) * t * cp.y + Math.pow(t, 2) * coords.y;
-        await page.mouse.move(x, y);
-        await delay(15);
-    }
-    await page.mouse.click(coords.x, coords.y);
-}
-
+// ---------- Déconnexion propre basée sur la requête POST ----------
 async function performNormalLogout(accountCookies) {
     const proxyUrl = JP_PROXY_LIST[proxyIndex] || JP_PROXY_LIST[0];
     const proxyConfig = parseProxyUrl(proxyUrl);
     if (!proxyConfig) throw new Error('Proxy invalide');
 
-    console.log(`🔌 Déconnexion douce de ${email} sur ${platform}.io`);
+    console.log(`🔌 Déconnexion propre de ${email} sur ${platform}.io`);
 
     const { browser, page } = await connect({
         headless: false,
@@ -110,93 +98,82 @@ async function performNormalLogout(accountCookies) {
     try {
         await page.setViewport({ width: 1280, height: 720 });
 
+        // 1) Injecter les cookies
         if (accountCookies && accountCookies.length > 0) {
             await page.setCookie(...accountCookies);
             console.log(`🍪 ${accountCookies.length} cookie(s) injecté(s)`);
         }
 
+        // 2) Charger la page faucet pour obtenir le token CSRF et être sur la bonne page
         const faucetUrl = `https://${platform}.io/faucet.php`;
         await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
         await delay(3000);
 
         if (page.url().includes('login.php')) {
-            console.log('ℹ️ Session déjà expirée');
+            console.log('ℹ️ Session déjà expirée, pas de déconnexion nécessaire');
             return true;
         }
 
-        await page.screenshot({ path: path.join(screenshotsDir, `01_before_logout_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`) });
-
-        // Chercher le bouton
-        const logoutBtnInfo = await page.evaluate(() => {
-            const candidates = [...document.querySelectorAll('button, a, input[type="submit"], div[role="button"]')];
-            const btn = candidates.find(el => {
-                const txt = el.textContent?.toLowerCase() || '';
-                return txt.includes('log out') || txt.includes('logout') || txt.includes('déconnexion') || txt.includes('sign out');
-            });
-            if (btn) {
-                const rect = btn.getBoundingClientRect();
-                return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, tag: btn.tagName, text: btn.textContent.trim() };
-            }
-            return null;
+        // 3) Extraire le token CSRF de la page (input[name="csrf_test_name"])
+        const csrfToken = await page.evaluate(() => {
+            const input = document.querySelector('input[name="csrf_test_name"]');
+            return input ? input.value : null;
         });
 
-        if (logoutBtnInfo) {
-            console.log(`🖱️ Clic sur "${logoutBtnInfo.text}"`);
-            await humanClickAt(page, { x: logoutBtnInfo.x, y: logoutBtnInfo.y });
-
-            // Gérer boîte de dialogue éventuelle
-            await delay(1000);
-            const dialogVisible = await page.evaluate(() => {
-                const modals = document.querySelectorAll('.modal, .dialog, [role="dialog"], .popup');
-                return Array.from(modals).some(m => m.offsetParent !== null);
-            });
-            if (dialogVisible) {
-                console.log('🔔 Boîte de dialogue détectée');
-                // essayer bouton confirmer
-                const clicked = await page.evaluate(() => {
-                    const btns = [...document.querySelectorAll('button')];
-                    const confirmBtn = btns.find(b => /yes|ok|confirm|oui|valider/i.test(b.textContent));
-                    if (confirmBtn) { confirmBtn.click(); return true; }
-                    return false;
-                });
-                if (!clicked) await page.keyboard.press('Escape');
-                await delay(2000);
-            }
-        } else {
-            console.log('⚠️ Aucun bouton trouvé, tentative via /logout.php');
-            await page.goto(`https://${platform}.io/logout.php`, { waitUntil: 'networkidle2', timeout: 15000 });
-            await delay(3000);
+        if (!csrfToken) {
+            throw new Error('Token CSRF introuvable sur la page');
         }
+        console.log(`🔑 Token CSRF récupéré : ${csrfToken}`);
 
-        // 💡 Étape clé : vider les cookies pour forcer la vérification
-        console.log('🧹 Suppression forcée des cookies...');
-        const client = await page.target().createCDPSession();
-        await client.send('Network.clearBrowserCookies');
+        // 4) Envoyer la requête de déconnexion via fetch dans la page
+        console.log('📤 Envoi de la requête de déconnexion...');
+        await page.evaluate(async (token) => {
+            const formData = new FormData();
+            formData.append('action', 'logout');
+            formData.append('csrf_test_name', token);
+            await fetch('process.php', {
+                method: 'POST',
+                body: formData
+            });
+        }, csrfToken);
 
-        // Recharger faucet.php → doit rediriger vers login.php
-        console.log('🔄 Vérification : chargement faucet.php sans cookies');
+        // Attendre un peu pour que les cookies soient mis à jour
+        await delay(3000);
+
+        // 5) Vérifier la déconnexion en rechargeant la page faucet
+        console.log('🔄 Vérification : rechargement de faucet.php');
         await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 15000 });
         await delay(3000);
 
-        if (page.url().includes('login.php')) {
-            console.log('✅ Session bien détruite (redirigé vers login)');
-            await page.screenshot({ path: path.join(screenshotsDir, `02_logout_success_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`) });
+        const finalUrl = page.url();
+        if (finalUrl.includes('login.php')) {
+            console.log('✅ Déconnexion réussie (redirigé vers login)');
             return true;
         } else {
-            throw new Error('Redirection vers login.php absente après suppression des cookies');
+            // Parfois la redirection ne se fait pas immédiatement, vérifier si le bouton "Log in" apparaît
+            const loginBtnVisible = await page.evaluate(() => {
+                const btns = [...document.querySelectorAll('button')];
+                return btns.some(b => b.textContent.trim() === 'Log in');
+            });
+            if (loginBtnVisible) {
+                console.log('✅ Déconnexion confirmée (bouton Log in présent)');
+                return true;
+            }
+            throw new Error('Échec de la déconnexion');
         }
     } finally {
         await browser.close().catch(() => {});
     }
 }
 
+// ---------- Main (inchangé) ----------
 (async () => {
     try {
         let accounts = await loadAccounts();
         const normalizedEmail = email.trim().toLowerCase();
         const idx = accounts.findIndex(a => a.email.toLowerCase() === normalizedEmail);
         if (idx === -1) {
-            console.log(`ℹ️ Compte ${normalizedEmail} inexistant.`);
+            console.log(`ℹ️ Le compte ${normalizedEmail} n’existe pas dans la base.`);
             process.exit(0);
         }
 
