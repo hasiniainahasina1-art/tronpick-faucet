@@ -26,10 +26,6 @@ console.log(`🌐 ${JP_PROXY_LIST.length} proxy(s) chargé(s).`);
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
-const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
-const TURNSTILE_FAUCET_COORDS = { x: 640, y: 43 };
-const CLAIM_COORDS = { x: 400, y: 288 };
-
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 function parseProxyUrl(proxyUrl) {
@@ -65,25 +61,6 @@ async function fillField(page, selector, value, fieldName) {
     }
 }
 
-async function humanScrollToClaim(page) {
-    const coords = await page.evaluate(() => {
-        const btn = document.querySelector('#process_claim_hourly_faucet');
-        if (!btn) return null;
-        const rect = btn.getBoundingClientRect();
-        return { y: rect.y + window.scrollY };
-    });
-    if (!coords) throw new Error('Bouton CLAIM introuvable pour le scroll');
-    const startY = await page.evaluate(() => window.scrollY);
-    const targetY = Math.max(0, coords.y - 200);
-    const steps = 20;
-    for (let i = 1; i <= steps; i++) {
-        const t = i / steps;
-        const currentY = startY + (targetY - startY) * t;
-        await page.evaluate((y) => window.scrollTo(0, y), currentY);
-        await delay(50 + Math.random() * 100);
-    }
-}
-
 async function addRedDot(page, x, y) {
     await page.evaluate((x, y) => {
         const dot = document.createElement('div');
@@ -115,7 +92,7 @@ async function humanClickAt(page, coords) {
         await delay(15);
     }
     await page.mouse.click(coords.x, coords.y);
-    console.log(`🖱️ Clic à (${coords.x}, ${coords.y})`);
+    console.log(`🖱️ Clic à (${coords.x}, ${coords.y}) avec point rouge`);
 }
 
 async function loadAccounts() {
@@ -149,7 +126,7 @@ async function saveAccounts(accounts) {
         owner: GH_USERNAME,
         repo: GH_REPO,
         path: GH_FILE_PATH,
-        message: 'Mise à jour automatique',
+        message: 'Logout - remove account',
         content,
         branch: GH_BRANCH,
         sha
@@ -206,14 +183,13 @@ async function performLoginAndCaptureCookies(account) {
             f => f.url().includes('challenges.cloudflare.com/turnstile'),
             { timeout: 15000 }
         ).catch(() => null);
-
         if (frame) {
             console.log('✅ Iframe Turnstile trouvée (login), clic checkbox');
             await frame.click('input[type="checkbox"]');
             await delay(8000);
         } else {
             console.log('⚠️ Iframe non trouvée, fallback coordonné');
-            await humanClickAt(page, TURNSTILE_LOGIN_COORDS);
+            await humanClickAt(page, { x: 640, y: 615 });
             await delay(10000);
         }
 
@@ -241,9 +217,11 @@ async function performLoginAndCaptureCookies(account) {
     }
 }
 
-async function claimWithCookies(account) {
+// ========== SÉQUENCE DE DÉCONNEXION AVEC POINTS ROUGES ==========
+async function logoutSequence(account) {
     const { email, cookies, platform } = account;
-    console.log(`🍪 Claim pour ${email} via cookies`);
+    console.log(`🚪 Déconnexion pour ${email}`);
+
     const siteUrls = {
         tronpick: 'https://tronpick.io/faucet.php',
         litepick: 'https://litepick.io/faucet.php',
@@ -264,52 +242,52 @@ async function claimWithCookies(account) {
         await delay(5000);
         if (page.url().includes('login.php')) throw new Error('Cookies expirés');
 
+        // Étape 1 : attente 5s
         console.log('⏳ Attente de 5 secondes...');
         await delay(5000);
-        console.log('🔄 Actualisation de la page faucet...');
+
+        // Étape 2 : actualisation
+        console.log('🔄 Actualisation de la page...');
         await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
         await page.screenshot({ path: path.join(screenshotsDir, `01_after_reload_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
+        // Étape 3 : attente 20s
         console.log('⏳ Attente de 20 secondes...');
         await delay(20000);
         await page.screenshot({ path: path.join(screenshotsDir, `02_after_wait_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        await humanScrollToClaim(page);
+        // Étape 4 : premier clic (640,42) avec point rouge + capture
+        console.log('🖱️ Premier clic à (640, 42)');
+        await humanClickAt(page, { x: 640, y: 42 });
+        await page.screenshot({ path: path.join(screenshotsDir, `03_after_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+        // Étape 5 : attendre 2 secondes
+        console.log('⏳ Attente de 2 secondes...');
         await delay(2000);
-        await page.screenshot({ path: path.join(screenshotsDir, `03_turnstile_visible_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        // --- UN SEUL CLIC SUR LE TURNSTILE (au lieu de deux) ---
-        await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
-        await page.screenshot({ path: path.join(screenshotsDir, `04_after_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+        // Étape 6 : deuxième clic (400,285) avec point rouge + capture
+        console.log('🖱️ Deuxième clic à (400, 285)');
+        await humanClickAt(page, { x: 400, y: 285 });
+        await page.screenshot({ path: path.join(screenshotsDir, `04_after_second_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        console.log('⏳ Attente de 10 secondes...');
+        // Étape 7 : attendre 10 secondes pour le résultat
+        console.log('⏳ Attente de 10 secondes pour le résultat...');
         await delay(10000);
+        await page.screenshot({ path: path.join(screenshotsDir, `05_result_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        // Deuxième clic Turnstile supprimé
-
-        console.log('⏳ Attente de 10 secondes avant le clic sur CLAIM...');
-        await delay(10000);
-        await page.screenshot({ path: path.join(screenshotsDir, `05_before_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-
-        await humanClickAt(page, CLAIM_COORDS);
-        await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
-        await delay(5000);
-        await page.screenshot({ path: path.join(screenshotsDir, `06_after_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-
-        const messages = await page.evaluate(() => {
-            return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [role="alert"], .alert, .message, .notification'))
-                .map(el => el.textContent.trim()).filter(t => t);
-        });
-        const btnDisabled = await page.evaluate(() => {
-            const btn = document.querySelector('#process_claim_hourly_faucet');
-            return btn ? btn.disabled : false;
-        });
-        const success = btnDisabled || messages.some(m => /success|claimed|reward|sent|received|thanks/i.test(m));
-        const resultMessage = messages[0] || (btnDisabled ? 'Bouton désactivé (succès présumé)' : 'Aucune réaction');
-        console.log(`📢 Messages détectés : ${messages.join(' | ')}`);
-        console.log(`🔘 Bouton désactivé : ${btnDisabled}`);
-
-        return { success, message: resultMessage };
+        // Vérification de la déconnexion
+        const currentUrl = page.url();
+        const isLoggedOut = currentUrl.includes('login.php') || currentUrl.includes('logout') || currentUrl.includes('index.php');
+        let logoutMessage = '';
+        if (!isLoggedOut) {
+            logoutMessage = await page.evaluate(() => {
+                const msg = document.querySelector('.alert-success, .alert-info, .message, .toast');
+                return msg ? msg.textContent.trim() : '';
+            }).catch(() => '');
+        }
+        const success = isLoggedOut || logoutMessage.toLowerCase().includes('logout') || logoutMessage.toLowerCase().includes('déconnecté');
+        console.log(`🔍 Résultat : URL=${currentUrl}, message="${logoutMessage}", succès=${success}`);
+        return { success, message: success ? 'Déconnexion réussie' : 'Échec de la déconnexion' };
     } catch (error) {
         if (error.message.includes('Cookies expirés')) {
             console.log(`🔄 Cookies expirés pour ${email}, reconnexion...`);
@@ -317,27 +295,27 @@ async function claimWithCookies(account) {
                 const newCookies = await performLoginAndCaptureCookies(account);
                 account.cookies = newCookies;
                 account.cookiesStatus = 'valid';
-                console.log(`✅ Nouveaux cookies capturés. Relance du claim.`);
-                return await claimWithCookies(account);
+                console.log(`✅ Nouveaux cookies capturés. Relance de la séquence.`);
+                return await logoutSequence(account);
             } catch (loginError) {
                 console.error(`❌ Échec reconnexion : ${loginError.message}`);
                 account.cookiesStatus = 'failed';
                 return { success: false, message: `Échec reconnexion: ${loginError.message}` };
             }
         }
-        console.error(`❌ Erreur claim : ${error.message}`);
+        console.error(`❌ Erreur séquence : ${error.message}`);
         return { success: false, message: error.message };
     } finally {
         if (browser) await browser.close().catch(() => {});
     }
 }
 
+// ========== MAIN ==========
 (async () => {
     try {
         let accounts = await loadAccounts();
         console.log(`📋 Comptes chargés : ${accounts.length}`);
         if (!accounts.length) return;
-        const now = Date.now();
         let needsSave = false;
         let nextIndex = 0;
         for (const acc of accounts) {
@@ -366,30 +344,19 @@ async function claimWithCookies(account) {
                     continue;
                 }
             }
-            const lastClaim = acc.lastClaim || 0;
-            const intervalMs = (acc.timer || 60) * 60 * 1000;
-            const isEligible = (now - lastClaim) >= intervalMs;
-            if (!isEligible) {
-                const remainingMin = Math.ceil((intervalMs - (now - lastClaim)) / 60000);
-                console.log(`⏳ Prochain claim dans ${remainingMin} min (timer actuel: ${acc.timer} min)`);
-                continue;
-            }
-            console.log(`🚀 Claim éligible`);
+            console.log(`🚀 Exécution de la séquence de déconnexion...`);
             try {
-                const result = await claimWithCookies(acc);
+                const result = await logoutSequence(acc);
                 if (result.success) {
-                    acc.lastClaim = now;
-                    if (acc.timer !== 60) {
-                        console.log(`🕒 Premier claim réussi pour ${acc.email} : passage du timer de ${acc.timer} à 60 minutes.`);
-                        acc.timer = 60;
-                    }
-                    console.log(`✅ Claim réussi : ${result.message}`);
+                    console.log(`✅ Déconnexion réussie pour ${acc.email}, suppression du compte.`);
+                    const idx = accounts.findIndex(a => a.email === acc.email);
+                    if (idx !== -1) accounts.splice(idx, 1);
+                    needsSave = true;
                 } else {
-                    console.log(`❌ Claim échoué : ${result.message}`);
+                    console.log(`❌ Déconnexion échouée pour ${acc.email}: ${result.message}`);
                 }
-                needsSave = true;
             } catch (e) {
-                console.error(`❌ Erreur claim : ${e.message}`);
+                console.error(`❌ Erreur : ${e.message}`);
                 if (e.message.includes('expir')) {
                     acc.cookies = null;
                     acc.cookiesStatus = 'expired';
