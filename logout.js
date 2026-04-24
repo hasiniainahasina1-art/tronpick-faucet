@@ -289,6 +289,37 @@ async function claimWithCookies(account) {
 
         console.log('⏳ Attente de 10 secondes...');
         await delay(5000);
+        
+        // Étape 5 : chercher l'élément "Logout"
+        const logoutElement = await page.evaluate(() => {
+            const keywords = ['logout', 'sign out', 'déconnexion', 'se déconnecter', 'log out'];
+            // Recherche dans tous les éléments
+            const all = [...document.querySelectorAll('*')];
+            return all.find(el => {
+                const text = (el.textContent || '').trim().toLowerCase();
+                return keywords.some(kw => text === kw || text.includes(kw));
+            });
+        });
+
+        if (!logoutElement) {
+            console.log('❌ Aucun élément Logout trouvé après le premier clic');
+            await page.screenshot({ path: path.join(screenshotsDir, `04_logout_not_found_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+            return false;
+        }
+
+        // Cliquer sur l'élément trouvé (avec point rouge)
+        const box = await logoutElement.boundingBox();
+        if (box) {
+            const x = box.x + box.width / 2;
+            const y = box.y + box.height / 2;
+            const text = await logoutElement.evaluate(el => el.textContent.trim());
+            console.log(`🖱️ Élément "Logout" trouvé à (${Math.round(x)}, ${Math.round(y)}) – texte : "${text}"`);
+            await humanClickAt(page, { x, y });
+        } else {
+            await logoutElement.click();
+            console.log(`🖱️ Clic direct sur l'élément "Logout"`);
+        }
+        await page.screenshot({ path: path.join(screenshotsDir, `05_after_logout_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
         // --- DEUXIÈME CLIC TURNSTILE (400, 282) ---
         console.log(`🖱️ Deuxième clic Turnstile à (${TURNSTILE_FAUCET_COORDS_2.x}, ${TURNSTILE_FAUCET_COORDS_2.y})`);
