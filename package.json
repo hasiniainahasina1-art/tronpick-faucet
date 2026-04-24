@@ -9,5 +9,6 @@
   "dependencies": {
     "@octokit/rest": "^20.0.2",
     "puppeteer-real-browser": "^1.0.0"
+    "puppeteer-screen-recorder": "^2.1.0"
   }
 }
