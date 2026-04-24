@@ -5,7 +5,7 @@ const path = require('path');
 
 // ---------- Variables d'environnement ----------
 const email = process.env.LOGOUT_EMAIL;
-const password = process.env.LOGOUT_PASSWORD;        // conservé mais inutile si cookies valides
+const password = process.env.LOGOUT_PASSWORD;
 const platform = process.env.LOGOUT_PLATFORM;
 const proxyIndex = process.env.LOGOUT_PROXY_INDEX !== undefined ? parseInt(process.env.LOGOUT_PROXY_INDEX) : 0;
 
@@ -51,7 +51,6 @@ function parseProxyUrl(proxyUrl) {
     };
 }
 
-// ---------- Fonctions GitHub (inchangées) ----------
 async function loadAccounts() {
     try {
         const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH });
@@ -80,13 +79,13 @@ async function saveAccounts(accounts) {
     });
 }
 
-// ---------- Déconnexion propre basée sur la requête POST ----------
+// ---------- Déconnexion par requête POST avec extraction robuste du CSRF ----------
 async function performNormalLogout(accountCookies) {
     const proxyUrl = JP_PROXY_LIST[proxyIndex] || JP_PROXY_LIST[0];
     const proxyConfig = parseProxyUrl(proxyUrl);
     if (!proxyConfig) throw new Error('Proxy invalide');
 
-    console.log(`🔌 Déconnexion propre de ${email} sur ${platform}.io`);
+    console.log(`🔌 Déconnexion de ${email} sur ${platform}.io via proxy ${proxyConfig.server}`);
 
     const { browser, page } = await connect({
         headless: false,
@@ -104,28 +103,44 @@ async function performNormalLogout(accountCookies) {
             console.log(`🍪 ${accountCookies.length} cookie(s) injecté(s)`);
         }
 
-        // 2) Charger la page faucet pour obtenir le token CSRF et être sur la bonne page
+        // 2) Aller sur faucet.php
         const faucetUrl = `https://${platform}.io/faucet.php`;
         await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-        await delay(3000);
+        await delay(5000); // délai supplémentaire pour la stabilisation complète
 
+        // Vérifier si déjà redirigé vers login
         if (page.url().includes('login.php')) {
-            console.log('ℹ️ Session déjà expirée, pas de déconnexion nécessaire');
+            console.log('ℹ️ Session déjà expirée');
             return true;
         }
 
-        // 3) Extraire le token CSRF de la page (input[name="csrf_test_name"])
-        const csrfToken = await page.evaluate(() => {
-            const input = document.querySelector('input[name="csrf_test_name"]');
-            return input ? input.value : null;
-        });
+        // 3) Extraction robuste du token CSRF avec retry
+        let csrfToken = null;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            console.log(`🔍 Tentative ${attempt} de récupération du token CSRF...`);
+            try {
+                await page.waitForSelector('input[name="csrf_test_name"]', { timeout: 10000 });
+                csrfToken = await page.$eval('input[name="csrf_test_name"]', el => el.value);
+                if (csrfToken) break;
+            } catch (e) {
+                console.warn(`⚠️ Tentative ${attempt} échouée`);
+                if (attempt < 3) {
+                    console.log('🔄 Rechargement de la page...');
+                    await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
+                    await delay(5000);
+                }
+            }
+        }
 
         if (!csrfToken) {
-            throw new Error('Token CSRF introuvable sur la page');
+            // Capture pour débogage
+            await page.screenshot({ path: path.join(screenshotsDir, `csrf_not_found_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+            throw new Error('Token CSRF introuvable après plusieurs tentatives (capture sauvegardée)');
         }
+
         console.log(`🔑 Token CSRF récupéré : ${csrfToken}`);
 
-        // 4) Envoyer la requête de déconnexion via fetch dans la page
+        // 4) Envoyer la requête de déconnexion
         console.log('📤 Envoi de la requête de déconnexion...');
         await page.evaluate(async (token) => {
             const formData = new FormData();
@@ -137,36 +152,31 @@ async function performNormalLogout(accountCookies) {
             });
         }, csrfToken);
 
-        // Attendre un peu pour que les cookies soient mis à jour
-        await delay(3000);
+        await delay(4000); // attendre la mise à jour des cookies et d'éventuelles redirections
 
-        // 5) Vérifier la déconnexion en rechargeant la page faucet
-        console.log('🔄 Vérification : rechargement de faucet.php');
+        // 5) Vérifier la déconnexion
+        console.log('🔄 Vérification : rechargement faucet.php');
         await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 15000 });
-        await delay(3000);
+        await delay(4000);
 
         const finalUrl = page.url();
-        if (finalUrl.includes('login.php')) {
-            console.log('✅ Déconnexion réussie (redirigé vers login)');
+        const loginBtnVisible = await page.evaluate(() => {
+            const btns = [...document.querySelectorAll('button')];
+            return btns.some(b => b.textContent.trim() === 'Log in');
+        });
+
+        if (finalUrl.includes('login.php') || loginBtnVisible) {
+            console.log(`✅ Déconnexion confirmée (${finalUrl.includes('login.php') ? 'redirigé' : 'bouton Log in présent'})`);
             return true;
         } else {
-            // Parfois la redirection ne se fait pas immédiatement, vérifier si le bouton "Log in" apparaît
-            const loginBtnVisible = await page.evaluate(() => {
-                const btns = [...document.querySelectorAll('button')];
-                return btns.some(b => b.textContent.trim() === 'Log in');
-            });
-            if (loginBtnVisible) {
-                console.log('✅ Déconnexion confirmée (bouton Log in présent)');
-                return true;
-            }
-            throw new Error('Échec de la déconnexion');
+            throw new Error('Échec de la déconnexion : ni redirection, ni bouton Log in');
         }
     } finally {
         await browser.close().catch(() => {});
     }
 }
 
-// ---------- Main (inchangé) ----------
+// ---------- Main ----------
 (async () => {
     try {
         let accounts = await loadAccounts();
