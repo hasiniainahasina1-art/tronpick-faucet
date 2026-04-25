@@ -339,74 +339,90 @@ async function claimWithCookies(account) {
     }
 }
 
-// --- Main ---
+// --- Main (version "un seul compte par exécution") ---
 (async () => {
     try {
         let accounts = await loadAccounts();
         console.log(`📋 Comptes chargés : ${accounts.length}`);
         if (!accounts.length) return;
+
         const now = Date.now();
-        let needsSave = false;
         let nextIndex = 0;
+
+        // S'assurer que chaque compte a un proxyIndex et un timer valide
         for (const acc of accounts) {
             if (acc.proxyIndex === undefined) {
                 acc.proxyIndex = nextIndex % JP_PROXY_LIST.length;
                 nextIndex++;
-                needsSave = true;
             }
-            if (!acc.timer) acc.timer = 60; // sécurité
+            if (!acc.timer) acc.timer = 60;
         }
+
+        // Chercher le premier compte activé et éligible
+        let targetAccount = null;
         for (const acc of accounts) {
             if (!acc.enabled) continue;
-            console.log(`\n===== Traitement : ${acc.email} =====`);
-            const proxyUrl = getProxyUrlForAccount(acc);
-            console.log(`🔄 Proxy fixe : ${proxyUrl} (index ${acc.proxyIndex})`);
-            if (!acc.cookies || acc.cookiesStatus === 'expired' || acc.cookiesStatus === 'failed') {
-                console.log(`🍪 Tentative de login...`);
-                try {
-                    const newCookies = await performLoginAndCaptureCookies(acc);
-                    acc.cookies = newCookies;
-                    acc.cookiesStatus = 'valid';
-                    needsSave = true;
-                } catch (e) {
-                    acc.cookiesStatus = 'failed';
-                    console.log(`❌ Échec login : ${e.message}`);
-                    continue;
-                }
-            }
             const lastClaim = acc.lastClaim || 0;
             const intervalMs = (acc.timer || 60) * 60 * 1000;
             const isEligible = (now - lastClaim) >= intervalMs;
-            if (!isEligible) {
-                const remainingMin = Math.ceil((intervalMs - (now - lastClaim)) / 60000);
-                console.log(`⏳ Prochain claim dans ${remainingMin} min (timer actuel: ${acc.timer} min)`);
-                continue;
+            if (isEligible) {
+                targetAccount = acc;
+                break;
             }
-            console.log(`🚀 Claim éligible`);
-            try {
-                const result = await claimWithCookies(acc);
-                if (result.success) {
-                    acc.lastClaim = now;
-                    // Si le timer n'est pas encore 60, on le bascule après le premier claim réussi
-                    if (acc.timer !== 60) {
-                        console.log(`🕒 Premier claim réussi pour ${acc.email} : passage du timer de ${acc.timer} à 60 minutes.`);
-                        acc.timer = 60;
-                    }
-                    console.log(`✅ Claim réussi : ${result.message}`);
-                } else {
-                    console.log(`❌ Claim échoué : ${result.message}`);
-                }
-                needsSave = true;
-            } catch (e) {
-                console.error(`❌ Erreur claim : ${e.message}`);
-                if (e.message.includes('expir')) {
-                    acc.cookies = null;
-                    acc.cookiesStatus = 'expired';
-                    needsSave = true;
-                }
-            }
-            await delay(5000);
         }
-        if (needsSave) await saveAccounts(accounts);
-    } catch (e) { console.error('Erreur fatale:', e); }
+
+        if (!targetAccount) {
+            console.log('⏳ Aucun compte éligible pour le moment.');
+            return;
+        }
+
+        console.log(`\n===== Traitement unique : ${targetAccount.email} =====`);
+        const proxyUrl = getProxyUrlForAccount(targetAccount);
+        console.log(`🔄 Proxy : ${proxyUrl}`);
+
+        // Login si nécessaire
+        if (!targetAccount.cookies || targetAccount.cookiesStatus === 'expired' || targetAccount.cookiesStatus === 'failed') {
+            console.log(`🍪 Tentative de login...`);
+            try {
+                const newCookies = await performLoginAndCaptureCookies(targetAccount);
+                targetAccount.cookies = newCookies;
+                targetAccount.cookiesStatus = 'valid';
+            } catch (e) {
+                targetAccount.cookiesStatus = 'failed';
+                console.log(`❌ Échec login : ${e.message}`);
+                await saveAccounts(accounts);
+                return;
+            }
+        }
+
+        // Claim
+        console.log(`🚀 Claim éligible`);
+        try {
+            const result = await claimWithCookies(targetAccount);
+            if (result.success) {
+                targetAccount.lastClaim = now;
+                if (targetAccount.timer !== 60) {
+                    console.log(`🕒 Premier claim réussi : timer passé à 60 min.`);
+                    targetAccount.timer = 60;
+                }
+                console.log(`✅ Claim réussi : ${result.message}`);
+            } else {
+                console.log(`❌ Claim échoué : ${result.message}`);
+            }
+        } catch (e) {
+            console.error(`❌ Erreur claim : ${e.message}`);
+            if (e.message.includes('expir')) {
+                targetAccount.cookies = null;
+                targetAccount.cookiesStatus = 'expired';
+            }
+        }
+
+        // Sauvegarder les modifications
+        await saveAccounts(accounts);
+        console.log('💾 Comptes sauvegardés.');
+        console.log('🏁 Terminé.');
+    } catch (e) {
+        console.error('Erreur fatale:', e);
+        process.exit(1);
+    }
 })();
