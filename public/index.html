@@ -47,6 +47,7 @@
             align-items: center;
             gap: 6px;
         }
+        .header h1 i { color: var(--primary); }
 
         .btn {
             padding: 6px 14px;
@@ -120,7 +121,11 @@
             flex-wrap: wrap;
             flex: 1;
         }
-        .account-email { font-weight: 600; font-size: 0.9rem; min-width: 150px; }
+        .account-email {
+            font-weight: 600;
+            font-size: 0.9rem;
+            min-width: 150px;
+        }
         .account-site {
             color: var(--text-secondary);
             font-size: 0.8rem;
@@ -237,7 +242,7 @@
         </div>
     </div>
 
-    <!-- Modale -->
+    <!-- Modale Ajout / Modification -->
     <div class="modal-overlay" id="modalOverlay">
         <div class="modal">
             <h3 id="modalTitle">➕ Nouveau compte</h3>
@@ -273,10 +278,12 @@
         </div>
     </div>
 
+    <!-- Toast notifications -->
     <div class="toast" id="toast"></div>
 
     <script>
         (function() {
+            // --- Configuration GitHub ---
             const GH_USERNAME = 'hasiniainahasina1-art';
             const GH_REPO = 'tronpick-faucet';
             const LOGIN_WORKFLOW_ID = 'test-account.yml';
@@ -284,6 +291,7 @@
             const BRANCH = 'main';
             const FILE_PATH = 'accounts.json';
 
+            // --- API proxy Vercel ---
             async function githubApi(method, path, body = null) {
                 const url = `/api/github?path=${encodeURIComponent(path)}`;
                 const options = { method, headers: { 'Content-Type': 'application/json' } };
@@ -293,7 +301,7 @@
                 const data = await response.json();
                 if (!response.ok) {
                     let errorMsg = `HTTP ${response.status}`;
-                    if (response.status === 401) errorMsg = 'Token invalide';
+                    if (response.status === 401) errorMsg = 'Token invalide – contactez l’administrateur';
                     else if (response.status === 403) errorMsg = 'Permission refusée';
                     else if (response.status === 404) errorMsg = 'Fichier introuvable';
                     else if (data.message) errorMsg = data.message;
@@ -333,6 +341,7 @@
                 await githubApi('POST', apiPath, payload);
             }
 
+            // --- Éléments du DOM ---
             const modal = document.getElementById('modalOverlay');
             const btnAdd = document.getElementById('btnAddAccount');
             const btnCancel = document.getElementById('btnCancel');
@@ -396,16 +405,7 @@
                 return (mins || 0) + (secs || 0) / 60;
             }
 
-            async function refreshAccounts() {
-                try {
-                    currentAccounts = await loadAccounts();
-                    renderAccounts();
-                } catch (e) {
-                    showToast(`Erreur chargement: ${e.message}`, 'error');
-                }
-            }
-
-            // Affiche un spinner sur une ligne (élément .account-item)
+            // --- Gestion du loader ---
             function showLoader(accountElement) {
                 const info = accountElement.querySelector('.account-info');
                 if (info && !info.querySelector('.spinner')) {
@@ -415,10 +415,18 @@
                 }
             }
 
-            // Supprime le spinner de la ligne
             function hideLoader(accountElement) {
                 const spinner = accountElement.querySelector('.spinner');
                 if (spinner) spinner.remove();
+            }
+
+            async function refreshAccounts() {
+                try {
+                    currentAccounts = await loadAccounts();
+                    renderAccounts();
+                } catch (e) {
+                    showToast(`Erreur chargement: ${e.message}`, 'error');
+                }
             }
 
             function renderAccounts() {
@@ -470,16 +478,19 @@
                     countdownIntervals.push(interval);
                 });
 
-                // Événement de suppression avec loader
+                // ✅ Loader persistant pour la suppression
                 document.querySelectorAll('.btn-delete').forEach(btn => {
                     btn.addEventListener('click', async (e) => {
                         const item = btn.closest('.account-item');
                         const idx = parseInt(item.dataset.index);
                         const acc = currentAccounts[idx];
                         if (!confirm(`Supprimer définitivement le compte ${acc.email} ?`)) return;
+
+                        // Active le loader et désactive le bouton
                         showLoader(item);
                         btn.disabled = true;
-                        showToast(`🗑️ Déconnexion de ${acc.email}...`, '');
+                        showToast(`🗑️ Déconnexion de ${acc.email} en cours...`, '');
+
                         try {
                             await triggerWorkflow(LOGOUT_WORKFLOW_ID, {
                                 email: acc.email,
@@ -487,20 +498,23 @@
                                 platform: acc.platform,
                                 proxyIndex: String(acc.proxyIndex || 0)
                             });
-                            // Attente de 30s avant de vérifier
-                            setTimeout(async () => {
-                                await refreshAccounts();
-                                const stillExists = currentAccounts.some(a => a.email === acc.email);
-                                if (!stillExists) {
-                                    showToast(`✅ Compte ${acc.email} supprimé.`, 'success');
-                                } else {
-                                    showToast(`⚠️ Échec suppression, réessayez.`, 'error');
-                                }
-                                hideLoader(item);
-                                btn.disabled = false;
-                            }, 30000);
-                        } catch (e) {
-                            showToast(`❌ Erreur: ${e.message}`, 'error');
+
+                            // ⏳ Attente de 30 secondes (le loader reste visible)
+                            await new Promise(resolve => setTimeout(resolve, 30000));
+
+                            // Rafraîchissement après l'attente
+                            await refreshAccounts();
+
+                            const stillExists = currentAccounts.some(a => a.email === acc.email);
+                            if (!stillExists) {
+                                showToast(`✅ Compte ${acc.email} supprimé.`, 'success');
+                            } else {
+                                showToast(`⚠️ Échec de la suppression, veuillez réessayer.`, 'error');
+                            }
+                        } catch (error) {
+                            showToast(`❌ Erreur: ${error.message}`, 'error');
+                        } finally {
+                            // Cache le loader et réactive le bouton dans tous les cas
                             hideLoader(item);
                             btn.disabled = false;
                         }
@@ -508,6 +522,7 @@
                 });
             }
 
+            // --- Initialisation ---
             refreshAccounts();
             refreshBtn.addEventListener('click', refreshAccounts);
 
@@ -523,6 +538,7 @@
 
                 const idx = parseInt(editIndex.value);
                 if (idx >= 0) {
+                    // Modification
                     currentAccounts[idx].email = email;
                     currentAccounts[idx].password = password;
                     currentAccounts[idx].platform = platform;
@@ -532,6 +548,7 @@
                     await refreshAccounts();
                     showToast('✅ Compte mis à jour.', 'success');
                 } else {
+                    // Ajout
                     if (currentAccounts.some(a => a.email === email)) {
                         showToast('❌ Un compte avec cet email existe déjà.', 'error');
                         return;
