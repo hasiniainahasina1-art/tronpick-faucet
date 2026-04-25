@@ -1,10 +1,12 @@
 name: Claim Tronpick Faucet
 
 on:
-  schedule:
-    # Exécution automatique toutes les heures à la minute 0
-    - cron: '0 * * * *'
-  workflow_dispatch:   # Permet de lancer manuellement
+  workflow_dispatch:
+
+# 🔒 UN SEUL workflow à la fois (file d'attente)
+concurrency:
+  group: claim-single-instance
+  cancel-in-progress: false
 
 jobs:
   claim:
@@ -26,7 +28,7 @@ jobs:
       - name: 📦 Installer les dépendances Node.js
         run: npm install
 
-      - name: 🤖 Exécuter le script d'automatisation
+      - name: 🤖 Exécuter le script (un seul compte par exécution)
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GH_USERNAME: ${{ secrets.GH_USERNAME }}
@@ -40,5 +42,5 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: faucet-screenshots
+          name: faucet-screenshots-${{ github.run_id }}
           path: screenshots/
