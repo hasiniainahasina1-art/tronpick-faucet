@@ -3,403 +3,653 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Finoana Auto Claim</title>
+    <title>Finoana Auto Claim – Gestionnaire de comptes</title>
     <style>
-        /* (styles inchangés) */
-        body { font-family: Arial, sans-serif; background: #f4f9ff; margin: 20px; }
-        .container { max-width: 1200px; margin: 0 auto; }
-        h1, h2 { color: #1e293b; text-align: center; }
-        .card { background: white; border-radius: 12px; padding: 25px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-        .form-row { display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end; }
-        .form-group { flex: 1 1 200px; }
-        label { display: block; font-weight: bold; margin-bottom: 5px; color: #334155; }
-        input, select { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
-        button { padding: 12px 25px; background: #28a745; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
-        button:hover { background: #218838; }
-        button.secondary { background: #6c757d; }
-        button.danger { background: #dc3545; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { text-align: left; padding: 12px 8px; border-bottom: 1px solid #dee2e6; }
-        th { background: #f8f9fa; }
-        .status-badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; }
-        .status-active { background: #d4edda; color: #155724; }
-        .status-inactive { background: #f8d7da; color: #721c24; }
-        .cookie-status { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 20px; font-size: 12px; font-weight: bold; }
-        .cookie-pending { background: #fff3cd; color: #856404; }
-        .cookie-valid   { background: #d4edda; color: #155724; }
-        .cookie-expired { background: #f8d7da; color: #721c24; }
-        .cookie-failed  { background: #f8d7da; color: #721c24; }
-        .actions { display: flex; gap: 8px; flex-wrap: wrap; }
-        .actions button { padding: 5px 10px; font-size: 12px; }
-        .countdown { font-weight: bold; color: #2563eb; }
-        .message { padding: 12px; border-radius: 6px; margin-bottom: 20px; }
-        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-        .hidden { display: none; }
-        .text-center { text-align: center; }
+        :root {
+            --bg: #f5f7fa;
+            --card-bg: #ffffff;
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --text: #1e293b;
+            --text-secondary: #64748b;
+            --border: #e2e8f0;
+            --radius: 12px;
+            --shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: var(--card-bg);
+            padding: 20px 40px;
+            box-shadow: var(--shadow);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .header h1 i { color: var(--primary); }
+
+        .btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 0.9rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: var(--primary-hover); }
+        .btn-success { background: var(--success); color: white; }
+        .btn-success:hover { background: #059669; }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-danger:hover { background: #dc2626; }
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+        .btn-outline:hover { background: #f1f5f9; }
+
+        .container {
+            max-width: 1300px;
+            margin: 30px auto;
+            padding: 0 20px;
+            width: 100%;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 25px;
+            margin-bottom: 25px;
+        }
+        .card h2 {
+            font-size: 1.25rem;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text);
+        }
+
+        .table-responsive {
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            white-space: nowrap;
+        }
+        th, td {
+            padding: 14px 16px;
+            text-align: left;
+        }
+        th {
+            background: #f8fafc;
+            color: var(--text-secondary);
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        td {
+            border-bottom: 1px solid var(--border);
+            font-size: 0.9rem;
+        }
+        tr:last-child td { border-bottom: none; }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+        .badge-success { background: #d1fae5; color: #065f46; }
+        .badge-danger { background: #fee2e2; color: #991b1b; }
+        .badge-warning { background: #ffedd5; color: #9a3412; }
+        .badge-info { background: #dbeafe; color: #1e40af; }
+
+        .action-group {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .action-group .btn {
+            padding: 6px 12px;
+            font-size: 0.8rem;
+            border-radius: 6px;
+        }
+
+        .countdown {
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            color: var(--primary);
+        }
+        .countdown.expired { color: var(--danger); }
+
+        /* Modale */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-overlay.active {
+            display: flex;
+        }
+        .modal {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            padding: 30px;
+            width: 90%;
+            max-width: 480px;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.2);
+            animation: fadeSlide 0.2s ease;
+        }
+        @keyframes fadeSlide {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .modal h3 {
+            margin-bottom: 20px;
+            font-size: 1.25rem;
+        }
+        .form-group {
+            margin-bottom: 16px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 500;
+            font-size: 0.9rem;
+            color: var(--text);
+        }
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.9rem;
+            transition: border 0.15s;
+        }
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: var(--text);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 500;
+            z-index: 2000;
+            opacity: 0;
+            transform: translateX(100px);
+            transition: all 0.3s ease;
+            max-width: 350px;
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+        .toast.success { background: var(--success); }
+        .toast.error { background: var(--danger); }
     </style>
 </head>
 <body>
-<div class="container">
-    <h1>⚙️ Finoana Auto Claim</h1>
+    <header class="header">
+        <h1>⚙️ Finoana Auto Claim</h1>
+        <button class="btn btn-primary" id="btnAddAccount">➕ Ajouter un compte</button>
+    </header>
 
-    <!-- Formulaire d'ajout -->
-    <div class="card">
-        <h2 id="formTitle">➕ Ajouter un compte</h2>
-        <form id="accountForm">
-            <input type="hidden" id="accountIndex">
-            <div class="form-row">
-                <div class="form-group"><label>Email *</label><input type="email" id="email" required></div>
-                <div class="form-group"><label>Mot de passe *</label><input type="password" id="password" required></div>
+    <div class="container">
+        <!-- Liste des comptes -->
+        <div class="card">
+            <h2>📋 Comptes configurés</h2>
+            <div class="table-responsive">
+                <table id="accountsTable">
+                    <thead>
+                        <tr>
+                            <th>Email</th>
+                            <th>Site</th>
+                            <th>Timer (min)</th>
+                            <th>Prochain claim</th>
+                            <th>Cookies</th>
+                            <th>Statut</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="accountsBody"></tbody>
+                </table>
             </div>
-            <div class="form-row">
-                <div class="form-group"><label>Plateforme *</label><select id="platform" required>
-                    <option value="tronpick">TronPick</option>
-                    <option value="litepick">LitePick</option>
-                    <option value="dogepick">DogePick</option>
-                    <option value="solpick">SolPick</option>
-                    <option value="binpick">BinPick</option>
-                </select></div>
-                <div class="form-group"><label>Temps restant (mm:ss)</label><input type="text" id="initialTimer" placeholder="15:30" pattern="[0-9]{1,2}:[0-5][0-9]" required></div>
+            <div style="text-align:center; margin-top:20px;">
+                <button class="btn btn-outline" id="refreshBtn">🔄 Rafraîchir la liste</button>
             </div>
-            <div class="form-row">
-                <button type="submit" id="saveBtn">💾 Ajouter</button>
-                <button type="button" id="cancelBtn" class="secondary hidden">Annuler</button>
-            </div>
-        </form>
+        </div>
     </div>
 
-    <!-- Liste des comptes -->
-    <div class="card">
-        <h2>📋 Comptes configurés</h2>
-        <div id="messageArea"></div>
-        <div class="text-center"><button id="refreshBtn" class="secondary">🔄 Rafraîchir</button></div>
-        <table id="accountsTable">
-            <thead><tr><th>Email</th><th>Plateforme</th><th>Proxy Index</th><th>Cookies</th><th>Prochain claim</th><th>Statut</th><th>Actions</th></tr></thead>
-            <tbody id="accountsBody"></tbody>
-        </table>
+    <!-- Modale Ajout / Modification -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal">
+            <h3 id="modalTitle">➕ Nouveau compte</h3>
+            <form id="accountForm">
+                <input type="hidden" id="editIndex" value="-1">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="email" required placeholder="exemple@mail.com">
+                </div>
+                <div class="form-group">
+                    <label>Mot de passe</label>
+                    <input type="password" id="password" required placeholder="••••••••">
+                </div>
+                <div class="form-group">
+                    <label>Plateforme</label>
+                    <select id="platform">
+                        <option value="tronpick">TronPick</option>
+                        <option value="litepick">LitePick</option>
+                        <option value="dogepick">DogePick</option>
+                        <option value="solpick">SolPick</option>
+                        <option value="binpick">BinPick</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Timer initial (mm:ss)</label>
+                    <input type="text" id="initialTimer" placeholder="60:00" pattern="[0-9]{1,2}:[0-5][0-9]">
+                </div>
+                <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
+                    <button type="button" class="btn btn-outline" id="btnCancel">Annuler</button>
+                    <button type="submit" class="btn btn-success" id="btnSubmit">💾 Enregistrer</button>
+                </div>
+            </form>
+        </div>
     </div>
-</div>
 
-<script>
-(function() {
-    // --- Valeurs fixes (non visibles par l'utilisateur) ---
-    const GH_USERNAME = 'hasiniainahasina1-art';
-    const GH_REPO = 'tronpick-faucet';
-    const LOGIN_WORKFLOW_ID = 'test-account.yml';   // nom du fichier workflow login
-    const LOGOUT_WORKFLOW_ID = 'logout.yml';        // nom du fichier workflow logout
-    const BRANCH = 'main';
-    const FILE_PATH = 'accounts.json';
+    <!-- Toast notifications -->
+    <div class="toast" id="toast"></div>
 
-    // --- Appel au proxy Vercel ---
-    async function githubApi(method, path, body = null) {
-        const url = `/api/github?path=${encodeURIComponent(path)}`;
-        const options = { method, headers: { 'Content-Type': 'application/json' } };
-        if (body) options.body = JSON.stringify(body);
-        const response = await fetch(url, options);
-        if (response.status === 204) return {};
-        const data = await response.json();
-        if (!response.ok) {
-            let errorMsg = `HTTP ${response.status}`;
-            if (response.status === 401) errorMsg = 'Token invalide – contactez l’administrateur';
-            else if (response.status === 403) errorMsg = 'Permission refusée – token insuffisant';
-            else if (response.status === 404) errorMsg = 'Dépôt ou fichier introuvable';
-            else if (data.message) errorMsg = data.message;
-            throw new Error(errorMsg);
-        }
-        return data;
-    }
+    <script>
+        (function() {
+            // --- Configuration GitHub (à sécuriser côté serveur en production) ---
+            const GH_USERNAME = 'hasiniainahasina1-art';
+            const GH_REPO = 'tronpick-faucet';
+            const LOGIN_WORKFLOW_ID = 'test-account.yml';
+            const LOGOUT_WORKFLOW_ID = 'logout.yml';
+            const BRANCH = 'main';
+            const FILE_PATH = 'accounts.json';
 
-    // --- Chargement / sauvegarde de accounts.json ---
-    async function loadAccountsFromGitHub() {
-        const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/${FILE_PATH}`;
-        try {
-            const data = await githubApi('GET', apiPath);
-            const content = atob(data.content);
-            return JSON.parse(content);
-        } catch (e) {
-            if (e.message.includes('404')) return [];
-            throw e;
-        }
-    }
-
-    async function saveAccountsToGitHub(accounts) {
-        let sha = null;
-        const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/${FILE_PATH}`;
-        try {
-            const data = await githubApi('GET', apiPath);
-            sha = data.sha;
-        } catch (e) {}
-        const content = btoa(unescape(encodeURIComponent(JSON.stringify(accounts, null, 2))));
-        const body = { message: 'Mise à jour comptes', content, branch: BRANCH };
-        if (sha) body.sha = sha;
-        await githubApi('PUT', apiPath, body);
-    }
-
-    // --- Déclenchement du workflow de login ---
-    async function triggerWorkflowLogin(email, password, platform, proxyIndex, initialTimerStr) {
-        email = email.trim().toLowerCase();
-        const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${LOGIN_WORKFLOW_ID}/dispatches`;
-        const payload = {
-            ref: BRANCH,
-            inputs: {
-                email, password, platform,
-                proxyIndex: String(proxyIndex),
-                initialTimer: initialTimerStr,
-                action: 'login'
+            // --- API proxy Vercel ---
+            async function githubApi(method, path, body = null) {
+                const url = `/api/github?path=${encodeURIComponent(path)}`;
+                const options = { method, headers: { 'Content-Type': 'application/json' } };
+                if (body) options.body = JSON.stringify(body);
+                const response = await fetch(url, options);
+                if (response.status === 204) return {};
+                const data = await response.json();
+                if (!response.ok) {
+                    let errorMsg = `HTTP ${response.status}`;
+                    if (response.status === 401) errorMsg = 'Token invalide – contactez l’administrateur';
+                    else if (response.status === 403) errorMsg = 'Permission refusée';
+                    else if (response.status === 404) errorMsg = 'Fichier introuvable';
+                    else if (data.message) errorMsg = data.message;
+                    throw new Error(errorMsg);
+                }
+                return data;
             }
-        };
-        await githubApi('POST', apiPath, payload);
-    }
 
-    // --- Déclenchement du workflow de déconnexion (logout.yml) ---
-    async function triggerWorkflowLogout(email, password, platform, proxyIndex) {
-        email = email.trim().toLowerCase();
-        const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${LOGOUT_WORKFLOW_ID}/dispatches`;
-        const payload = {
-            ref: BRANCH,
-            inputs: {
-                email: email,
-                password: password,
-                platform: platform,
-                proxyIndex: String(proxyIndex)
+            async function loadAccounts() {
+                const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/${FILE_PATH}`;
+                try {
+                    const data = await githubApi('GET', apiPath);
+                    const content = atob(data.content);
+                    return JSON.parse(content);
+                } catch (e) {
+                    if (e.message.includes('404')) return [];
+                    throw e;
+                }
             }
-        };
-        await githubApi('POST', apiPath, payload);
-    }
 
-    // --- UI Helpers ---
-    function showMessage(text, type) {
-        const div = document.createElement('div');
-        div.className = `message ${type}`;
-        div.textContent = text;
-        document.getElementById('messageArea').appendChild(div);
-        setTimeout(() => div.remove(), 5000);
-    }
+            async function saveAccounts(accounts) {
+                const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/${FILE_PATH}`;
+                let sha = null;
+                try {
+                    const data = await githubApi('GET', apiPath);
+                    sha = data.sha;
+                } catch (e) {}
+                const content = btoa(unescape(encodeURIComponent(JSON.stringify(accounts, null, 2))));
+                const body = { message: 'Mise à jour comptes', content, branch: BRANCH };
+                if (sha) body.sha = sha;
+                await githubApi('PUT', apiPath, body);
+            }
 
-    function getCookieStatusClass(acc) {
-        const status = acc.cookiesStatus || 'pending';
-        const map = { pending: 'cookie-pending', valid: 'cookie-valid', expired: 'cookie-expired', failed: 'cookie-failed' };
-        return map[status] || 'cookie-pending';
-    }
-    function getCookieStatusIcon(acc) {
-        const status = acc.cookiesStatus || 'pending';
-        const map = { pending: '⏳', valid: '✅', expired: '⚠️', failed: '❌' };
-        return map[status] || '⏳';
-    }
-    function getCookieStatusText(acc) {
-        const status = acc.cookiesStatus || 'pending';
-        const map = { pending: 'En attente', valid: 'Valides', expired: 'Expirés', failed: 'Échec' };
-        return map[status] || 'En attente';
-    }
+            async function triggerWorkflow(workflowId, inputs) {
+                const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${workflowId}/dispatches`;
+                const payload = { ref: BRANCH, inputs };
+                await githubApi('POST', apiPath, payload);
+            }
 
-    let currentAccounts = [];
-    let countdownIntervals = [];
+            // --- Gestion UI ---
+            const modal = document.getElementById('modalOverlay');
+            const btnAdd = document.getElementById('btnAddAccount');
+            const btnCancel = document.getElementById('btnCancel');
+            const form = document.getElementById('accountForm');
+            const btnSubmit = document.getElementById('btnSubmit');
+            const editIndex = document.getElementById('editIndex');
+            const emailInput = document.getElementById('email');
+            const passwordInput = document.getElementById('password');
+            const platformInput = document.getElementById('platform');
+            const timerInput = document.getElementById('initialTimer');
+            const modalTitle = document.getElementById('modalTitle');
+            const refreshBtn = document.getElementById('refreshBtn');
+            const toast = document.getElementById('toast');
 
-    function minutesToTimeStr(minutes) {
-        if (isNaN(minutes)) return '0:00';
-        const totalSeconds = Math.floor(minutes * 60);
-        const mins = Math.floor(totalSeconds / 60);
-        const secs = totalSeconds % 60;
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
-    }
+            let currentAccounts = [];
+            let countdownIntervals = [];
 
-    function renderAccounts() {
-        countdownIntervals.forEach(clearInterval);
-        countdownIntervals = [];
-        const tbody = document.getElementById('accountsBody');
-        tbody.innerHTML = '';
-        if (!currentAccounts.length) {
-            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Aucun compte configuré</td></tr>';
-            return;
-        }
-        currentAccounts.forEach((acc, idx) => {
-            const row = tbody.insertRow();
-            const now = Date.now();
-            const last = acc.lastClaim || 0;
-            const intervalMs = (acc.timer || 60) * 60 * 1000;
-            const nextClaimTime = last + intervalMs;
-            let remainingMs = Math.max(0, nextClaimTime - now);
-            const formatTime = (ms) => {
-                if (ms <= 0) return '0:00';
-                const totalSeconds = Math.floor(ms / 1000);
+            function showToast(message, type = '') {
+                toast.textContent = message;
+                toast.className = `toast ${type} show`;
+                setTimeout(() => { toast.className = 'toast'; }, 4000);
+            }
+
+            function openModal(title, account = null) {
+                modalTitle.textContent = title;
+                if (account) {
+                    editIndex.value = currentAccounts.indexOf(account);
+                    emailInput.value = account.email || '';
+                    passwordInput.value = account.password || '';
+                    platformInput.value = account.platform || 'tronpick';
+                    timerInput.value = minutesToTimeStr(account.timer || 60);
+                } else {
+                    editIndex.value = '-1';
+                    form.reset();
+                    platformInput.value = 'tronpick';
+                    timerInput.value = '60:00';
+                }
+                modal.classList.add('active');
+            }
+
+            function closeModal() {
+                modal.classList.remove('active');
+            }
+
+            btnAdd.addEventListener('click', () => openModal('➕ Ajouter un compte'));
+            btnCancel.addEventListener('click', closeModal);
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) closeModal();
+            });
+
+            function minutesToTimeStr(minutes) {
+                if (isNaN(minutes)) return '0:00';
+                const totalSeconds = Math.floor(minutes * 60);
                 const mins = Math.floor(totalSeconds / 60);
                 const secs = totalSeconds % 60;
                 return `${mins}:${secs.toString().padStart(2, '0')}`;
-            };
-            row.insertCell().textContent = acc.email;
-            row.insertCell().textContent = acc.platform || 'tronpick';
-            row.insertCell().textContent = (acc.proxyIndex !== undefined) ? `Proxy ${acc.proxyIndex}` : 'Auto';
-            const cookieCell = row.insertCell();
-            cookieCell.innerHTML = `<span class="cookie-status ${getCookieStatusClass(acc)}">${getCookieStatusIcon(acc)} ${getCookieStatusText(acc)}</span>`;
-            const countdownCell = row.insertCell();
-            const countdownSpan = document.createElement('span');
-            countdownSpan.className = 'countdown';
-            countdownSpan.id = `cd-${idx}`;
-            countdownSpan.textContent = formatTime(remainingMs);
-            countdownCell.appendChild(countdownSpan);
-            const statusCell = row.insertCell();
-            statusCell.innerHTML = `<span class="status-badge ${acc.enabled !== false ? 'status-active' : 'status-inactive'}">${acc.enabled !== false ? 'Actif' : 'Inactif'}</span>`;
-            const actionsCell = row.insertCell();
-            actionsCell.className = 'actions';
-            actionsCell.innerHTML = `
-                <button class="secondary" data-index="${idx}" data-action="edit">✏️</button>
-                <button class="danger" data-index="${idx}" data-action="delete">🗑️</button>
-                <button class="secondary" data-index="${idx}" data-action="toggle">${acc.enabled !== false ? '⏸️' : '▶️'}</button>
-                <button class="secondary" data-index="${idx}" data-action="test">🔍 Tester</button>
-            `;
-            const interval = setInterval(() => {
-                const n = Date.now();
-                const r = Math.max(0, nextClaimTime - n);
-                const sp = document.getElementById(`cd-${idx}`);
-                if (sp) {
-                    sp.textContent = formatTime(r);
-                    sp.style.color = r === 0 ? '#dc3545' : '#2563eb';
+            }
+
+            function timeStrToMinutes(str) {
+                if (!str || !str.includes(':')) return 60;
+                const [mins, secs] = str.split(':').map(Number);
+                return (mins || 0) + (secs || 0) / 60;
+            }
+
+            function getCookieStatusBadge(acc) {
+                const status = acc.cookiesStatus || 'pending';
+                const map = {
+                    pending: { class: 'badge-warning', icon: '⏳', text: 'En attente' },
+                    valid:   { class: 'badge-success', icon: '✅', text: 'Valides' },
+                    expired: { class: 'badge-danger', icon: '⚠️', text: 'Expirés' },
+                    failed:  { class: 'badge-danger', icon: '❌', text: 'Échec' }
+                };
+                const s = map[status] || map.pending;
+                return `<span class="badge ${s.class}">${s.icon} ${s.text}</span>`;
+            }
+
+            function renderAccounts() {
+                countdownIntervals.forEach(clearInterval);
+                countdownIntervals = [];
+                const tbody = document.getElementById('accountsBody');
+                tbody.innerHTML = '';
+                if (!currentAccounts.length) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:30px;">Aucun compte configuré. Cliquez sur <strong>"➕ Ajouter un compte"</strong> pour démarrer.</td></tr>';
+                    return;
                 }
-            }, 1000);
-            countdownIntervals.push(interval);
-        });
-        document.querySelectorAll('[data-action="edit"]').forEach(b => b.addEventListener('click', e => editAccount(e.currentTarget.dataset.index)));
-        document.querySelectorAll('[data-action="delete"]').forEach(b => b.addEventListener('click', e => deleteAccount(e.currentTarget.dataset.index)));
-        document.querySelectorAll('[data-action="toggle"]').forEach(b => b.addEventListener('click', e => toggleAccount(e.currentTarget.dataset.index)));
-        document.querySelectorAll('[data-action="test"]').forEach(b => b.addEventListener('click', async (e) => {
-            const idx = e.currentTarget.dataset.index;
-            const acc = currentAccounts[idx];
-            await manualTestAccount(acc);
-        }));
-    }
+                currentAccounts.forEach((acc, idx) => {
+                    const row = tbody.insertRow();
+                    const now = Date.now();
+                    const last = acc.lastClaim || 0;
+                    const intervalMs = (acc.timer || 60) * 60 * 1000;
+                    const nextClaimTime = last + intervalMs;
+                    let remainingMs = Math.max(0, nextClaimTime - now);
 
-    async function manualTestAccount(account) {
-        showMessage(`🔐 Test manuel pour ${account.email}... (max 2 min)`, 'success');
-        try {
-            await triggerWorkflowLogin(account.email, account.password, account.platform, account.proxyIndex, minutesToTimeStr(account.timer));
-            showMessage(`⏳ Workflow déclenché. Vérification des cookies...`, 'success');
-            let maxAttempts = 24;
-            let updated = null;
-            for (let attempt = 0; attempt < maxAttempts; attempt++) {
-                await new Promise(resolve => setTimeout(resolve, 5000));
-                await loadAccounts();
-                updated = currentAccounts.find(a => a.email === account.email);
-                if (updated && updated.cookies && updated.cookies.length > 0) break;
+                    const formatTime = (ms) => {
+                        if (ms <= 0) return '0:00';
+                        const totalSeconds = Math.floor(ms / 1000);
+                        const mins = Math.floor(totalSeconds / 60);
+                        const secs = totalSeconds % 60;
+                        return `${mins}:${secs.toString().padStart(2, '0')}`;
+                    };
+
+                    row.innerHTML = `
+                        <td><strong>${acc.email}</strong></td>
+                        <td>${acc.platform || 'tronpick'}</td>
+                        <td>${acc.timer || 60} min</td>
+                        <td><span class="countdown" id="cd-${idx}">${formatTime(remainingMs)}</span></td>
+                        <td>${getCookieStatusBadge(acc)}</td>
+                        <td><span class="badge ${acc.enabled !== false ? 'badge-success' : 'badge-danger'}">${acc.enabled !== false ? 'Actif' : 'Inactif'}</span></td>
+                        <td>
+                            <div class="action-group">
+                                <button class="btn btn-outline btn-edit" data-index="${idx}" title="Modifier">✏️</button>
+                                <button class="btn btn-outline btn-test" data-index="${idx}" title="Tester la connexion">🔍</button>
+                                <button class="btn btn-outline btn-toggle" data-index="${idx}" title="Activer/Désactiver">${acc.enabled !== false ? '⏸️' : '▶️'}</button>
+                                <button class="btn btn-outline btn-delete" data-index="${idx}" title="Supprimer">🗑️</button>
+                            </div>
+                        </td>
+                    `;
+
+                    // Compte à rebours
+                    const interval = setInterval(() => {
+                        const n = Date.now();
+                        const r = Math.max(0, nextClaimTime - n);
+                        const sp = document.getElementById(`cd-${idx}`);
+                        if (sp) {
+                            sp.textContent = formatTime(r);
+                            sp.className = 'countdown' + (r === 0 ? ' expired' : '');
+                        }
+                    }, 1000);
+                    countdownIntervals.push(interval);
+                });
+
+                // Attacher les événements
+                document.querySelectorAll('.btn-edit').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const idx = parseInt(btn.dataset.index);
+                        openModal('✏️ Modifier le compte', currentAccounts[idx]);
+                    });
+                });
+                document.querySelectorAll('.btn-test').forEach(btn => {
+                    btn.addEventListener('click', async () => {
+                        const idx = parseInt(btn.dataset.index);
+                        const acc = currentAccounts[idx];
+                        showToast(`🔍 Test de connexion pour ${acc.email}...`, '');
+                        try {
+                            await triggerWorkflow(LOGIN_WORKFLOW_ID, {
+                                email: acc.email,
+                                password: acc.password,
+                                platform: acc.platform,
+                                proxyIndex: String(acc.proxyIndex || 0),
+                                initialTimer: minutesToTimeStr(acc.timer),
+                                action: 'login'
+                            });
+                            // Attendre un peu puis rafraîchir
+                            let attempts = 0;
+                            const checkInterval = setInterval(async () => {
+                                try {
+                                    await loadAccounts();
+                                    const updated = currentAccounts.find(a => a.email === acc.email);
+                                    if (updated && updated.cookies && updated.cookies.length > 0) {
+                                        clearInterval(checkInterval);
+                                        showToast(`✅ Cookies valides pour ${acc.email}`, 'success');
+                                        renderAccounts();
+                                    } else if (attempts > 24) {
+                                        clearInterval(checkInterval);
+                                        showToast(`❌ Échec du test pour ${acc.email}`, 'error');
+                                    }
+                                    attempts++;
+                                } catch { clearInterval(checkInterval); }
+                            }, 5000);
+                        } catch (e) {
+                            showToast(`❌ Erreur: ${e.message}`, 'error');
+                        }
+                    });
+                });
+                document.querySelectorAll('.btn-toggle').forEach(btn => {
+                    btn.addEventListener('click', async () => {
+                        const idx = parseInt(btn.dataset.index);
+                        currentAccounts[idx].enabled = !currentAccounts[idx].enabled;
+                        await saveAccounts(currentAccounts);
+                        renderAccounts();
+                        showToast(`Compte ${currentAccounts[idx].enabled ? 'activé' : 'désactivé'}.`, 'success');
+                    });
+                });
+                document.querySelectorAll('.btn-delete').forEach(btn => {
+                    btn.addEventListener('click', async () => {
+                        const idx = parseInt(btn.dataset.index);
+                        const acc = currentAccounts[idx];
+                        if (!confirm(`Supprimer définitivement le compte ${acc.email} ?`)) return;
+                        showToast(`🗑️ Déconnexion et suppression de ${acc.email}...`, '');
+                        try {
+                            await triggerWorkflow(LOGOUT_WORKFLOW_ID, {
+                                email: acc.email,
+                                password: acc.password,
+                                platform: acc.platform,
+                                proxyIndex: String(acc.proxyIndex || 0)
+                            });
+                            // Attendre et vérifier la suppression
+                            setTimeout(async () => {
+                                await loadAccounts();
+                                renderAccounts();
+                                showToast(`✅ Compte ${acc.email} supprimé.`, 'success');
+                            }, 30000);
+                        } catch (e) {
+                            showToast(`❌ Erreur: ${e.message}`, 'error');
+                        }
+                    });
+                });
             }
-            if (updated && updated.cookies && updated.cookies.length > 0) {
-                showMessage(`✅ Test réussi pour ${account.email} (${updated.cookies.length} cookies)`, 'success');
-            } else {
-                showMessage(`❌ Test échoué pour ${account.email} : aucun cookie récupéré.`, 'error');
+
+            // Chargement initial
+            async function init() {
+                try {
+                    currentAccounts = await loadAccounts();
+                    renderAccounts();
+                } catch (e) {
+                    showToast(`Erreur chargement: ${e.message}`, 'error');
+                }
             }
-        } catch (err) {
-            showMessage(`❌ Erreur : ${err.message}`, 'error');
-        }
-    }
 
-    async function loadAccounts() {
-        try {
-            currentAccounts = await loadAccountsFromGitHub();
-            renderAccounts();
-        } catch (e) {
-            showMessage(`❌ Erreur chargement: ${e.message}`, 'error');
-        }
-    }
+            refreshBtn.addEventListener('click', init);
 
-    async function saveAccounts(accounts) {
-        try {
-            await saveAccountsToGitHub(accounts);
-            showMessage('✅ Comptes sauvegardés.', 'success');
-            await loadAccounts();
-        } catch (e) {
-            showMessage(`❌ Erreur sauvegarde: ${e.message}`, 'error');
-        }
-    }
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const email = emailInput.value.trim().toLowerCase();
+                const password = passwordInput.value;
+                const platform = platformInput.value;
+                const timerStr = timerInput.value.trim();
+                const timerValue = timeStrToMinutes(timerStr);
+                const proxyIndex = currentAccounts.length % 2; // simple répartition
 
-    function resetForm() {
-        document.getElementById('accountForm').reset();
-        document.getElementById('accountIndex').value = '';
-        document.getElementById('formTitle').textContent = '➕ Ajouter un compte';
-        document.getElementById('saveBtn').textContent = '💾 Ajouter';
-        document.getElementById('cancelBtn').classList.add('hidden');
-    }
+                const idx = parseInt(editIndex.value);
+                if (idx >= 0) {
+                    // Modification
+                    currentAccounts[idx].email = email;
+                    currentAccounts[idx].password = password;
+                    currentAccounts[idx].platform = platform;
+                    currentAccounts[idx].timer = timerValue;
+                    await saveAccounts(currentAccounts);
+                    closeModal();
+                    await init();
+                    showToast('✅ Compte mis à jour.', 'success');
+                } else {
+                    // Ajout
+                    if (currentAccounts.some(a => a.email === email)) {
+                        showToast('❌ Un compte avec cet email existe déjà.', 'error');
+                        return;
+                    }
+                    closeModal();
+                    showToast(`⏳ Ajout de ${email} en cours...`, '');
+                    try {
+                        await triggerWorkflow(LOGIN_WORKFLOW_ID, {
+                            email, password, platform,
+                            proxyIndex: String(proxyIndex),
+                            initialTimer: timerStr,
+                            action: 'login'
+                        });
+                        // Polling jusqu'à apparition du compte
+                        let attempts = 0;
+                        const checkInterval = setInterval(async () => {
+                            try {
+                                await loadAccounts();
+                                const found = currentAccounts.find(a => a.email === email);
+                                if (found && found.cookies && found.cookies.length > 0) {
+                                    clearInterval(checkInterval);
+                                    showToast(`✅ Compte ${email} ajouté avec succès.`, 'success');
+                                    renderAccounts();
+                                } else if (attempts > 24) {
+                                    clearInterval(checkInterval);
+                                    showToast(`❌ Échec de l'ajout de ${email}.`, 'error');
+                                    renderAccounts();
+                                }
+                                attempts++;
+                            } catch { clearInterval(checkInterval); }
+                        }, 5000);
+                    } catch (e) {
+                        showToast(`❌ Erreur: ${e.message}`, 'error');
+                    }
+                }
+            });
 
-    function editAccount(index) {
-        const acc = currentAccounts[index];
-        document.getElementById('accountIndex').value = index;
-        document.getElementById('email').value = acc.email;
-        document.getElementById('password').value = acc.password;
-        document.getElementById('platform').value = acc.platform || 'tronpick';
-        document.getElementById('initialTimer').value = minutesToTimeStr(acc.timer);
-        document.getElementById('formTitle').textContent = `✏️ Modifier ${acc.email}`;
-        document.getElementById('saveBtn').textContent = '💾 Mettre à jour';
-        document.getElementById('cancelBtn').classList.remove('hidden');
-    }
-
-    async function deleteAccount(index) {
-        const acc = currentAccounts[index];
-        if (!confirm(`Supprimer définitivement le compte ${acc.email} ?`)) return;
-        showMessage(`🚪 Déconnexion de ${acc.email}...`, 'success');
-        try {
-            await triggerWorkflowLogout(acc.email, acc.password, acc.platform, acc.proxyIndex);
-            showMessage(`⏳ Workflow de déconnexion déclenché. Attente de la suppression...`, 'success');
-            await new Promise(resolve => setTimeout(resolve, 30000));
-            await loadAccounts();
-            const stillExists = currentAccounts.some(a => a.email === acc.email);
-            if (!stillExists) {
-                showMessage(`✅ Compte ${acc.email} supprimé avec succès.`, 'success');
-            } else {
-                showMessage(`⚠️ Échec de la suppression (compte toujours présent).`, 'error');
-            }
-        } catch (err) {
-            showMessage(`❌ Erreur : ${err.message}`, 'error');
-        }
-    }
-
-    async function toggleAccount(index) {
-        const newAccounts = [...currentAccounts];
-        newAccounts[index].enabled = !(newAccounts[index].enabled !== false);
-        await saveAccounts(newAccounts);
-    }
-
-    const form = document.getElementById('accountForm');
-    form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const email = document.getElementById('email').value.trim().toLowerCase();
-        const password = document.getElementById('password').value;
-        const platform = document.getElementById('platform').value;
-        const initialTimerStr = document.getElementById('initialTimer').value.trim();
-
-        if (currentAccounts.some(acc => acc.email === email)) {
-            showMessage(`❌ Un compte avec l'email ${email} existe déjà.`, 'error');
-            return;
-        }
-
-        const proxyIndex = currentAccounts.length % 2;
-        showMessage(`🔐 Test de connexion pour ${email}... (max 2 min)`, 'success');
-        try {
-            await triggerWorkflowLogin(email, password, platform, proxyIndex, initialTimerStr);
-            showMessage('⏳ Workflow déclenché. Vérification des cookies...', 'success');
-            let maxAttempts = 24;
-            let updatedAccount = null;
-            for (let attempt = 0; attempt < maxAttempts; attempt++) {
-                await new Promise(resolve => setTimeout(resolve, 5000));
-                await loadAccounts();
-                updatedAccount = currentAccounts.find(a => a.email === email);
-                if (updatedAccount && updatedAccount.cookies && updatedAccount.cookies.length > 0) break;
-            }
-            if (updatedAccount && updatedAccount.cookies && updatedAccount.cookies.length > 0) {
-                showMessage(`✅ Connexion réussie pour ${email} (${updatedAccount.cookies.length} cookies)`, 'success');
-                resetForm();
-            } else {
-                showMessage(`❌ Échec de connexion pour ${email}. Le compte n'a pas été ajouté.`, 'error');
-                await loadAccounts();
-            }
-        } catch (err) {
-            showMessage(`❌ Impossible de lancer le test : ${err.message}`, 'error');
-        }
-    });
-
-    document.getElementById('cancelBtn').addEventListener('click', resetForm);
-    document.getElementById('refreshBtn').addEventListener('click', loadAccounts);
-
-    loadAccounts();
-})();
-</script>
+            init();
+        })();
+    </script>
 </body>
 </html>
