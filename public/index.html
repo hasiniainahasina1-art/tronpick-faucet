@@ -478,7 +478,7 @@
                     countdownIntervals.push(interval);
                 });
 
-                // ✅ Gestion robuste de la suppression (avec capture des timeouts)
+                // ✅ Suppression avec polling (10s x 12 = 2 minutes max)
                 document.querySelectorAll('.btn-delete').forEach(btn => {
                     btn.addEventListener('click', async (e) => {
                         const item = btn.closest('.account-item');
@@ -491,7 +491,6 @@
                         showToast(`🗑️ Lancement de la déconnexion de ${acc.email}...`, '');
 
                         try {
-                            // Déclencher le workflow
                             await triggerWorkflow(LOGOUT_WORKFLOW_ID, {
                                 email: acc.email,
                                 password: acc.password,
@@ -499,17 +498,28 @@
                                 proxyIndex: String(acc.proxyIndex || 0)
                             });
 
-                            // Attendre 30 secondes
-                            showToast(`⏳ Déconnexion en cours (30 sec)...`, '');
-                            await new Promise(resolve => setTimeout(resolve, 30000));
+                            // Boucle de polling (10 secondes entre chaque vérification)
+                            showToast(`⏳ Déconnexion en cours (peut prendre jusqu'à 2 minutes)...`, '');
+                            let isDeleted = false;
+                            const maxAttempts = 12; // 12 x 10s = 120s
+                            for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                                await new Promise(resolve => setTimeout(resolve, 10000));
+                                try {
+                                    currentAccounts = await loadAccounts();
+                                    if (!currentAccounts.some(a => a.email === acc.email)) {
+                                        isDeleted = true;
+                                        break;
+                                    }
+                                } catch (e) {
+                                    // Ignorer les erreurs réseau, on réessaie
+                                }
+                            }
 
-                            // Rafraîchir et vérifier
-                            await refreshAccounts();
-                            const stillExists = currentAccounts.some(a => a.email === acc.email);
-                            if (!stillExists) {
+                            if (isDeleted) {
                                 showToast(`✅ Compte ${acc.email} supprimé avec succès.`, 'success');
+                                await refreshAccounts(); // rafraîchir l'affichage complet
                             } else {
-                                showToast(`⚠️ Le compte existe encore après 30s. Réessayez ou vérifiez les logs.`, 'error');
+                                showToast(`⚠️ Le compte existe toujours après 2 minutes. Réessayez ou vérifiez les logs du workflow.`, 'error');
                             }
                         } catch (error) {
                             console.error('Erreur suppression:', error);
