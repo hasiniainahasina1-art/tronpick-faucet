@@ -51,6 +51,7 @@ function parseProxyUrl(proxyUrl) {
     };
 }
 
+// ---------- GitHub ----------
 async function loadAccounts() {
     try {
         const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH });
@@ -79,7 +80,55 @@ async function saveAccounts(accounts) {
     });
 }
 
-// ---------- Déconnexion par requête POST avec extraction robuste du CSRF ----------
+// ---------- Extraction intelligente du token CSRF ----------
+async function extractCsrfToken(page) {
+    console.log('🔎 Extraction du token CSRF...');
+
+    // 1) Input classique
+    let token = await page.evaluate(() => {
+        const el = document.querySelector('input[name="csrf_test_name"]');
+        return el ? el.value : null;
+    });
+    if (token) {
+        console.log('✅ CSRF trouvé (input name="csrf_test_name")');
+        return token;
+    }
+
+    // 2) Cookie csrf_cookie_name
+    const cookies = await page.cookies();
+    const csrfCookie = cookies.find(c => c.name === 'csrf_cookie_name');
+    if (csrfCookie && csrfCookie.value) {
+        console.log('✅ CSRF trouvé (cookie csrf_cookie_name)');
+        return csrfCookie.value;
+    }
+
+    // 3) Variable JavaScript globale
+    token = await page.evaluate(() => {
+        if (window.csrfToken) return window.csrfToken;
+        if (window.csrf_token) return window.csrf_token;
+        if (window.CSRF_TOKEN) return window.CSRF_TOKEN;
+        if (window.csrf_test_name) return window.csrf_test_name;
+        return null;
+    });
+    if (token) {
+        console.log('✅ CSRF trouvé (variable JS globale)');
+        return token;
+    }
+
+    // 4) Balise meta
+    token = await page.evaluate(() => {
+        const meta = document.querySelector('meta[name="csrf-token"], meta[name="csrf_token"], meta[name="csrf_test_name"]');
+        return meta ? meta.getAttribute('content') : null;
+    });
+    if (token) {
+        console.log('✅ CSRF trouvé (balise meta)');
+        return token;
+    }
+
+    return null;
+}
+
+// ---------- Déconnexion ----------
 async function performNormalLogout(accountCookies) {
     const proxyUrl = JP_PROXY_LIST[proxyIndex] || JP_PROXY_LIST[0];
     const proxyConfig = parseProxyUrl(proxyUrl);
@@ -97,50 +146,38 @@ async function performNormalLogout(accountCookies) {
     try {
         await page.setViewport({ width: 1280, height: 720 });
 
-        // 1) Injecter les cookies
+        // 1) Injection des cookies
         if (accountCookies && accountCookies.length > 0) {
             await page.setCookie(...accountCookies);
             console.log(`🍪 ${accountCookies.length} cookie(s) injecté(s)`);
         }
 
-        // 2) Aller sur faucet.php
+        // 2) Charger la page faucet
         const faucetUrl = `https://${platform}.io/faucet.php`;
         await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-        await delay(5000); // délai supplémentaire pour la stabilisation complète
+        console.log('⏳ Attente de 20 secondes pour stabilisation complète...');
+        await delay(20000);  // Attente demandée
 
-        // Vérifier si déjà redirigé vers login
+        // Vérifier si déjà déconnecté
         if (page.url().includes('login.php')) {
             console.log('ℹ️ Session déjà expirée');
             return true;
         }
 
-        // 3) Extraction robuste du token CSRF avec retry
-        let csrfToken = null;
-        for (let attempt = 1; attempt <= 3; attempt++) {
-            console.log(`🔍 Tentative ${attempt} de récupération du token CSRF...`);
-            try {
-                await page.waitForSelector('input[name="csrf_test_name"]', { timeout: 10000 });
-                csrfToken = await page.$eval('input[name="csrf_test_name"]', el => el.value);
-                if (csrfToken) break;
-            } catch (e) {
-                console.warn(`⚠️ Tentative ${attempt} échouée`);
-                if (attempt < 3) {
-                    console.log('🔄 Rechargement de la page...');
-                    await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
-                    await delay(5000);
-                }
-            }
-        }
+        // Capture avant extraction (utile si échec)
+        await page.screenshot({
+            path: path.join(screenshotsDir, `before_csrf_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`),
+            fullPage: true
+        });
 
+        // 3) Extraction du token CSRF
+        const csrfToken = await extractCsrfToken(page);
         if (!csrfToken) {
-            // Capture pour débogage
-            await page.screenshot({ path: path.join(screenshotsDir, `csrf_not_found_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-            throw new Error('Token CSRF introuvable après plusieurs tentatives (capture sauvegardée)');
+            throw new Error('Token CSRF introuvable (aucune source trouvée)');
         }
+        console.log(`🔑 Token CSRF utilisé : ${csrfToken}`);
 
-        console.log(`🔑 Token CSRF récupéré : ${csrfToken}`);
-
-        // 4) Envoyer la requête de déconnexion
+        // 4) Envoi de la requête de déconnexion
         console.log('📤 Envoi de la requête de déconnexion...');
         await page.evaluate(async (token) => {
             const formData = new FormData();
@@ -152,12 +189,12 @@ async function performNormalLogout(accountCookies) {
             });
         }, csrfToken);
 
-        await delay(4000); // attendre la mise à jour des cookies et d'éventuelles redirections
+        await delay(5000); // Attendre mise à jour des cookies / redirection
 
-        // 5) Vérifier la déconnexion
+        // 5) Vérification de la déconnexion
         console.log('🔄 Vérification : rechargement faucet.php');
         await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 15000 });
-        await delay(4000);
+        await delay(5000);
 
         const finalUrl = page.url();
         const loginBtnVisible = await page.evaluate(() => {
