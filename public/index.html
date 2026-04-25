@@ -78,7 +78,7 @@
         .btn-outline:hover { background: #f1f5f9; }
 
         .container {
-            max-width: 1200px;
+            max-width: 800px;
             margin: 20px auto;
             padding: 0 16px;
         }
@@ -98,64 +98,69 @@
             gap: 8px;
         }
 
-        .table-responsive {
-            overflow-x: auto;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        th, td {
-            padding: 8px 10px;
-            text-align: left;
-            border-bottom: 1px solid var(--border);
-            vertical-align: middle;
-        }
-        th {
-            background: #f8fafc;
-            color: var(--text-secondary);
-            font-weight: 600;
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-        }
-        td {
-            font-size: 0.8rem;
-        }
-        tr:last-child td { border-bottom: none; }
-
-        .badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 3px;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 0.7rem;
-            font-weight: 600;
-            white-space: nowrap;
-        }
-        .badge-success { background: #d1fae5; color: #065f46; }
-        .badge-danger { background: #fee2e2; color: #991b1b; }
-        .badge-warning { background: #ffedd5; color: #9a3412; }
-        .badge-info { background: #dbeafe; color: #1e40af; }
-
-        .action-group {
+        .accounts-list {
             display: flex;
-            gap: 4px;
+            flex-direction: column;
+            gap: 8px;
         }
-        .action-group .btn {
-            padding: 3px 8px;
-            font-size: 0.7rem;
+        .account-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            background: #f8fafc;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .account-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+            flex: 1;
+        }
+        .account-email {
+            font-weight: 600;
+            font-size: 0.9rem;
+            min-width: 150px;
+        }
+        .account-site {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            background: #e2e8f0;
+            padding: 2px 8px;
             border-radius: 4px;
         }
-
-        .countdown {
+        .account-countdown {
             font-weight: 700;
             font-variant-numeric: tabular-nums;
             color: var(--primary);
-            font-size: 0.8rem;
+            font-size: 0.85rem;
+            min-width: 60px;
         }
-        .countdown.expired { color: var(--danger); }
+        .account-countdown.expired { color: var(--danger); }
+
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: var(--text);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-weight: 500;
+            font-size: 0.8rem;
+            z-index: 2000;
+            opacity: 0;
+            transform: translateX(80px);
+            transition: all 0.3s ease;
+            max-width: 300px;
+        }
+        .toast.show { opacity: 1; transform: translateX(0); }
+        .toast.success { background: var(--success); }
+        .toast.error { background: var(--danger); }
 
         /* Modale */
         .modal-overlay {
@@ -206,26 +211,6 @@
             border-color: var(--primary);
             box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
         }
-
-        .toast {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            background: var(--text);
-            color: white;
-            padding: 10px 20px;
-            border-radius: 6px;
-            font-weight: 500;
-            font-size: 0.8rem;
-            z-index: 2000;
-            opacity: 0;
-            transform: translateX(80px);
-            transition: all 0.3s ease;
-            max-width: 300px;
-        }
-        .toast.show { opacity: 1; transform: translateX(0); }
-        .toast.success { background: var(--success); }
-        .toast.error { background: var(--danger); }
     </style>
 </head>
 <body>
@@ -237,21 +222,8 @@
     <div class="container">
         <div class="card">
             <h2>📋 Comptes configurés</h2>
-            <div class="table-responsive">
-                <table id="accountsTable">
-                    <thead>
-                        <tr>
-                            <th>Email</th>
-                            <th>Site</th>
-                            <th>Timer (min)</th>
-                            <th>Prochain claim</th>
-                            <th>Cookies</th>
-                            <th>Statut</th>
-                            <th style="width:140px;">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="accountsBody"></tbody>
-                </table>
+            <div id="accountsContainer" class="accounts-list">
+                <!-- Les compteurs seront insérés ici dynamiquement -->
             </div>
             <div style="text-align:center; margin-top:10px;">
                 <button class="btn btn-outline" id="refreshBtn">🔄 Rafraîchir la liste</button>
@@ -300,7 +272,6 @@
 
     <script>
         (function() {
-            // Configuration GitHub
             const GH_USERNAME = 'hasiniainahasina1-art';
             const GH_REPO = 'tronpick-faucet';
             const LOGIN_WORKFLOW_ID = 'test-account.yml';
@@ -420,18 +391,6 @@
                 return (mins || 0) + (secs || 0) / 60;
             }
 
-            function getCookieStatusBadge(acc) {
-                const status = acc.cookiesStatus || 'pending';
-                const map = {
-                    pending: { class: 'badge-warning', icon: '⏳', text: 'Attente' },
-                    valid:   { class: 'badge-success', icon: '✅', text: 'Valides' },
-                    expired: { class: 'badge-danger', icon: '⚠️', text: 'Expirés' },
-                    failed:  { class: 'badge-danger', icon: '❌', text: 'Échec' }
-                };
-                const s = map[status] || map.pending;
-                return `<span class="badge ${s.class}">${s.icon} ${s.text}</span>`;
-            }
-
             async function refreshAccounts() {
                 try {
                     currentAccounts = await loadAccounts();
@@ -444,14 +403,13 @@
             function renderAccounts() {
                 countdownIntervals.forEach(clearInterval);
                 countdownIntervals = [];
-                const tbody = document.getElementById('accountsBody');
-                tbody.innerHTML = '';
+                const container = document.getElementById('accountsContainer');
+                container.innerHTML = '';
                 if (!currentAccounts.length) {
-                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px;">Aucun compte configuré.</td></tr>';
+                    container.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-secondary);">Aucun compte configuré.</div>';
                     return;
                 }
                 currentAccounts.forEach((acc, idx) => {
-                    const row = tbody.insertRow();
                     const now = Date.now();
                     const last = acc.lastClaim || 0;
                     const intervalMs = (acc.timer || 60) * 60 * 1000;
@@ -466,88 +424,32 @@
                         return `${mins}:${secs.toString().padStart(2, '0')}`;
                     };
 
-                    row.innerHTML = `
-                        <td><strong style="font-size:0.8rem;">${acc.email}</strong></td>
-                        <td>${acc.platform || 'tronpick'}</td>
-                        <td>${acc.timer || 60}</td>
-                        <td><span class="countdown" id="cd-${idx}">${formatTime(remainingMs)}</span></td>
-                        <td>${getCookieStatusBadge(acc)}</td>
-                        <td><span class="badge ${acc.enabled !== false ? 'badge-success' : 'badge-danger'}">${acc.enabled !== false ? 'Actif' : 'Inactif'}</span></td>
-                        <td>
-                            <div class="action-group">
-                                <button class="btn btn-outline btn-edit" data-index="${idx}" title="Modifier">✏️</button>
-                                <button class="btn btn-outline btn-test" data-index="${idx}" title="Tester">🔍</button>
-                                <button class="btn btn-outline btn-toggle" data-index="${idx}" title="Activer/Désactiver">${acc.enabled !== false ? '⏸️' : '▶️'}</button>
-                                <button class="btn btn-outline btn-delete" data-index="${idx}" title="Supprimer">🗑️</button>
-                            </div>
-                        </td>
+                    const item = document.createElement('div');
+                    item.className = 'account-item';
+                    item.innerHTML = `
+                        <div class="account-info">
+                            <span class="account-email">${acc.email}</span>
+                            <span class="account-site">${acc.platform || 'tronpick'}</span>
+                            <span class="account-countdown" id="cd-${idx}">${formatTime(remainingMs)}</span>
+                        </div>
+                        <button class="btn btn-outline btn-delete" data-index="${idx}" title="Supprimer le compte">🗑️</button>
                     `;
+                    container.appendChild(item);
 
+                    // Compte à rebours
                     const interval = setInterval(() => {
                         const n = Date.now();
                         const r = Math.max(0, nextClaimTime - n);
                         const sp = document.getElementById(`cd-${idx}`);
                         if (sp) {
                             sp.textContent = formatTime(r);
-                            sp.className = 'countdown' + (r === 0 ? ' expired' : '');
+                            sp.className = 'account-countdown' + (r === 0 ? ' expired' : '');
                         }
                     }, 1000);
                     countdownIntervals.push(interval);
                 });
 
-                document.querySelectorAll('.btn-edit').forEach(btn => {
-                    btn.addEventListener('click', () => {
-                        const idx = parseInt(btn.dataset.index);
-                        openModal('✏️ Modifier le compte', currentAccounts[idx]);
-                    });
-                });
-                document.querySelectorAll('.btn-test').forEach(btn => {
-                    btn.addEventListener('click', async () => {
-                        const idx = parseInt(btn.dataset.index);
-                        const acc = currentAccounts[idx];
-                        showToast(`🔍 Test de connexion pour ${acc.email}...`, '');
-                        try {
-                            await triggerWorkflow(LOGIN_WORKFLOW_ID, {
-                                email: acc.email,
-                                password: acc.password,
-                                platform: acc.platform,
-                                proxyIndex: String(acc.proxyIndex || 0),
-                                initialTimer: minutesToTimeStr(acc.timer),
-                                action: 'login'
-                            });
-                            let attempts = 0;
-                            const checkInterval = setInterval(async () => {
-                                try {
-                                    currentAccounts = await loadAccounts();
-                                    const updated = currentAccounts.find(a => a.email === acc.email);
-                                    if (updated && updated.cookies && updated.cookies.length > 0) {
-                                        clearInterval(checkInterval);
-                                        showToast(`✅ Cookies valides pour ${acc.email}`, 'success');
-                                        renderAccounts();
-                                    } else if (attempts > 24) {
-                                        clearInterval(checkInterval);
-                                        showToast(`❌ Échec du test pour ${acc.email}`, 'error');
-                                        renderAccounts();
-                                    }
-                                    attempts++;
-                                } catch {
-                                    clearInterval(checkInterval);
-                                }
-                            }, 5000);
-                        } catch (e) {
-                            showToast(`❌ Erreur: ${e.message}`, 'error');
-                        }
-                    });
-                });
-                document.querySelectorAll('.btn-toggle').forEach(btn => {
-                    btn.addEventListener('click', async () => {
-                        const idx = parseInt(btn.dataset.index);
-                        currentAccounts[idx].enabled = !currentAccounts[idx].enabled;
-                        await saveAccounts(currentAccounts);
-                        await refreshAccounts();
-                        showToast(`Compte ${currentAccounts[idx].enabled ? 'activé' : 'désactivé'}.`, 'success');
-                    });
-                });
+                // Attacher les événements de suppression
                 document.querySelectorAll('.btn-delete').forEach(btn => {
                     btn.addEventListener('click', async () => {
                         const idx = parseInt(btn.dataset.index);
