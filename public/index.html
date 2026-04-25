@@ -47,7 +47,6 @@
             align-items: center;
             gap: 6px;
         }
-        .header h1 i { color: var(--primary); }
 
         .btn {
             padding: 6px 14px;
@@ -121,11 +120,7 @@
             flex-wrap: wrap;
             flex: 1;
         }
-        .account-email {
-            font-weight: 600;
-            font-size: 0.9rem;
-            min-width: 150px;
-        }
+        .account-email { font-weight: 600; font-size: 0.9rem; min-width: 150px; }
         .account-site {
             color: var(--text-secondary);
             font-size: 0.8rem;
@@ -141,6 +136,19 @@
             min-width: 60px;
         }
         .account-countdown.expired { color: var(--danger); }
+
+        /* Spinner */
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            margin-right: 8px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
         .toast {
             position: fixed;
@@ -222,16 +230,14 @@
     <div class="container">
         <div class="card">
             <h2>📋 Comptes configurés</h2>
-            <div id="accountsContainer" class="accounts-list">
-                <!-- Les compteurs seront insérés ici dynamiquement -->
-            </div>
+            <div id="accountsContainer" class="accounts-list"></div>
             <div style="text-align:center; margin-top:10px;">
                 <button class="btn btn-outline" id="refreshBtn">🔄 Rafraîchir la liste</button>
             </div>
         </div>
     </div>
 
-    <!-- Modale Ajout / Modification -->
+    <!-- Modale -->
     <div class="modal-overlay" id="modalOverlay">
         <div class="modal">
             <h3 id="modalTitle">➕ Nouveau compte</h3>
@@ -267,7 +273,6 @@
         </div>
     </div>
 
-    <!-- Toast notifications -->
     <div class="toast" id="toast"></div>
 
     <script>
@@ -400,6 +405,22 @@
                 }
             }
 
+            // Affiche un spinner sur une ligne (élément .account-item)
+            function showLoader(accountElement) {
+                const info = accountElement.querySelector('.account-info');
+                if (info && !info.querySelector('.spinner')) {
+                    const spinner = document.createElement('span');
+                    spinner.className = 'spinner';
+                    info.prepend(spinner);
+                }
+            }
+
+            // Supprime le spinner de la ligne
+            function hideLoader(accountElement) {
+                const spinner = accountElement.querySelector('.spinner');
+                if (spinner) spinner.remove();
+            }
+
             function renderAccounts() {
                 countdownIntervals.forEach(clearInterval);
                 countdownIntervals = [];
@@ -426,17 +447,17 @@
 
                     const item = document.createElement('div');
                     item.className = 'account-item';
+                    item.dataset.index = idx;
                     item.innerHTML = `
                         <div class="account-info">
                             <span class="account-email">${acc.email}</span>
                             <span class="account-site">${acc.platform || 'tronpick'}</span>
                             <span class="account-countdown" id="cd-${idx}">${formatTime(remainingMs)}</span>
                         </div>
-                        <button class="btn btn-outline btn-delete" data-index="${idx}" title="Supprimer le compte">🗑️</button>
+                        <button class="btn btn-outline btn-delete" title="Supprimer le compte">🗑️</button>
                     `;
                     container.appendChild(item);
 
-                    // Compte à rebours
                     const interval = setInterval(() => {
                         const n = Date.now();
                         const r = Math.max(0, nextClaimTime - n);
@@ -449,13 +470,16 @@
                     countdownIntervals.push(interval);
                 });
 
-                // Attacher les événements de suppression
+                // Événement de suppression avec loader
                 document.querySelectorAll('.btn-delete').forEach(btn => {
-                    btn.addEventListener('click', async () => {
-                        const idx = parseInt(btn.dataset.index);
+                    btn.addEventListener('click', async (e) => {
+                        const item = btn.closest('.account-item');
+                        const idx = parseInt(item.dataset.index);
                         const acc = currentAccounts[idx];
                         if (!confirm(`Supprimer définitivement le compte ${acc.email} ?`)) return;
-                        showToast(`🗑️ Déconnexion et suppression de ${acc.email}...`, '');
+                        showLoader(item);
+                        btn.disabled = true;
+                        showToast(`🗑️ Déconnexion de ${acc.email}...`, '');
                         try {
                             await triggerWorkflow(LOGOUT_WORKFLOW_ID, {
                                 email: acc.email,
@@ -463,26 +487,31 @@
                                 platform: acc.platform,
                                 proxyIndex: String(acc.proxyIndex || 0)
                             });
+                            // Attente de 30s avant de vérifier
                             setTimeout(async () => {
                                 await refreshAccounts();
                                 const stillExists = currentAccounts.some(a => a.email === acc.email);
                                 if (!stillExists) {
                                     showToast(`✅ Compte ${acc.email} supprimé.`, 'success');
                                 } else {
-                                    showToast(`⚠️ Compte encore présent, veuillez réessayer.`, 'error');
+                                    showToast(`⚠️ Échec suppression, réessayez.`, 'error');
                                 }
+                                hideLoader(item);
+                                btn.disabled = false;
                             }, 30000);
                         } catch (e) {
                             showToast(`❌ Erreur: ${e.message}`, 'error');
+                            hideLoader(item);
+                            btn.disabled = false;
                         }
                     });
                 });
             }
 
-            // Chargement initial
             refreshAccounts();
             refreshBtn.addEventListener('click', refreshAccounts);
 
+            // Soumission du formulaire d'ajout
             form.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const email = emailInput.value.trim().toLowerCase();
@@ -523,11 +552,11 @@
                                 const found = currentAccounts.find(a => a.email === email);
                                 if (found && found.cookies && found.cookies.length > 0) {
                                     clearInterval(checkInterval);
-                                    showToast(`✅ Compte ${email} ajouté avec succès.`, 'success');
+                                    showToast(`✅ Compte ${email} ajouté.`, 'success');
                                     renderAccounts();
                                 } else if (attempts > 24) {
                                     clearInterval(checkInterval);
-                                    showToast(`❌ Échec de l'ajout de ${email}.`, 'error');
+                                    showToast(`❌ Échec ajout de ${email}.`, 'error');
                                     renderAccounts();
                                 }
                                 attempts++;
