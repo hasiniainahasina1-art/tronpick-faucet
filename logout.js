@@ -80,61 +80,41 @@ async function saveAccounts(accounts) {
     });
 }
 
-// ---------- Extraction intelligente du token CSRF ----------
-async function extractCsrfToken(page) {
-    console.log('🔎 Extraction du token CSRF...');
+// ---------- Clic humain ----------
+async function humanClickAt(page, coords) {
+    const start = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
+    const steps = 20;
+    for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        const cp = { x: start.x + (Math.random() - 0.5) * 100, y: start.y + (Math.random() - 0.5) * 100 };
+        const x = Math.pow(1 - t, 2) * start.x + 2 * (1 - t) * t * cp.x + Math.pow(t, 2) * coords.x;
+        const y = Math.pow(1 - t, 2) * start.y + 2 * (1 - t) * t * cp.y + Math.pow(t, 2) * coords.y;
+        await page.mouse.move(x, y);
+        await delay(15);
+    }
+    await page.mouse.click(coords.x, coords.y);
+}
 
-    // 1) Input classique
-    let token = await page.evaluate(() => {
+// ---------- Extraction CSRF (fallback) ----------
+async function extractCsrfToken(page) {
+    const cookies = await page.cookies();
+    const csrfCookie = cookies.find(c => c.name === 'csrf_cookie_name');
+    if (csrfCookie && csrfCookie.value) return csrfCookie.value;
+
+    const token = await page.evaluate(() => {
         const el = document.querySelector('input[name="csrf_test_name"]');
         return el ? el.value : null;
     });
-    if (token) {
-        console.log('✅ CSRF trouvé (input name="csrf_test_name")');
-        return token;
-    }
-
-    // 2) Cookie csrf_cookie_name
-    const cookies = await page.cookies();
-    const csrfCookie = cookies.find(c => c.name === 'csrf_cookie_name');
-    if (csrfCookie && csrfCookie.value) {
-        console.log('✅ CSRF trouvé (cookie csrf_cookie_name)');
-        return csrfCookie.value;
-    }
-
-    // 3) Variable JavaScript globale
-    token = await page.evaluate(() => {
-        if (window.csrfToken) return window.csrfToken;
-        if (window.csrf_token) return window.csrf_token;
-        if (window.CSRF_TOKEN) return window.CSRF_TOKEN;
-        if (window.csrf_test_name) return window.csrf_test_name;
-        return null;
-    });
-    if (token) {
-        console.log('✅ CSRF trouvé (variable JS globale)');
-        return token;
-    }
-
-    // 4) Balise meta
-    token = await page.evaluate(() => {
-        const meta = document.querySelector('meta[name="csrf-token"], meta[name="csrf_token"], meta[name="csrf_test_name"]');
-        return meta ? meta.getAttribute('content') : null;
-    });
-    if (token) {
-        console.log('✅ CSRF trouvé (balise meta)');
-        return token;
-    }
-
-    return null;
+    return token;
 }
 
-// ---------- Déconnexion ----------
-async function performNormalLogout(accountCookies) {
+// ---------- Déconnexion humaine ----------
+async function performHumanLogout(accountCookies) {
     const proxyUrl = JP_PROXY_LIST[proxyIndex] || JP_PROXY_LIST[0];
     const proxyConfig = parseProxyUrl(proxyUrl);
     if (!proxyConfig) throw new Error('Proxy invalide');
 
-    console.log(`🔌 Déconnexion de ${email} sur ${platform}.io via proxy ${proxyConfig.server}`);
+    console.log(`🔌 Déconnexion humaine de ${email} sur ${platform}.io via proxy ${proxyConfig.server}`);
 
     const { browser, page } = await connect({
         headless: false,
@@ -146,68 +126,102 @@ async function performNormalLogout(accountCookies) {
     try {
         await page.setViewport({ width: 1280, height: 720 });
 
-        // 1) Injection des cookies
+        // 1) Cookies
         if (accountCookies && accountCookies.length > 0) {
             await page.setCookie(...accountCookies);
             console.log(`🍪 ${accountCookies.length} cookie(s) injecté(s)`);
         }
 
-        // 2) Charger la page faucet
+        // 2) Charger faucet.php
         const faucetUrl = `https://${platform}.io/faucet.php`;
         await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-        console.log('⏳ Attente de 20 secondes pour stabilisation complète...');
-        await delay(20000);  // Attente demandée
+        console.log('⏳ Attente 20 secondes (stabilisation)...');
+        await delay(20000);
 
-        // Vérifier si déjà déconnecté
         if (page.url().includes('login.php')) {
             console.log('ℹ️ Session déjà expirée');
             return true;
         }
 
-        // Capture avant extraction (utile si échec)
-        await page.screenshot({
-            path: path.join(screenshotsDir, `before_csrf_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`),
-            fullPage: true
-        });
+        await page.screenshot({ path: path.join(screenshotsDir, `01_before_logout_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        // 3) Extraction du token CSRF
-        const csrfToken = await extractCsrfToken(page);
-        if (!csrfToken) {
-            throw new Error('Token CSRF introuvable (aucune source trouvée)');
-        }
-        console.log(`🔑 Token CSRF utilisé : ${csrfToken}`);
-
-        // 4) Envoi de la requête de déconnexion
-        console.log('📤 Envoi de la requête de déconnexion...');
-        await page.evaluate(async (token) => {
-            const formData = new FormData();
-            formData.append('action', 'logout');
-            formData.append('csrf_test_name', token);
-            await fetch('process.php', {
-                method: 'POST',
-                body: formData
+        // 3) Chercher le bouton "Log out" (comme un humain)
+        const logoutCoords = await page.evaluate(() => {
+            const candidates = [...document.querySelectorAll('button, a, div[role="button"], input[type="submit"]')];
+            const btn = candidates.find(el => {
+                const txt = el.textContent?.toLowerCase() || '';
+                return txt.includes('log out') || txt.includes('logout') || txt.includes('déconnexion') || txt.includes('sign out');
             });
-        }, csrfToken);
-
-        await delay(5000); // Attendre mise à jour des cookies / redirection
-
-        // 5) Vérification de la déconnexion
-        console.log('🔄 Vérification : rechargement faucet.php');
-        await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 15000 });
-        await delay(5000);
-
-        const finalUrl = page.url();
-        const loginBtnVisible = await page.evaluate(() => {
-            const btns = [...document.querySelectorAll('button')];
-            return btns.some(b => b.textContent.trim() === 'Log in');
+            if (btn) {
+                const rect = btn.getBoundingClientRect();
+                return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, text: btn.textContent.trim() };
+            }
+            return null;
         });
 
-        if (finalUrl.includes('login.php') || loginBtnVisible) {
-            console.log(`✅ Déconnexion confirmée (${finalUrl.includes('login.php') ? 'redirigé' : 'bouton Log in présent'})`);
-            return true;
+        if (logoutCoords) {
+            console.log(`🖱️ Clic humain sur "${logoutCoords.text}" (${Math.round(logoutCoords.x)},${Math.round(logoutCoords.y)})`);
+            await humanClickAt(page, logoutCoords);
+
+            // Gérer une boîte de dialogue de confirmation
+            await delay(1000);
+            const dialogVisible = await page.evaluate(() => {
+                const modals = document.querySelectorAll('.modal, .dialog, [role="dialog"], .popup');
+                return Array.from(modals).some(m => m.offsetParent !== null);
+            });
+            if (dialogVisible) {
+                console.log('🔔 Boîte de confirmation détectée, recherche bouton confirmer');
+                const confirmClicked = await page.evaluate(() => {
+                    const btns = [...document.querySelectorAll('button')];
+                    const confirmBtn = btns.find(b => /yes|ok|confirm|oui|valider/i.test(b.textContent));
+                    if (confirmBtn) { confirmBtn.click(); return true; }
+                    return false;
+                });
+                if (!confirmClicked) await page.keyboard.press('Escape');
+                await delay(2000);
+            }
+
+            // Attendre la redirection
+            try {
+                await page.waitForFunction(() => window.location.href.includes('login.php'), { timeout: 15000 });
+                console.log('✅ Redirigé vers login.php');
+                return true;
+            } catch {
+                const finalUrl = page.url();
+                if (finalUrl.includes('login.php')) {
+                    console.log('✅ Redirigé vers login.php');
+                    return true;
+                }
+                console.warn('⚠️ Pas de redirection, recharge pour vérifier...');
+                await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 10000 });
+                await delay(5000);
+                if (page.url().includes('login.php')) {
+                    console.log('✅ Déconnexion confirmée via recharge');
+                    return true;
+                }
+            }
         } else {
-            throw new Error('Échec de la déconnexion : ni redirection, ni bouton Log in');
+            console.log('⚠️ Aucun bouton trouvé, tentative fallback POST...');
+            const csrfToken = await extractCsrfToken(page);
+            if (!csrfToken) throw new Error('Token CSRF introuvable (aucune source)');
+            console.log(`🔑 CSRF fallback : ${csrfToken}`);
+            await page.evaluate(async (token) => {
+                const formData = new FormData();
+                formData.append('action', 'logout');
+                formData.append('csrf_test_name', token);
+                await fetch('process.php', { method: 'POST', body: formData });
+            }, csrfToken);
+            await delay(5000);
+            await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 10000 });
+            await delay(5000);
+            if (page.url().includes('login.php')) {
+                console.log('✅ Déconnexion via fallback réussie');
+                return true;
+            }
         }
+
+        // Si on arrive là, échec
+        throw new Error('Échec de la déconnexion');
     } finally {
         await browser.close().catch(() => {});
     }
@@ -230,7 +244,7 @@ async function performNormalLogout(accountCookies) {
         if (!account.cookies || account.cookiesStatus === 'expired') {
             console.log('⏩ Cookies déjà expirés, suppression directe.');
         } else {
-            await performNormalLogout(account.cookies);
+            await performHumanLogout(account.cookies);
         }
 
         accounts.splice(idx, 1);
