@@ -478,7 +478,7 @@
                     countdownIntervals.push(interval);
                 });
 
-                // ✅ Loader persistant pour la suppression
+                // ✅ Gestion robuste de la suppression (avec capture des timeouts)
                 document.querySelectorAll('.btn-delete').forEach(btn => {
                     btn.addEventListener('click', async (e) => {
                         const item = btn.closest('.account-item');
@@ -486,12 +486,12 @@
                         const acc = currentAccounts[idx];
                         if (!confirm(`Supprimer définitivement le compte ${acc.email} ?`)) return;
 
-                        // Active le loader et désactive le bouton
                         showLoader(item);
                         btn.disabled = true;
-                        showToast(`🗑️ Déconnexion de ${acc.email} en cours...`, '');
+                        showToast(`🗑️ Lancement de la déconnexion de ${acc.email}...`, '');
 
                         try {
+                            // Déclencher le workflow
                             await triggerWorkflow(LOGOUT_WORKFLOW_ID, {
                                 email: acc.email,
                                 password: acc.password,
@@ -499,22 +499,28 @@
                                 proxyIndex: String(acc.proxyIndex || 0)
                             });
 
-                            // ⏳ Attente de 30 secondes (le loader reste visible)
+                            // Attendre 30 secondes
+                            showToast(`⏳ Déconnexion en cours (30 sec)...`, '');
                             await new Promise(resolve => setTimeout(resolve, 30000));
 
-                            // Rafraîchissement après l'attente
+                            // Rafraîchir et vérifier
                             await refreshAccounts();
-
                             const stillExists = currentAccounts.some(a => a.email === acc.email);
                             if (!stillExists) {
-                                showToast(`✅ Compte ${acc.email} supprimé.`, 'success');
+                                showToast(`✅ Compte ${acc.email} supprimé avec succès.`, 'success');
                             } else {
-                                showToast(`⚠️ Échec de la suppression, veuillez réessayer.`, 'error');
+                                showToast(`⚠️ Le compte existe encore après 30s. Réessayez ou vérifiez les logs.`, 'error');
                             }
                         } catch (error) {
-                            showToast(`❌ Erreur: ${error.message}`, 'error');
+                            console.error('Erreur suppression:', error);
+                            let message = error.message;
+                            if (message.includes('Failed to fetch') || message.includes('NetworkError')) {
+                                message = 'Erreur de connexion (timeout Vercel ?). Réessayez.';
+                            } else if (message.includes('422')) {
+                                message = 'Le workflow est peut-être déjà en cours. Patientez puis réessayez.';
+                            }
+                            showToast(`❌ Échec : ${message}`, 'error');
                         } finally {
-                            // Cache le loader et réactive le bouton dans tous les cas
                             hideLoader(item);
                             btn.disabled = false;
                         }
