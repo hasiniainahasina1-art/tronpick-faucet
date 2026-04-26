@@ -207,7 +207,8 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777216234381,
     "timer": 1,
-    "pendingClaim": false
+    "pendingClaim": false,
+    "claimResult": "❌ ×Error!Request timed out. Please try again!"
   },
   {
     "email": "hasiniainahasina1@gmail.com",
@@ -309,10 +310,9 @@
       }
     ],
     "cookiesStatus": "valid",
-    "lastClaim": 1777216422883,
-    "timer": 60,
-    "pendingClaim": false,
-    "claimResult": "✅ ×Success!You got 0.000001000 SOL!"
+    "lastClaim": 1777216264205,
+    "timer": 1,
+    "pendingClaim": false
   },
   {
     "email": "hasiniainahasina1@gmail.com",
