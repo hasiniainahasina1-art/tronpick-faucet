@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Finoana Auto Claim</title>
+    <title>Connexion – Finoana Auto Claim</title>
     <style>
         :root {
             --bg: #f0f4f8;
@@ -201,9 +201,9 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
         (function() {
-            // Initialisation Supabase
+            // ✅ Initialisation Supabase avec TES clés
             const supabaseUrl = 'https://xwmituhhszailaaxposg.supabase.co';
-            const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3bWl0dWhoc3phaWxhYXhwb3NnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMjQ4MzQsImV4cCI6MjA5MjgwMDgzNH0.-LWoiKQVvgAhkkG1fF5067V-1ckA2aQ4UaUxfS95ukE'; // ⚠️ À remplacer par ta vraie clé anon
+            const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3bWl0dWhoc3phaWxhYXhwb3NnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMjQ4MzQsImV4cCI6MjA5MjgwMDgzNH0.-LWoiKQVvgAhkkG1fF5067V-1ckA2aQ4UaUxfS95ukE';
             const supabase = supabase.createClient(supabaseUrl, supabaseAnonKey);
 
             // État : mode 'login' ou 'signup'
@@ -295,8 +295,6 @@
 
                 // Succès
                 if (mode === 'signup') {
-                    // L'utilisateur est connecté automatiquement après signUp (si confirmation email désactivée)
-                    // S'il faut une confirmation, on affiche un message
                     if (result.data.user?.identities?.length === 0) {
                         apiError.textContent = 'Un email de confirmation vous a été envoyé.';
                         apiErrorGroup.style.display = 'block';
@@ -312,7 +310,6 @@
             // Vérifier si déjà connecté
             const existingToken = localStorage.getItem('auth_token');
             if (existingToken) {
-                // Rediriger directement au dashboard
                 window.location.href = '/dashboard.html';
             }
         })();
