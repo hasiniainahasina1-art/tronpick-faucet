@@ -498,7 +498,6 @@
                                 proxyIndex: String(acc.proxyIndex || 0)
                             });
 
-                            // Boucle de polling (10 secondes entre chaque vérification)
                             showToast(`⏳ Déconnexion en cours (peut prendre jusqu'à 2 minutes)...`, '');
                             let isDeleted = false;
                             const maxAttempts = 12; // 12 x 10s = 120s
@@ -517,7 +516,7 @@
 
                             if (isDeleted) {
                                 showToast(`✅ Compte ${acc.email} supprimé avec succès.`, 'success');
-                                await refreshAccounts(); // rafraîchir l'affichage complet
+                                await refreshAccounts();
                             } else {
                                 showToast(`⚠️ Le compte existe toujours après 2 minutes. Réessayez ou vérifiez les logs du workflow.`, 'error');
                             }
@@ -564,9 +563,9 @@
                     await refreshAccounts();
                     showToast('✅ Compte mis à jour.', 'success');
                 } else {
-                    // Ajout
-                    if (currentAccounts.some(a => a.email === email)) {
-                        showToast('❌ Un compte avec cet email existe déjà.', 'error');
+                    // ⚡ Ajout : vérifier unicité email + plateforme
+                    if (currentAccounts.some(a => a.email === email && a.platform === platform)) {
+                        showToast('❌ Un compte avec cet email et cette plateforme existe déjà.', 'error');
                         return;
                     }
                     closeModal();
@@ -582,7 +581,7 @@
                         const checkInterval = setInterval(async () => {
                             try {
                                 currentAccounts = await loadAccounts();
-                                const found = currentAccounts.find(a => a.email === email);
+                                const found = currentAccounts.find(a => a.email === email && a.platform === platform);
                                 if (found && found.cookies && found.cookies.length > 0) {
                                     clearInterval(checkInterval);
                                     showToast(`✅ Compte ${email} ajouté.`, 'success');
