@@ -208,7 +208,7 @@
     "lastClaim": 1777206890009,
     "timer": 45,
     "pendingClaim": false,
-    "claimResult": null
+    "claimResult": "❌ Aucune réaction"
   },
   {
     "email": "rivoniainafinoana123@gmail.com",
@@ -420,6 +420,6 @@
     "timer": 1,
     "pendingClaim": false,
     "pendingClaimSince": 1777210385236,
-    "claimResult": "❌ Aucune réaction"
+    "claimResult": "â Aucune rÃ©action"
   }
 ]
