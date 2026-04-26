@@ -210,7 +210,8 @@
     "timer": 60,
     "pendingClaim": false,
     "pendingClaimSince": 1777226527971,
-    "claimResult": null
+    "claimResult": null,
+    "pendingLogout": true
   },
   {
     "email": "hasiniainahasina1@gmail.com",
