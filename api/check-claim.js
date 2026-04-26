@@ -1,4 +1,4 @@
-// api/check-claim.js – VERSION PRODUCTION (avec vérification d'exécution en cours)
+// api/check-claim.js – VERSION PRODUCTION FINALE
 export default async function handler(req, res) {
     const SECRET = process.env.CRON_SECRET;
     const headerSecret = req.headers['x-cron-secret'];
@@ -14,7 +14,7 @@ export default async function handler(req, res) {
     const GH_FILE_PATH = process.env.GH_FILE_PATH || 'accounts.json';
     const CLAIM_WORKFLOW_ID = 'claim.yml';
 
-    // Fonction interne pour vérifier si un workflow est déjà en cours
+    // Vérifier si un workflow "Claim Tronpick Faucet" est déjà en cours
     async function isWorkflowAlreadyRunning() {
         try {
             const url = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/actions/runs?status=in_progress&status=queued`;
@@ -66,10 +66,14 @@ export default async function handler(req, res) {
             return res.json({ status: 'ok', message: 'Aucun compte' });
         }
 
-        // 3. Trouver les comptes éligibles
+        // 3. Trouver les comptes éligibles (en excluant ceux en cours de déconnexion)
         const now = Date.now();
         const eligibleAccounts = accounts.filter(acc => {
             if (acc.enabled === false) return false;
+            if (acc.pendingLogout === true) {
+                console.log(`⏭️ Ignoré (déconnexion en cours) : ${acc.email}`);
+                return false;
+            }
             const last = acc.lastClaim || 0;
             const intervalMs = (acc.timer || 60) * 60 * 1000;
             return (now - last) >= intervalMs;
