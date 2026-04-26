@@ -207,9 +207,8 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777216234381,
     "timer": 1,
-    "pendingClaim": true,
-    "claimResult": "❌ Aucune réaction",
-    "pendingClaimSince": 1777216686986
+    "pendingClaim": false,
+    "claimResult": null
   },
   {
     "email": "hasiniainahasina1@gmail.com",
@@ -313,8 +312,7 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777216264205,
     "timer": 1,
-    "pendingClaim": true,
-    "pendingClaimSince": 1777216686986
+    "pendingClaim": false
   },
   {
     "email": "hasiniainahasina1@gmail.com",
@@ -417,8 +415,6 @@
     ],
     "cookiesStatus": "valid",
     "lastClaim": 1777216279584,
-    "timer": 1,
-    "pendingClaim": true,
-    "pendingClaimSince": 1777216686986
+    "timer": 1
   }
 ]
