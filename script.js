@@ -136,8 +136,8 @@ async function loadAccounts() {
     }
 }
 
-// ✅ Nouvelle fonction saveAccounts avec gestion des conflits 409
-async function saveAccounts(accounts) {
+// ✅ Nouvelle version de saveAccounts, avec paramètre optionnel modifiedAccount
+async function saveAccounts(accounts, modifiedAccount = null) {
     let maxRetries = 3;
     while (maxRetries-- > 0) {
         try {
@@ -151,7 +151,7 @@ async function saveAccounts(accounts) {
                 });
                 sha = res.data.sha;
             } catch (e) {
-                // fichier inexistant, sha reste null
+                // fichier inexistant, sha restera null
             }
             const content = Buffer.from(JSON.stringify(accounts, null, 2)).toString('base64');
             await octokit.repos.createOrUpdateFileContents({
@@ -168,6 +168,7 @@ async function saveAccounts(accounts) {
             if (e.status === 409) {
                 console.warn('⚠️ Conflit de version (409), rechargement et nouvel essai…');
                 try {
+                    // Recharger la version la plus récente
                     const res = await octokit.repos.getContent({
                         owner: GH_USERNAME,
                         repo: GH_REPO,
@@ -175,15 +176,17 @@ async function saveAccounts(accounts) {
                         ref: GH_BRANCH
                     });
                     const latest = JSON.parse(Buffer.from(res.data.content, 'base64').toString('utf8'));
-                    // Fusionner avec la version fraîche : remplacer le compte concerné
-                    const freshAccounts = latest;
-                    const idx = freshAccounts.findIndex(a => a.email === targetAccount.email && a.platform === targetAccount.platform);
-                    if (idx !== -1) {
-                        freshAccounts[idx] = targetAccount;
-                    } else {
-                        freshAccounts.push(targetAccount);
+                    // Si un compte modifié est fourni, on remplace l'entrée correspondante dans les données fraîches
+                    if (modifiedAccount) {
+                        const idx = latest.findIndex(a => a.email === modifiedAccount.email && a.platform === modifiedAccount.platform);
+                        if (idx !== -1) {
+                            latest[idx] = modifiedAccount;
+                        } else {
+                            latest.push(modifiedAccount);
+                        }
                     }
-                    accounts = freshAccounts;
+                    // On remplace le tableau accounts par cette version fusionnée pour la prochaine tentative
+                    accounts = latest;
                 } catch (reloadErr) {
                     console.error('❌ Impossible de recharger après conflit :', reloadErr);
                     throw e;
@@ -368,7 +371,7 @@ async function claimWithCookies(account) {
     }
 }
 
-// --- Main (un seul compte, proxy unique, retrait du flag pendingClaim, notification claimResult) ---
+// --- Main (un seul compte, proxy unique, notification claimResult, sauvegarde robuste) ---
 (async () => {
     try {
         const targetEmail = process.env.CLAIM_EMAIL;
@@ -391,9 +394,10 @@ async function claimWithCookies(account) {
         const intervalMs = (targetAccount.timer || 60) * 60 * 1000;
         if ((now - lastClaim) < intervalMs) {
             console.log(`⏳ Le compte ${targetEmail} n'est pas encore éligible.`);
+            // Même si pas éligible, on retire le flag pendingClaim au cas où
             targetAccount.pendingClaim = false;
             targetAccount.claimResult = null;
-            await saveAccounts(accounts);
+            await saveAccounts(accounts, targetAccount);
             process.exit(0);
         }
 
@@ -411,7 +415,7 @@ async function claimWithCookies(account) {
                 targetAccount.claimResult = `❌ ${e.message}`;
                 console.log(`❌ Échec login : ${e.message}`);
                 targetAccount.pendingClaim = false;
-                await saveAccounts(accounts);
+                await saveAccounts(accounts, targetAccount);
                 process.exit(1);
             }
         }
@@ -432,7 +436,6 @@ async function claimWithCookies(account) {
                 targetAccount.claimResult = `❌ ${result.message}`;
                 console.log(`❌ Claim échoué : ${result.message}`);
 
-                // Si l'erreur contient "try again in 10 minutes", pause de 2 heures
                 if (result.message.includes('try again in 10 minutes')) {
                     const deuxHeuresMs = 2 * 60 * 60 * 1000;
                     targetAccount.lastClaim = now + deuxHeuresMs - ((targetAccount.timer || 60) * 60 * 1000);
@@ -448,9 +451,10 @@ async function claimWithCookies(account) {
             }
         }
 
-        // ✅ Retirer le flag pendingClaim dans tous les cas
+        // ✅ Retirer le flag pendingClaim et sauvegarder
         targetAccount.pendingClaim = false;
-        await saveAccounts(accounts);
+        // On passe targetAccount pour que saveAccounts puisse gérer les conflits en fusionnant correctement
+        await saveAccounts(accounts, targetAccount);
         console.log('💾 Comptes sauvegardés.');
         console.log('🏁 Terminé.');
         process.exit(0);
