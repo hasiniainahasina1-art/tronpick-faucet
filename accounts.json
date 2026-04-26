@@ -1,110 +1,5 @@
 [
   {
-    "email": "rivoniainafinoana123@gmail.com",
-    "password": "Finoana123.",
-    "platform": "tronpick",
-    "proxyIndex": 0,
-    "enabled": true,
-    "cookies": [
-      {
-        "name": "remember_token",
-        "value": "6a2f5467943a7a2c0d2a3a017594f82b",
-        "domain": "tronpick.io",
-        "path": "/",
-        "expires": 1779784870.499111,
-        "size": 46,
-        "httpOnly": false,
-        "secure": false,
-        "session": false,
-        "priority": "Medium",
-        "sourceScheme": "Secure"
-      },
-      {
-        "name": "_ga",
-        "value": "GA1.1.1427755012.1777192838",
-        "domain": ".tronpick.io",
-        "path": "/",
-        "expires": 1811752871.904053,
-        "size": 30,
-        "httpOnly": false,
-        "secure": false,
-        "session": false,
-        "priority": "Medium",
-        "sourceScheme": "Secure"
-      },
-      {
-        "name": "user_session",
-        "value": "isfivf9ubocqgb0amlu4j6kdp9iidjml",
-        "domain": "tronpick.io",
-        "path": "/",
-        "expires": 1777279272.28919,
-        "size": 44,
-        "httpOnly": true,
-        "secure": false,
-        "session": false,
-        "priority": "Medium",
-        "sourceScheme": "Secure"
-      },
-      {
-        "name": "fp",
-        "value": "PkYhDXoBznWzDvv1",
-        "domain": "tronpick.io",
-        "path": "/",
-        "expires": 1808728838,
-        "size": 18,
-        "httpOnly": false,
-        "secure": false,
-        "session": false,
-        "priority": "Medium",
-        "sourceScheme": "Secure"
-      },
-      {
-        "name": "_ga_B22HX5LGBP",
-        "value": "GS2.1.s1777192838$o1$g1$t1777192871$j27$l0$h0",
-        "domain": ".tronpick.io",
-        "path": "/",
-        "expires": 1811752871.923966,
-        "size": 59,
-        "httpOnly": false,
-        "secure": false,
-        "session": false,
-        "priority": "Medium",
-        "sourceScheme": "Secure"
-      },
-      {
-        "name": "g_state",
-        "value": "{\"i_l\":0,\"i_ll\":1777192873355,\"i_b\":\"VxBSpoFPv4YTx9M7O8u3QgZ0g5LHVrJfS6yQJA4ekTA\",\"i_e\":{\"enable_itp_optimization\":0},\"i_et\":1777192838657}",
-        "domain": "tronpick.io",
-        "path": "/",
-        "expires": 1792744873,
-        "size": 146,
-        "httpOnly": false,
-        "secure": false,
-        "session": false,
-        "priority": "Medium",
-        "sourceScheme": "Secure"
-      },
-      {
-        "name": "csrf_cookie_name",
-        "value": "219453630628e561ec35cb528b3e8695",
-        "domain": "tronpick.io",
-        "path": "/",
-        "expires": 1777200072.289069,
-        "size": 48,
-        "httpOnly": false,
-        "secure": false,
-        "session": false,
-        "priority": "Medium",
-        "sourceScheme": "Secure"
-      }
-    ],
-    "cookiesStatus": "valid",
-    "lastClaim": 1777192880915,
-    "timer": 2.5,
-    "pendingClaim": true,
-    "pendingLogout": true
-  },
-  {
     "email": "hasiniainahasina1@gmail.com",
     "password": "Finoana123.",
     "platform": "solpick",
@@ -205,7 +100,6 @@
     ],
     "cookiesStatus": "valid",
     "lastClaim": 1777193603529,
-    "timer": 35,
-    "pendingLogout": true
+    "timer": 35
   }
 ]
