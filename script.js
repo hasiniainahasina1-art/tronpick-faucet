@@ -339,7 +339,7 @@ async function claimWithCookies(account) {
     }
 }
 
-// --- Main (version "un seul compte par exécution") ---
+// --- Main (un seul compte par exécution, avec pause de 2h si erreur réseau) ---
 (async () => {
     try {
         let accounts = await loadAccounts();
@@ -349,7 +349,6 @@ async function claimWithCookies(account) {
         const now = Date.now();
         let nextIndex = 0;
 
-        // S'assurer que chaque compte a un proxyIndex et un timer valide
         for (const acc of accounts) {
             if (acc.proxyIndex === undefined) {
                 acc.proxyIndex = nextIndex % JP_PROXY_LIST.length;
@@ -358,7 +357,6 @@ async function claimWithCookies(account) {
             if (!acc.timer) acc.timer = 60;
         }
 
-        // Chercher le premier compte activé et éligible
         let targetAccount = null;
         for (const acc of accounts) {
             if (!acc.enabled) continue;
@@ -380,7 +378,6 @@ async function claimWithCookies(account) {
         const proxyUrl = getProxyUrlForAccount(targetAccount);
         console.log(`🔄 Proxy : ${proxyUrl}`);
 
-        // Login si nécessaire
         if (!targetAccount.cookies || targetAccount.cookiesStatus === 'expired' || targetAccount.cookiesStatus === 'failed') {
             console.log(`🍪 Tentative de login...`);
             try {
@@ -395,7 +392,6 @@ async function claimWithCookies(account) {
             }
         }
 
-        // Claim
         console.log(`🚀 Claim éligible`);
         try {
             const result = await claimWithCookies(targetAccount);
@@ -408,6 +404,13 @@ async function claimWithCookies(account) {
                 console.log(`✅ Claim réussi : ${result.message}`);
             } else {
                 console.log(`❌ Claim échoué : ${result.message}`);
+
+                // Si l'erreur contient "try again in 10 minutes", on décale le prochain claim de 2 heures
+                if (result.message.includes('try again in 10 minutes')) {
+                    const deuxHeuresMs = 2 * 60 * 60 * 1000; // 2 heures
+                    targetAccount.lastClaim = now + deuxHeuresMs - ((targetAccount.timer || 60) * 60 * 1000);
+                    console.log(`⏰ Prochain claim repoussé de 2 heures (problème réseau).`);
+                }
             }
         } catch (e) {
             console.error(`❌ Erreur claim : ${e.message}`);
@@ -417,7 +420,6 @@ async function claimWithCookies(account) {
             }
         }
 
-        // Sauvegarder les modifications
         await saveAccounts(accounts);
         console.log('💾 Comptes sauvegardés.');
         console.log('🏁 Terminé.');
