@@ -99,10 +99,10 @@
       }
     ],
     "cookiesStatus": "valid",
-    "lastClaim": 1777198250902,
+    "lastClaim": 1777201902287,
     "timer": 60,
-    "pendingClaim": true,
-    "claimResult": null
+    "pendingClaim": false,
+    "claimResult": "✅ ×Success!You got 0.000001000 SOL!"
   },
   {
     "email": "rivoniainafinoana123@gmail.com",
