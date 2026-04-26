@@ -291,7 +291,7 @@
             const BRANCH = 'main';
             const FILE_PATH = 'accounts.json';
 
-            // --- API proxy Vercel ---
+            // --- Proxy API Vercel (/api/github) ---
             async function githubApi(method, path, body = null) {
                 const url = `/api/github?path=${encodeURIComponent(path)}`;
                 const options = { method, headers: { 'Content-Type': 'application/json' } };
