@@ -100,8 +100,7 @@
     ],
     "cookiesStatus": "valid",
     "lastClaim": 1777193839729,
-    "timer": 2.5,
-    "pendingLogout": true
+    "timer": 2.5
   },
   {
     "email": "hasiniainahasina1@gmail.com",
@@ -204,6 +203,7 @@
     ],
     "cookiesStatus": "valid",
     "lastClaim": 1777186982228,
-    "timer": 20
+    "timer": 20,
+    "pendingLogout": true
   }
 ]
