@@ -209,7 +209,7 @@
     "timer": 60,
     "pendingClaim": false,
     "pendingClaimSince": 1777223887300,
-    "claimResult": "❌ Aucune réaction"
+    "claimResult": "❌ ×Error!Invalid captcha code. Please try again!"
   },
   {
     "email": "hasiniainahasina1@gmail.com",
