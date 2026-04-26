@@ -1,4 +1,4 @@
-// api/check-claim.js – VERSION FINALE (avec plateforme dans les inputs, nettoyage auto, dispatch parallèle)
+// api/check-claim.js – VERSION FINALE AVEC NETTOYAGE AUTO
 export default async function handler(req, res) {
     const SECRET = process.env.CRON_SECRET;
     const headerSecret = req.headers['x-cron-secret'];
@@ -41,24 +41,19 @@ export default async function handler(req, res) {
             return res.json({ status: 'ok', message: 'Aucun compte' });
         }
 
-        // 2. 🧹 Nettoyage automatique des flags pendingClaim expirés (>10 min)
-        const now = Date.now();
-        const MAX_PENDING_MS = 10 * 60 * 1000;
+        // 2. 🧹 Suppression OBLIGATOIRE de tous les flags pendingClaim
         let cleaned = false;
-
         for (const acc of accounts) {
-            if (acc.pendingClaim === true && acc.pendingClaimSince) {
-                if (now - acc.pendingClaimSince > MAX_PENDING_MS) {
-                    acc.pendingClaim = false;
-                    delete acc.pendingClaimSince;
-                    cleaned = true;
-                    console.log(`🧹 Flag pendingClaim expiré supprimé pour ${acc.email} (${acc.platform})`);
-                }
+            if (acc.pendingClaim) {
+                acc.pendingClaim = false;
+                delete acc.pendingClaimSince;
+                cleaned = true;
+                console.log(`🧹 Nettoyage pendingClaim pour ${acc.email} (${acc.platform})`);
             }
         }
 
         if (cleaned) {
-            const updatedContent = btoa(unescape(encodeURIComponent(JSON.stringify(accounts, null, 2))));
+            const cleanedContent = btoa(unescape(encodeURIComponent(JSON.stringify(accounts, null, 2))));
             await fetch(url, {
                 method: 'PUT',
                 headers: {
@@ -67,23 +62,21 @@ export default async function handler(req, res) {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    message: 'Nettoyage automatique pendingClaim expirés',
-                    content: updatedContent,
+                    message: 'Nettoyage automatique pendingClaim',
+                    content: cleanedContent,
                     branch: GH_BRANCH,
                     sha
                 })
             });
-            console.log('✅ Fichier nettoyé avec succès.');
+            console.log('✅ Tous les pendingClaim ont été supprimés.');
         }
 
-        // 3. Filtrer les comptes éligibles (hors pendingLogout, pendingClaim, non activés)
+        // 3. Filtrer les comptes éligibles (hors pendingLogout, désactivés)
+        const now = Date.now();
         const eligibleAccounts = accounts.filter(acc => {
             if (acc.enabled === false) return false;
             if (acc.pendingLogout === true) return false;
-            if (acc.pendingClaim === true) {
-                console.log(`⏭️ Ignoré (claim déjà en cours) : ${acc.email} (${acc.platform})`);
-                return false;
-            }
+            // Plus de vérification de pendingClaim puisqu'on vient de tous les supprimer
             const last = acc.lastClaim || 0;
             const intervalMs = (acc.timer || 60) * 60 * 1000;
             return (now - last) >= intervalMs;
