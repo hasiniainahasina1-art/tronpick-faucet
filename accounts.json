@@ -207,7 +207,7 @@
     "lastClaim": 1777196532643,
     "timer": 29,
     "pendingClaim": false,
-    "claimResult": "❌ Aucune réaction",
+    "claimResult": null,
     "pendingLogout": true
   }
 ]
