@@ -47,7 +47,6 @@
             align-items: center;
             gap: 6px;
         }
-        .header h1 i { color: var(--primary); }
 
         .btn {
             padding: 6px 14px;
@@ -142,7 +141,6 @@
         }
         .account-countdown.expired { color: var(--danger); }
 
-        /* Spinner */
         .spinner {
             display: inline-block;
             width: 16px;
@@ -175,7 +173,6 @@
         .toast.success { background: var(--success); }
         .toast.error { background: var(--danger); }
 
-        /* Modale */
         .modal-overlay {
             display: none;
             position: fixed;
@@ -242,7 +239,6 @@
         </div>
     </div>
 
-    <!-- Modale Ajout / Modification -->
     <div class="modal-overlay" id="modalOverlay">
         <div class="modal">
             <h3 id="modalTitle">➕ Nouveau compte</h3>
@@ -278,12 +274,10 @@
         </div>
     </div>
 
-    <!-- Toast notifications -->
     <div class="toast" id="toast"></div>
 
     <script>
         (function() {
-            // --- Configuration GitHub ---
             const GH_USERNAME = 'hasiniainahasina1-art';
             const GH_REPO = 'tronpick-faucet';
             const LOGIN_WORKFLOW_ID = 'test-account.yml';
@@ -291,7 +285,6 @@
             const BRANCH = 'main';
             const FILE_PATH = 'accounts.json';
 
-            // --- Proxy API Vercel (/api/github) ---
             async function githubApi(method, path, body = null) {
                 const url = `/api/github?path=${encodeURIComponent(path)}`;
                 const options = { method, headers: { 'Content-Type': 'application/json' } };
@@ -341,7 +334,6 @@
                 await githubApi('POST', apiPath, payload);
             }
 
-            // --- Éléments du DOM ---
             const modal = document.getElementById('modalOverlay');
             const btnAdd = document.getElementById('btnAddAccount');
             const btnCancel = document.getElementById('btnCancel');
@@ -387,9 +379,7 @@
 
             btnAdd.addEventListener('click', () => openModal('➕ Ajouter un compte'));
             btnCancel.addEventListener('click', closeModal);
-            modal.addEventListener('click', (e) => {
-                if (e.target === modal) closeModal();
-            });
+            modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
 
             function minutesToTimeStr(minutes) {
                 if (isNaN(minutes)) return '0:00';
@@ -405,7 +395,6 @@
                 return (mins || 0) + (secs || 0) / 60;
             }
 
-            // --- Gestion du loader ---
             function showLoader(accountElement) {
                 const info = accountElement.querySelector('.account-info');
                 if (info && !info.querySelector('.spinner')) {
@@ -478,18 +467,15 @@
                     countdownIntervals.push(interval);
                 });
 
-                // ✅ Suppression avec polling (10s x 12 = 2 minutes max)
                 document.querySelectorAll('.btn-delete').forEach(btn => {
                     btn.addEventListener('click', async (e) => {
                         const item = btn.closest('.account-item');
                         const idx = parseInt(item.dataset.index);
                         const acc = currentAccounts[idx];
                         if (!confirm(`Supprimer définitivement le compte ${acc.email} ?`)) return;
-
                         showLoader(item);
                         btn.disabled = true;
                         showToast(`🗑️ Lancement de la déconnexion de ${acc.email}...`, '');
-
                         try {
                             await triggerWorkflow(LOGOUT_WORKFLOW_ID, {
                                 email: acc.email,
@@ -497,10 +483,9 @@
                                 platform: acc.platform,
                                 proxyIndex: String(acc.proxyIndex || 0)
                             });
-
                             showToast(`⏳ Déconnexion en cours (peut prendre jusqu'à 2 minutes)...`, '');
                             let isDeleted = false;
-                            const maxAttempts = 12; // 12 x 10s = 120s
+                            const maxAttempts = 12;
                             for (let attempt = 0; attempt < maxAttempts; attempt++) {
                                 await new Promise(resolve => setTimeout(resolve, 10000));
                                 try {
@@ -509,11 +494,8 @@
                                         isDeleted = true;
                                         break;
                                     }
-                                } catch (e) {
-                                    // Ignorer les erreurs réseau, on réessaie
-                                }
+                                } catch (e) {}
                             }
-
                             if (isDeleted) {
                                 showToast(`✅ Compte ${acc.email} supprimé avec succès.`, 'success');
                                 await refreshAccounts();
@@ -537,11 +519,11 @@
                 });
             }
 
-            // --- Initialisation ---
+            // Initialisation
             refreshAccounts();
             refreshBtn.addEventListener('click', refreshAccounts);
 
-            // Soumission du formulaire d'ajout
+            // Soumission du formulaire (ajout ou modification)
             form.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const email = emailInput.value.trim().toLowerCase();
@@ -553,7 +535,6 @@
 
                 const idx = parseInt(editIndex.value);
                 if (idx >= 0) {
-                    // Modification
                     currentAccounts[idx].email = email;
                     currentAccounts[idx].password = password;
                     currentAccounts[idx].platform = platform;
@@ -563,7 +544,6 @@
                     await refreshAccounts();
                     showToast('✅ Compte mis à jour.', 'success');
                 } else {
-                    // ⚡ Ajout : vérifier unicité email + plateforme
                     if (currentAccounts.some(a => a.email === email && a.platform === platform)) {
                         showToast('❌ Un compte avec cet email et cette plateforme existe déjà.', 'error');
                         return;
@@ -582,11 +562,21 @@
                             try {
                                 currentAccounts = await loadAccounts();
                                 const found = currentAccounts.find(a => a.email === email && a.platform === platform);
-                                if (found && found.cookies && found.cookies.length > 0) {
-                                    clearInterval(checkInterval);
-                                    showToast(`✅ Compte ${email} ajouté.`, 'success');
-                                    renderAccounts();
-                                } else if (attempts > 24) {
+                                if (found) {
+                                    if (found.cookies && found.cookies.length > 0) {
+                                        clearInterval(checkInterval);
+                                        showToast(`✅ Compte ${email} ajouté.`, 'success');
+                                        renderAccounts();
+                                    } else if (found.cookiesStatus === 'failed') {
+                                        clearInterval(checkInterval);
+                                        showToast(`❌ ${found.errorMessage || 'Échec de connexion'}`, 'error');
+                                        // Supprimer le compte erroné de la liste
+                                        const filtered = currentAccounts.filter(a => !(a.email === email && a.platform === platform));
+                                        await saveAccounts(filtered);
+                                        await refreshAccounts();
+                                    }
+                                }
+                                if (attempts > 24 && !found) {
                                     clearInterval(checkInterval);
                                     showToast(`❌ Échec ajout de ${email}.`, 'error');
                                     renderAccounts();
