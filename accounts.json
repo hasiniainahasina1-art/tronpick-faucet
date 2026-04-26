@@ -102,7 +102,7 @@
     "lastClaim": 1777205564682,
     "timer": 60,
     "pendingClaim": true,
-    "claimResult": "❌ Aucune réaction",
+    "claimResult": null,
     "pendingClaimSince": 1777210745858
   },
   {
