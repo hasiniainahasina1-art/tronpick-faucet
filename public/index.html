@@ -19,7 +19,6 @@
             --radius: 8px;
             --shadow: 0 2px 8px rgba(0,0,0,0.04);
         }
-
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -29,7 +28,6 @@
             line-height: 1.4;
             min-height: 100vh;
         }
-
         .header {
             background: var(--card-bg);
             padding: 12px 24px;
@@ -47,7 +45,6 @@
             align-items: center;
             gap: 6px;
         }
-
         .btn {
             padding: 6px 14px;
             border-radius: 6px;
@@ -75,13 +72,11 @@
             padding: 4px 10px;
         }
         .btn-outline:hover { background: #f1f5f9; }
-
         .container {
             max-width: 800px;
             margin: 20px auto;
             padding: 0 16px;
         }
-
         .card {
             background: var(--card-bg);
             border-radius: var(--radius);
@@ -96,7 +91,6 @@
             align-items: center;
             gap: 8px;
         }
-
         .accounts-list {
             display: flex;
             flex-direction: column;
@@ -140,7 +134,6 @@
             min-width: 60px;
         }
         .account-countdown.expired { color: var(--danger); }
-
         .spinner {
             display: inline-block;
             width: 16px;
@@ -152,7 +145,6 @@
             margin-right: 8px;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
-
         .toast {
             position: fixed;
             bottom: 24px;
@@ -172,7 +164,6 @@
         .toast.show { opacity: 1; transform: translateX(0); }
         .toast.success { background: var(--success); }
         .toast.error { background: var(--danger); }
-
         .modal-overlay {
             display: none;
             position: fixed;
@@ -397,18 +388,16 @@
 
             async function refreshAccounts() {
                 try {
-                    const previousAccounts = JSON.parse(JSON.stringify(currentAccounts)); // copie pour comparer
+                    const previousAccounts = JSON.parse(JSON.stringify(currentAccounts));
                     currentAccounts = await loadAccounts();
                     renderAccounts();
 
-                    // Vérifier les nouveaux résultats de claim
                     for (const acc of currentAccounts) {
                         if (acc.claimResult) {
                             const oldAcc = previousAccounts.find(a => a.email === acc.email && a.platform === acc.platform);
                             if (!oldAcc || oldAcc.claimResult !== acc.claimResult) {
                                 const type = acc.claimResult.startsWith('✅') ? 'success' : 'error';
                                 showToast(`${acc.email} : ${acc.claimResult}`, type);
-                                // Effacer le message une fois affiché
                                 acc.claimResult = null;
                                 await saveAccounts(currentAccounts);
                             }
@@ -526,14 +515,10 @@
                 if (spinner) spinner.remove();
             }
 
-            // Initialisation
             refreshAccounts();
             refreshBtn.addEventListener('click', refreshAccounts);
-
-            // Rafraîchissement automatique toutes les 30 secondes
             setInterval(refreshAccounts, 30000);
 
-            // Ajout / Modification
             form.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const email = emailInput.value.trim().toLowerCase();
