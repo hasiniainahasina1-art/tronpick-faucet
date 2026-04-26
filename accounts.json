@@ -203,7 +203,8 @@
     ],
     "cookiesStatus": "valid",
     "lastClaim": 1777183781749,
-    "timer": 60
+    "timer": 60,
+    "pendingLogout": true
   },
   {
     "email": "finoanarivoniaina@gmail.com",
