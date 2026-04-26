@@ -6,6 +6,9 @@ on:
       email:
         required: true
         type: string
+      platform:
+        required: true
+        type: string
 
 jobs:
   claim:
@@ -27,9 +30,10 @@ jobs:
       - name: 📦 Installer les dépendances Node.js
         run: npm install
 
-      - name: 🤖 Exécuter le claim pour ${{ github.event.inputs.email }}
+      - name: 🤖 Exécuter le claim pour ${{ github.event.inputs.email }} sur ${{ github.event.inputs.platform }}
         env:
           CLAIM_EMAIL: ${{ github.event.inputs.email }}
+          CLAIM_PLATFORM: ${{ github.event.inputs.platform }}
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GH_USERNAME: ${{ secrets.GH_USERNAME }}
           GH_REPO: ${{ secrets.GH_REPO }}
@@ -42,5 +46,5 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: screenshots-${{ github.event.inputs.email }}
+          name: screenshots-${{ github.event.inputs.email }}-${{ github.event.inputs.platform }}
           path: screenshots/
