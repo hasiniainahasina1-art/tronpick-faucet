@@ -420,7 +420,7 @@
     "lastClaim": 1777206116259,
     "timer": 1,
     "pendingClaim": true,
-    "claimResult": "Ã¢ÂÂ Aucune rÃÂ©action",
+    "claimResult": null,
     "pendingClaimSince": 1777212127427
   }
 ]
