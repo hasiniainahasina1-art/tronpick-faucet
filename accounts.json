@@ -205,11 +205,11 @@
       }
     ],
     "cookiesStatus": "valid",
-    "lastClaim": 1777228256619,
+    "lastClaim": 1777220205840,
     "timer": 60,
-    "pendingClaim": false,
+    "pendingClaim": true,
     "pendingClaimSince": 1777228220566,
-    "claimResult": "✅ ×Success!You got 0.000001000 SOL!"
+    "claimResult": "❌ ×Error!Invalid captcha code. Please try again!"
   },
   {
     "email": "hasiniainahasina1@gmail.com",
@@ -525,7 +525,7 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777222006376,
     "timer": 60,
-    "pendingClaim": true,
+    "pendingClaim": false,
     "pendingClaimSince": 1777228220566,
     "claimResult": "❌ Aucune réaction"
   }
