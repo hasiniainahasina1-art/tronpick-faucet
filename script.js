@@ -135,9 +135,9 @@ async function loadAccounts() {
     }
 }
 
-// 🔄 NOUVELLE VERSION : sauvegarde avec 5 tentatives et délai en cas de conflit
+// 🔄 SAUVEGARDE ROBUSTE : 10 tentatives, délai exponentiel
 async function saveAccounts(accounts, modifiedAccount = null) {
-    const maxRetries = 5;
+    const maxRetries = 10;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             let sha = null;
@@ -167,8 +167,8 @@ async function saveAccounts(accounts, modifiedAccount = null) {
             if (e.status === 409) {
                 console.warn(`⚠️ Conflit de version (409) – tentative ${attempt}/${maxRetries}`);
                 if (attempt < maxRetries) {
-                    // Attendre un délai aléatoire avant de recharger
-                    await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
+                    const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 30000);
+                    await new Promise(resolve => setTimeout(resolve, waitTime));
                     try {
                         const res = await octokit.repos.getContent({
                             owner: GH_USERNAME,
@@ -372,7 +372,7 @@ async function claimWithCookies(account) {
     }
 }
 
-// --- Main (email + platform, retrait pendingClaim, notification claimResult) ---
+// --- Main (avec délai avant sauvegarde) ---
 (async () => {
     try {
         const targetEmail = process.env.CLAIM_EMAIL;
@@ -408,7 +408,6 @@ async function claimWithCookies(account) {
 
         console.log(`\n===== Traitement : ${targetEmail} (${targetPlatform}) =====`);
 
-        // Login si nécessaire
         if (!targetAccount.cookies || targetAccount.cookiesStatus === 'expired' || targetAccount.cookiesStatus === 'failed') {
             console.log(`🍪 Tentative de login...`);
             try {
@@ -425,7 +424,6 @@ async function claimWithCookies(account) {
             }
         }
 
-        // Claim
         console.log(`🚀 Claim éligible`);
         try {
             const result = await claimWithCookies(targetAccount);
@@ -456,7 +454,9 @@ async function claimWithCookies(account) {
             }
         }
 
-        // ✅ Retirer le flag pendingClaim et sauvegarder
+        console.log('⏳ Attente de 2 secondes avant la sauvegarde...');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
         targetAccount.pendingClaim = false;
         await saveAccounts(accounts, targetAccount);
         console.log('💾 Comptes sauvegardés.');
