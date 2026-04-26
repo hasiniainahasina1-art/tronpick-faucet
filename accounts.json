@@ -102,7 +102,7 @@
     "lastClaim": 1777198250902,
     "timer": 60,
     "pendingClaim": false,
-    "claimResult": "✅ ×Success!You got 0.000001000 SOL!"
+    "claimResult": null
   },
   {
     "email": "rivoniainafinoana123@gmail.com",
@@ -207,6 +207,6 @@
     "lastClaim": 1777196532643,
     "timer": 29,
     "pendingClaim": true,
-    "claimResult": "❌ ×Error!Please wait for 59 minutes, 8 seconds to the next faucet claim!"
+    "claimResult": "â ÃError!Please wait for 59 minutes, 8 seconds to the next faucet claim!"
   }
 ]
