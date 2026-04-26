@@ -1,18 +1,18 @@
 [
   {
-    "email": "rivoniainafinoana123@gmail.com",
+    "email": "hasiniainahasina1@gmail.com",
     "password": "Finoana123.",
-    "platform": "tronpick",
-    "proxyIndex": 1,
+    "platform": "solpick",
+    "proxyIndex": 0,
     "enabled": true,
     "cookies": [
       {
-        "name": "g_state",
-        "value": "{\"i_l\":0,\"i_ll\":1777199588474,\"i_b\":\"7ey/7SYKbDcgXYUyORu52cPsRkdLSY+kcen0AfvMpsM\",\"i_e\":{\"enable_itp_optimization\":23},\"i_et\":1777199552948}",
-        "domain": "tronpick.io",
+        "name": "remember_token",
+        "value": "08059e824c087b70d762858053f09341",
+        "domain": "solpick.io",
         "path": "/",
-        "expires": 1792751588,
-        "size": 147,
+        "expires": 1779788228.508226,
+        "size": 46,
         "httpOnly": false,
         "secure": false,
         "session": false,
@@ -21,10 +21,10 @@
       },
       {
         "name": "fp",
-        "value": "yAhMjRGavEw7mKiA",
-        "domain": "tronpick.io",
+        "value": "0dCBhY9CXhEKy0j4",
+        "domain": "solpick.io",
         "path": "/",
-        "expires": 1808735552,
+        "expires": 1808732195,
         "size": 18,
         "httpOnly": false,
         "secure": false,
@@ -34,10 +34,10 @@
       },
       {
         "name": "user_session",
-        "value": "7ctjpuu1s8vd53eae892gb4mjd13po0b",
-        "domain": "tronpick.io",
+        "value": "pf5tspks58cpfaubd6jh5b443cku5gb1",
+        "domain": "solpick.io",
         "path": "/",
-        "expires": 1777285987.448815,
+        "expires": 1777282631.473856,
         "size": 44,
         "httpOnly": true,
         "secure": false,
@@ -47,11 +47,11 @@
       },
       {
         "name": "_ga",
-        "value": "GA1.1.1064017946.1777199552",
-        "domain": ".tronpick.io",
+        "value": "GA1.1.807545949.1777196195",
+        "domain": ".solpick.io",
         "path": "/",
-        "expires": 1811759587.038921,
-        "size": 30,
+        "expires": 1811756230.079694,
+        "size": 29,
         "httpOnly": false,
         "secure": false,
         "session": false,
@@ -60,10 +60,10 @@
       },
       {
         "name": "_ga_B22HX5LGBP",
-        "value": "GS2.1.s1777199552$o1$g1$t1777199587$j25$l0$h0",
-        "domain": ".tronpick.io",
+        "value": "GS2.1.s1777196195$o1$g1$t1777196230$j25$l0$h0",
+        "domain": ".solpick.io",
         "path": "/",
-        "expires": 1811759587.051574,
+        "expires": 1811756230.088727,
         "size": 59,
         "httpOnly": false,
         "secure": false,
@@ -72,12 +72,12 @@
         "sourceScheme": "Secure"
       },
       {
-        "name": "csrf_cookie_name",
-        "value": "8700f557ebad3ca21cc306c8baaae072",
-        "domain": "tronpick.io",
+        "name": "g_state",
+        "value": "{\"i_l\":0,\"i_ll\":1777196230986,\"i_b\":\"6acI94eI/FLEiaIESosD28ILAtpuiflX3jpEtkWDjC0\",\"i_e\":{\"enable_itp_optimization\":0},\"i_et\":1777196195975}",
+        "domain": "solpick.io",
         "path": "/",
-        "expires": 1777206787.447674,
-        "size": 48,
+        "expires": 1792748230,
+        "size": 146,
         "httpOnly": false,
         "secure": false,
         "session": false,
@@ -85,12 +85,12 @@
         "sourceScheme": "Secure"
       },
       {
-        "name": "remember_token",
-        "value": "92466ed551e16621162b00b495b724b3",
-        "domain": "tronpick.io",
+        "name": "csrf_cookie_name",
+        "value": "fece02954909152b10b45264e6b591f0",
+        "domain": "solpick.io",
         "path": "/",
-        "expires": 1779791585.522942,
-        "size": 46,
+        "expires": 1777203431.473758,
+        "size": 48,
         "httpOnly": false,
         "secure": false,
         "session": false,
@@ -99,10 +99,11 @@
       }
     ],
     "cookiesStatus": "valid",
-    "lastClaim": 1777206890009,
-    "timer": 45,
+    "lastClaim": 1777205564682,
+    "timer": 60,
     "pendingClaim": false,
-    "claimResult": null
+    "claimResult": "❌ Aucune réaction",
+    "pendingClaimSince": 1777210926891
   },
   {
     "email": "rivoniainafinoana123@gmail.com",
@@ -207,7 +208,7 @@
     "lastClaim": 1777205474024,
     "timer": 2.5,
     "pendingClaim": false,
-    "claimResult": null
+    "claimResult": "❌ Aucune réaction"
   },
   {
     "email": "hasiniainahasina1@gmail.com",
@@ -312,6 +313,6 @@
     "lastClaim": 1777206116259,
     "timer": 1,
     "pendingClaim": false,
-    "claimResult": null
+    "claimResult": "❌ Aucune réaction"
   }
 ]
