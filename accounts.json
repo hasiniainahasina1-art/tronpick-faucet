@@ -203,8 +203,8 @@
       }
     ],
     "cookiesStatus": "valid",
-    "lastClaim": 1777194136298,
-    "timer": 2.5,
-    "pendingClaim": true
+    "lastClaim": 1777194346698,
+    "timer": 60,
+    "pendingClaim": false
   }
 ]
