@@ -1,1 +1,105 @@
-[]
+[
+  {
+    "email": "hasiniainahasina1@gmail.com",
+    "password": "Finoana123.",
+    "platform": "solpick",
+    "proxyIndex": 0,
+    "enabled": true,
+    "cookies": [
+      {
+        "name": "remember_token",
+        "value": "9ac9298ee76204c8853ccbfc850b7216",
+        "domain": "solpick.io",
+        "path": "/",
+        "expires": 1779788192.299487,
+        "size": 46,
+        "httpOnly": false,
+        "secure": false,
+        "session": false,
+        "priority": "Medium",
+        "sourceScheme": "Secure"
+      },
+      {
+        "name": "_ga",
+        "value": "GA1.1.574571096.1777196158",
+        "domain": ".solpick.io",
+        "path": "/",
+        "expires": 1811756193.90933,
+        "size": 29,
+        "httpOnly": false,
+        "secure": false,
+        "session": false,
+        "priority": "Medium",
+        "sourceScheme": "Secure"
+      },
+      {
+        "name": "user_session",
+        "value": "etdpd5m2t4162791l50edsqt1jop0fmu",
+        "domain": "solpick.io",
+        "path": "/",
+        "expires": 1777282596.307811,
+        "size": 44,
+        "httpOnly": true,
+        "secure": false,
+        "session": false,
+        "priority": "Medium",
+        "sourceScheme": "Secure"
+      },
+      {
+        "name": "fp",
+        "value": "VtlqbdY6btTpo4c0",
+        "domain": "solpick.io",
+        "path": "/",
+        "expires": 1808732158,
+        "size": 18,
+        "httpOnly": false,
+        "secure": false,
+        "session": false,
+        "priority": "Medium",
+        "sourceScheme": "Secure"
+      },
+      {
+        "name": "_ga_B22HX5LGBP",
+        "value": "GS2.1.s1777196158$o1$g1$t1777196193$j25$l0$h0",
+        "domain": ".solpick.io",
+        "path": "/",
+        "expires": 1811756193.916963,
+        "size": 59,
+        "httpOnly": false,
+        "secure": false,
+        "session": false,
+        "priority": "Medium",
+        "sourceScheme": "Secure"
+      },
+      {
+        "name": "g_state",
+        "value": "{\"i_l\":0,\"i_ll\":1777196194890,\"i_b\":\"fOzT6GOKfkTMwGXm46Yv8OPW2RxeJ3Ye/0ALMAK+Lmk\",\"i_e\":{\"enable_itp_optimization\":0},\"i_et\":1777196159161}",
+        "domain": "solpick.io",
+        "path": "/",
+        "expires": 1792748194,
+        "size": 146,
+        "httpOnly": false,
+        "secure": false,
+        "session": false,
+        "priority": "Medium",
+        "sourceScheme": "Secure"
+      },
+      {
+        "name": "csrf_cookie_name",
+        "value": "09e8b4249b7bb64eccbfade109f5b3a3",
+        "domain": "solpick.io",
+        "path": "/",
+        "expires": 1777203396.307708,
+        "size": 48,
+        "httpOnly": false,
+        "secure": false,
+        "session": false,
+        "priority": "Medium",
+        "sourceScheme": "Secure"
+      }
+    ],
+    "cookiesStatus": "valid",
+    "lastClaim": 1777196202909,
+    "timer": 33
+  }
+]
