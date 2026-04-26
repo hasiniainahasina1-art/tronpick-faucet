@@ -173,7 +173,7 @@ async function run() {
         }
 
         if (!loginSuccess) {
-            throw new Error(`Login échoué après ${maxAttempts} tentatives : ${lastError.message}`);
+            throw new Error(lastError ? lastError.message : 'Login échoué');
         }
 
         const freshCookies = await page.cookies();
@@ -190,7 +190,7 @@ async function run() {
             } catch (e) {}
             const timerValue = timeStrToMinutes(initialTimerStr);
             const normalizedEmail = email.trim().toLowerCase();
-            const existingIndex = accounts.findIndex(a => a.email.toLowerCase() === normalizedEmail);
+            const existingIndex = accounts.findIndex(a => a.email.toLowerCase() === normalizedEmail && a.platform === platform);
             const newAccount = {
                 email: normalizedEmail,
                 password,
@@ -223,10 +223,58 @@ async function run() {
             console.log(`✅ Compte ${normalizedEmail} enregistré avec succès (timer initial = ${initialTimerStr})`);
             process.exit(0);
         } else {
-            console.log(`❌ Connexion réussie mais aucun cookie récupéré pour ${email}.`);
-            process.exit(1);
+            throw new Error('Aucun cookie récupéré malgré la connexion réussie');
         }
     } catch (err) {
+        console.error('❌ Erreur fatale :', err.message);
+
+        // ✅ Sauvegarder l'échec dans accounts.json
+        try {
+            const octokit = new Octokit({ auth: GH_TOKEN });
+            let accounts = [];
+            try {
+                const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH });
+                accounts = JSON.parse(Buffer.from(res.data.content, 'base64').toString());
+            } catch (e) {}
+
+            const normalizedEmail = email.trim().toLowerCase();
+            const existingIndex = accounts.findIndex(a => a.email.toLowerCase() === normalizedEmail && a.platform === platform);
+            const failedAccount = {
+                email: normalizedEmail,
+                password,
+                platform,
+                proxyIndex,
+                enabled: false,
+                cookies: [],
+                cookiesStatus: 'failed',
+                errorMessage: err.message || 'Erreur inconnue',
+                lastClaim: 0,
+                timer: 60
+            };
+
+            if (existingIndex !== -1) accounts[existingIndex] = failedAccount;
+            else accounts.push(failedAccount);
+
+            const content = Buffer.from(JSON.stringify(accounts, null, 2)).toString('base64');
+            let sha = null;
+            try {
+                const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH });
+                sha = res.data.sha;
+            } catch (e) {}
+            await octokit.repos.createOrUpdateFileContents({
+                owner: GH_USERNAME,
+                repo: GH_REPO,
+                path: GH_FILE_PATH,
+                message: `Échec login pour ${normalizedEmail}`,
+                content,
+                branch: GH_BRANCH,
+                sha
+            });
+            console.log(`❌ État d'échec sauvegardé pour ${normalizedEmail}`);
+        } catch (saveErr) {
+            console.error('Impossible d\'enregistrer l\'erreur :', saveErr.message);
+        }
+
         if (browser) {
             try {
                 const screenshotPath = path.join(screenshotsDir, 'error.png');
@@ -235,7 +283,6 @@ async function run() {
             } catch (e) {}
             await browser.close();
         }
-        console.error('❌ Erreur fatale :', err.message);
         process.exit(1);
     }
 }
