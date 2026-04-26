@@ -101,5 +101,17 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777186580465,
     "timer": 2.5
+  },
+  {
+    "email": "hasiniainahasina1@gmail.com",
+    "password": "Finoanafg",
+    "platform": "tronpick",
+    "proxyIndex": 1,
+    "enabled": false,
+    "cookies": [],
+    "cookiesStatus": "failed",
+    "errorMessage": "Échec connexion",
+    "lastClaim": 0,
+    "timer": 60
   }
 ]
