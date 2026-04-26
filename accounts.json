@@ -207,8 +207,8 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777220205840,
     "timer": 60,
-    "pendingClaim": false,
-    "pendingClaimSince": 1777226527971,
+    "pendingClaim": true,
+    "pendingClaimSince": 1777228220566,
     "claimResult": "❌ ×Error!Invalid captcha code. Please try again!"
   },
   {
@@ -525,8 +525,8 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777222006376,
     "timer": 60,
-    "pendingClaim": false,
-    "pendingClaimSince": 1777226527971,
+    "pendingClaim": true,
+    "pendingClaimSince": 1777228220566,
     "claimResult": "❌ Aucune réaction"
   }
 ]
