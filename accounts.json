@@ -101,18 +101,5 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777186580465,
     "timer": 2.5
-  },
-  {
-    "email": "finoanarivoniaina@gmail.com",
-    "password": "hsjsjsj",
-    "platform": "tronpick",
-    "proxyIndex": 0,
-    "enabled": false,
-    "cookies": [],
-    "cookiesStatus": "failed",
-    "errorMessage": "Échec connexion",
-    "lastClaim": 0,
-    "timer": 60,
-    "pendingLogout": true
   }
 ]
