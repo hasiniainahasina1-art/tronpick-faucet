@@ -1,4 +1,4 @@
-// api/check-claim.js – VERSION DE PRODUCTION
+// api/check-claim.js – VERSION PRODUCTION (avec vérification d'exécution en cours)
 export default async function handler(req, res) {
     const SECRET = process.env.CRON_SECRET;
     const headerSecret = req.headers['x-cron-secret'];
@@ -14,8 +14,35 @@ export default async function handler(req, res) {
     const GH_FILE_PATH = process.env.GH_FILE_PATH || 'accounts.json';
     const CLAIM_WORKFLOW_ID = 'claim.yml';
 
+    // Fonction interne pour vérifier si un workflow est déjà en cours
+    async function isWorkflowAlreadyRunning() {
+        try {
+            const url = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/actions/runs?status=in_progress&status=queued`;
+            const response = await fetch(url, {
+                headers: {
+                    Authorization: `token ${GH_TOKEN}`,
+                    Accept: 'application/vnd.github.v3+json'
+                }
+            });
+            if (!response.ok) return false;
+            const data = await response.json();
+            return data.workflow_runs.some(run => run.name === 'Claim Tronpick Faucet');
+        } catch {
+            return false;
+        }
+    }
+
     try {
-        // 1. Récupérer les comptes depuis GitHub
+        // 1. Vérifier si un workflow est déjà en cours
+        if (await isWorkflowAlreadyRunning()) {
+            return res.json({
+                status: 'ok',
+                message: 'Un workflow est déjà en cours, aucun nouveau déclenchement.',
+                alreadyRunning: true
+            });
+        }
+
+        // 2. Lire les comptes
         const url = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/contents/${GH_FILE_PATH}?ref=${GH_BRANCH}`;
         const response = await fetch(url, {
             headers: {
@@ -27,7 +54,6 @@ export default async function handler(req, res) {
         let accounts = [];
         if (response.ok) {
             const data = await response.json();
-            // Décodage du contenu base64
             const content = decodeURIComponent(
                 Array.from(atob(data.content), c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')
             );
@@ -40,7 +66,7 @@ export default async function handler(req, res) {
             return res.json({ status: 'ok', message: 'Aucun compte' });
         }
 
-        // 2. Trouver TOUS les comptes activés et éligibles
+        // 3. Trouver les comptes éligibles
         const now = Date.now();
         const eligibleAccounts = accounts.filter(acc => {
             if (acc.enabled === false) return false;
@@ -53,7 +79,7 @@ export default async function handler(req, res) {
             return res.json({ status: 'ok', message: 'Aucun compte éligible' });
         }
 
-        // 3. Déclencher un workflow pour chaque compte éligible
+        // 4. Déclencher un workflow par compte éligible
         const dispatchUrl = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${CLAIM_WORKFLOW_ID}/dispatches`;
         const triggered = [];
 
@@ -71,17 +97,13 @@ export default async function handler(req, res) {
 
                 if (dispatchResponse.ok) {
                     triggered.push(acc.email);
-                    console.log(`✅ Workflow déclenché pour ${acc.email}`);
-                } else {
-                    console.error(`❌ Dispatch failed for ${acc.email}: ${dispatchResponse.status}`);
                 }
 
-                // Petit délai pour ne pas surcharger l'API GitHub
                 if (eligibleAccounts.length > 1) {
                     await new Promise(resolve => setTimeout(resolve, 2000));
                 }
             } catch (err) {
-                console.error(`❌ Erreur pour ${acc.email}:`, err.message);
+                console.error(`Erreur pour ${acc.email}:`, err.message);
             }
         }
 
