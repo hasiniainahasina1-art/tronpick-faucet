@@ -205,11 +205,11 @@
       }
     ],
     "cookiesStatus": "valid",
-    "lastClaim": 1777224164235,
+    "lastClaim": 1777220205840,
     "timer": 60,
     "pendingClaim": false,
     "pendingClaimSince": 1777223887300,
-    "claimResult": "✅ ×Success!You got 0.000001000 SOL!"
+    "claimResult": "❌ ×Error!Invalid captcha code. Please try again!"
   },
   {
     "email": "hasiniainahasina1@gmail.com",
@@ -313,9 +313,9 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777220083529,
     "timer": 60,
-    "pendingClaim": true,
+    "pendingClaim": false,
     "pendingClaimSince": 1777223767410,
-    "claimResult": null
+    "claimResult": "❌ Aucune réaction"
   },
   {
     "email": "hasiniainahasina1@gmail.com",
@@ -417,10 +417,10 @@
       }
     ],
     "cookiesStatus": "valid",
-    "lastClaim": 1777231305216,
+    "lastClaim": 1777223745789,
     "timer": 1,
-    "claimResult": "❌ ×Error!Something went wrong! Please try again in 10 minutes!",
-    "pendingClaim": false,
+    "claimResult": null,
+    "pendingClaim": true,
     "pendingClaimSince": 1777223887300
   },
   {
