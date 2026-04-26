@@ -1,1 +1,105 @@
-[]
+[
+  {
+    "email": "rivoniainafinoana123@gmail.com",
+    "password": "Finoana123.",
+    "platform": "tronpick",
+    "proxyIndex": 0,
+    "enabled": true,
+    "cookies": [
+      {
+        "name": "csrf_cookie_name",
+        "value": "eec90d239bf3d34bde6cf93aaa92cd7a",
+        "domain": "tronpick.io",
+        "path": "/",
+        "expires": 1777221676.131264,
+        "size": 48,
+        "httpOnly": false,
+        "secure": false,
+        "session": false,
+        "priority": "Medium",
+        "sourceScheme": "Secure"
+      },
+      {
+        "name": "fp",
+        "value": "4f8IZitzKoNVCt2X",
+        "domain": "tronpick.io",
+        "path": "/",
+        "expires": 1808750442,
+        "size": 18,
+        "httpOnly": false,
+        "secure": false,
+        "session": false,
+        "priority": "Medium",
+        "sourceScheme": "Secure"
+      },
+      {
+        "name": "user_session",
+        "value": "365uds6d3ajcp415083ejgovt7gnbla9",
+        "domain": "tronpick.io",
+        "path": "/",
+        "expires": 1777300876.131389,
+        "size": 44,
+        "httpOnly": true,
+        "secure": false,
+        "session": false,
+        "priority": "Medium",
+        "sourceScheme": "Secure"
+      },
+      {
+        "name": "_ga",
+        "value": "GA1.1.1761027207.1777214442",
+        "domain": ".tronpick.io",
+        "path": "/",
+        "expires": 1811774475.81875,
+        "size": 30,
+        "httpOnly": false,
+        "secure": false,
+        "session": false,
+        "priority": "Medium",
+        "sourceScheme": "Secure"
+      },
+      {
+        "name": "_ga_B22HX5LGBP",
+        "value": "GS2.1.s1777214442$o1$g1$t1777214475$j27$l0$h0",
+        "domain": ".tronpick.io",
+        "path": "/",
+        "expires": 1811774475.830598,
+        "size": 59,
+        "httpOnly": false,
+        "secure": false,
+        "session": false,
+        "priority": "Medium",
+        "sourceScheme": "Secure"
+      },
+      {
+        "name": "g_state",
+        "value": "{\"i_l\":0,\"i_ll\":1777214476657,\"i_b\":\"VXsK83ouhp/mHh1OxJnWDSpZFwrun12iaCls3vNeAKw\",\"i_e\":{\"enable_itp_optimization\":0},\"i_et\":1777214442882}",
+        "domain": "tronpick.io",
+        "path": "/",
+        "expires": 1792766476,
+        "size": 146,
+        "httpOnly": false,
+        "secure": false,
+        "session": false,
+        "priority": "Medium",
+        "sourceScheme": "Secure"
+      },
+      {
+        "name": "remember_token",
+        "value": "742e46ea4aa31354e83dcd7b48089c2b",
+        "domain": "tronpick.io",
+        "path": "/",
+        "expires": 1779806474.404713,
+        "size": 46,
+        "httpOnly": false,
+        "secure": false,
+        "session": false,
+        "priority": "Medium",
+        "sourceScheme": "Secure"
+      }
+    ],
+    "cookiesStatus": "valid",
+    "lastClaim": 1777214483948,
+    "timer": 9
+  }
+]
