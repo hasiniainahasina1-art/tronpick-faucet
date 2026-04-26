@@ -99,10 +99,10 @@
       }
     ],
     "cookiesStatus": "valid",
-    "lastClaim": 1777205564682,
+    "lastClaim": 1777210366311,
     "timer": 60,
     "pendingClaim": false,
-    "claimResult": null
+    "claimResult": "✅ Bouton désactivé (succès présumé)"
   },
   {
     "email": "rivoniainafinoana123@gmail.com",
@@ -413,9 +413,8 @@
       }
     ],
     "cookiesStatus": "valid",
-    "lastClaim": 1777210367196,
-    "timer": 60,
-    "pendingClaim": false,
-    "claimResult": "✅ ×Success!You got 0.001000 TRX!"
+    "lastClaim": 1777206116259,
+    "timer": 1,
+    "pendingClaim": false
   }
 ]
