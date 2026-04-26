@@ -1,4 +1,4 @@
-// api/github.js
+// api/data.js
 export default async function handler(req, res) {
     const GH_TOKEN = process.env.GH_TOKEN;
     const ghPath = req.query.path;
