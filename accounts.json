@@ -1,6 +1,6 @@
 [
   {
-    "email": "rivoniainafinoana123@gmail.com",
+    "email": "hasiniainahasina1@gmail.com",
     "password": "Finoana123.",
     "platform": "tronpick",
     "proxyIndex": 0,
@@ -8,10 +8,10 @@
     "cookies": [
       {
         "name": "remember_token",
-        "value": "f4036208c3b6b4a6a74732900db5934d",
+        "value": "60ddb56606f51966fa41163fdb18a423",
         "domain": "tronpick.io",
         "path": "/",
-        "expires": 1779768285.64964,
+        "expires": 1779778971.991381,
         "size": 46,
         "httpOnly": false,
         "secure": false,
@@ -20,37 +20,11 @@
         "sourceScheme": "Secure"
       },
       {
-        "name": "fp",
-        "value": "B887WDYaHTaMsupH",
-        "domain": "tronpick.io",
-        "path": "/",
-        "expires": 1808712253,
-        "size": 18,
-        "httpOnly": false,
-        "secure": false,
-        "session": false,
-        "priority": "Medium",
-        "sourceScheme": "Secure"
-      },
-      {
-        "name": "user_session",
-        "value": "6qrhofe97e11p6dicnm4rqu96smeli6f",
-        "domain": "tronpick.io",
-        "path": "/",
-        "expires": 1777262687.638572,
-        "size": 44,
-        "httpOnly": true,
-        "secure": false,
-        "session": false,
-        "priority": "Medium",
-        "sourceScheme": "Secure"
-      },
-      {
         "name": "_ga",
-        "value": "GA1.1.1701391169.1777176254",
+        "value": "GA1.1.2109866840.1777186940",
         "domain": ".tronpick.io",
         "path": "/",
-        "expires": 1811736287.168695,
+        "expires": 1811746973.345938,
         "size": 30,
         "httpOnly": false,
         "secure": false,
@@ -59,11 +33,37 @@
         "sourceScheme": "Secure"
       },
       {
-        "name": "g_state",
-        "value": "{\"i_l\":0,\"i_ll\":1777176288570,\"i_b\":\"nerHvy2HLRD8O/5xnsLd+qqcqlcyhYkglDms3THiCl0\",\"i_e\":{\"enable_itp_optimization\":23},\"i_et\":1777176254072}",
+        "name": "user_session",
+        "value": "908p07ovsihtk6okpbmi8ctqoojsnfrk",
         "domain": "tronpick.io",
         "path": "/",
-        "expires": 1792728288,
+        "expires": 1777273373.59961,
+        "size": 44,
+        "httpOnly": true,
+        "secure": false,
+        "session": false,
+        "priority": "Medium",
+        "sourceScheme": "Secure"
+      },
+      {
+        "name": "fp",
+        "value": "wg9sKsImTSGnb8DJ",
+        "domain": "tronpick.io",
+        "path": "/",
+        "expires": 1808722939,
+        "size": 18,
+        "httpOnly": false,
+        "secure": false,
+        "session": false,
+        "priority": "Medium",
+        "sourceScheme": "Secure"
+      },
+      {
+        "name": "g_state",
+        "value": "{\"i_l\":0,\"i_ll\":1777186974236,\"i_b\":\"GraIGTIKZFjIC6Wd/LrmtOgfw6m/WN5EuSD43qhDvJI\",\"i_e\":{\"enable_itp_optimization\":19},\"i_et\":1777186940391}",
+        "domain": "tronpick.io",
+        "path": "/",
+        "expires": 1792738974,
         "size": 147,
         "httpOnly": false,
         "secure": false,
@@ -72,12 +72,12 @@
         "sourceScheme": "Secure"
       },
       {
-        "name": "csrf_cookie_name",
-        "value": "3b67b8570ad2439f1775a6be41eb7181",
-        "domain": "tronpick.io",
+        "name": "_ga_B22HX5LGBP",
+        "value": "GS2.1.s1777186939$o1$g1$t1777186973$j26$l0$h0",
+        "domain": ".tronpick.io",
         "path": "/",
-        "expires": 1777183487.638475,
-        "size": 48,
+        "expires": 1811746973.353017,
+        "size": 59,
         "httpOnly": false,
         "secure": false,
         "session": false,
@@ -85,12 +85,12 @@
         "sourceScheme": "Secure"
       },
       {
-        "name": "_ga_B22HX5LGBP",
-        "value": "GS2.1.s1777176253$o1$g1$t1777176287$j26$l0$h0",
-        "domain": ".tronpick.io",
+        "name": "csrf_cookie_name",
+        "value": "2a1cafab888473433d32841aac5bffb3",
+        "domain": "tronpick.io",
         "path": "/",
-        "expires": 1811736287.178111,
-        "size": 59,
+        "expires": 1777194173.599377,
+        "size": 48,
         "httpOnly": false,
         "secure": false,
         "session": false,
@@ -99,7 +99,7 @@
       }
     ],
     "cookiesStatus": "valid",
-    "lastClaim": 1777193839729,
-    "timer": 2.5
+    "lastClaim": 1777186982228,
+    "timer": 20
   }
 ]
