@@ -22,7 +22,6 @@ if (JP_PROXY_LIST.length === 0) {
     process.exit(1);
 }
 
-// ✅ Utiliser toujours le premier proxy de la liste
 const PRIMARY_PROXY = JP_PROXY_LIST[0];
 console.log(`🌐 Proxy unique utilisé : ${PRIMARY_PROXY}`);
 
@@ -136,7 +135,6 @@ async function loadAccounts() {
     }
 }
 
-// ✅ Sauvegarde avec gestion des conflits
 async function saveAccounts(accounts, modifiedAccount = null) {
     let maxRetries = 3;
     while (maxRetries-- > 0) {
@@ -208,7 +206,7 @@ async function connectWithProxy(proxyUrl) {
 
 async function performLoginAndCaptureCookies(account) {
     const { email, password, platform } = account;
-    console.log(`🔐 Login pour ${email}...`);
+    console.log(`🔐 Login pour ${email} sur ${platform}...`);
     const siteUrls = {
         tronpick: 'https://tronpick.io/login.php',
         litepick: 'https://litepick.io/login.php',
@@ -271,7 +269,7 @@ async function performLoginAndCaptureCookies(account) {
 
 async function claimWithCookies(account) {
     const { email, cookies, platform } = account;
-    console.log(`🍪 Claim pour ${email} via cookies`);
+    console.log(`🍪 Claim pour ${email} sur ${platform} via cookies`);
     const siteUrls = {
         tronpick: 'https://tronpick.io/faucet.php',
         litepick: 'https://litepick.io/faucet.php',
@@ -344,7 +342,7 @@ async function claimWithCookies(account) {
         return { success, message: resultMessage };
     } catch (error) {
         if (error.message.includes('Cookies expirés')) {
-            console.log(`🔄 Cookies expirés pour ${email}, reconnexion...`);
+            console.log(`🔄 Cookies expirés pour ${email} (${platform}), reconnexion...`);
             try {
                 const newCookies = await performLoginAndCaptureCookies(account);
                 account.cookies = newCookies;
@@ -364,21 +362,27 @@ async function claimWithCookies(account) {
     }
 }
 
-// --- Main (un seul compte, proxy unique, retrait flag, notification claimResult) ---
+// --- Main (email + platform, retrait pendingClaim, notification claimResult) ---
 (async () => {
     try {
         const targetEmail = process.env.CLAIM_EMAIL;
-        if (!targetEmail) {
-            console.error('❌ Aucun email fourni (CLAIM_EMAIL).');
+        const targetPlatform = process.env.CLAIM_PLATFORM;
+        if (!targetEmail || !targetPlatform) {
+            console.error('❌ CLAIM_EMAIL ou CLAIM_PLATFORM manquant.');
             process.exit(1);
         }
 
         let accounts = await loadAccounts();
         console.log(`📋 Comptes chargés : ${accounts.length}`);
 
-        let targetAccount = accounts.find(acc => acc.email === targetEmail && acc.enabled !== false);
+        // ✅ Recherche par email + plateforme
+        let targetAccount = accounts.find(acc =>
+            acc.email === targetEmail &&
+            acc.platform === targetPlatform &&
+            acc.enabled !== false
+        );
         if (!targetAccount) {
-            console.error(`❌ Compte ${targetEmail} introuvable ou désactivé.`);
+            console.error(`❌ Compte ${targetEmail} sur ${targetPlatform} introuvable ou désactivé.`);
             process.exit(1);
         }
 
@@ -386,14 +390,14 @@ async function claimWithCookies(account) {
         const lastClaim = targetAccount.lastClaim || 0;
         const intervalMs = (targetAccount.timer || 60) * 60 * 1000;
         if ((now - lastClaim) < intervalMs) {
-            console.log(`⏳ Le compte ${targetEmail} n'est pas encore éligible.`);
+            console.log(`⏳ Le compte ${targetEmail} sur ${targetPlatform} n'est pas encore éligible.`);
             targetAccount.pendingClaim = false;
             targetAccount.claimResult = null;
             await saveAccounts(accounts, targetAccount);
             process.exit(0);
         }
 
-        console.log(`\n===== Traitement : ${targetEmail} =====`);
+        console.log(`\n===== Traitement : ${targetEmail} (${targetPlatform}) =====`);
 
         // Login si nécessaire
         if (!targetAccount.cookies || targetAccount.cookiesStatus === 'expired' || targetAccount.cookiesStatus === 'failed') {
