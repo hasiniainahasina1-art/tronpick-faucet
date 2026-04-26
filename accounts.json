@@ -99,10 +99,10 @@
       }
     ],
     "cookiesStatus": "valid",
-    "lastClaim": 1777210366311,
+    "lastClaim": 1777205564682,
     "timer": 60,
     "pendingClaim": false,
-    "claimResult": "✅ Bouton désactivé (succès présumé)"
+    "claimResult": null
   },
   {
     "email": "rivoniainafinoana123@gmail.com",
@@ -204,10 +204,10 @@
       }
     ],
     "cookiesStatus": "valid",
-    "lastClaim": 1777210367670,
-    "timer": 60,
+    "lastClaim": 1777206890009,
+    "timer": 45,
     "pendingClaim": false,
-    "claimResult": "✅ Bouton désactivé (succès présumé)"
+    "claimResult": null
   },
   {
     "email": "rivoniainafinoana123@gmail.com",
@@ -309,9 +309,10 @@
       }
     ],
     "cookiesStatus": "valid",
-    "lastClaim": 1777205474024,
-    "timer": 2.5,
-    "pendingClaim": false
+    "lastClaim": 1777210369732,
+    "timer": 60,
+    "pendingClaim": false,
+    "claimResult": "✅ ×Success!You got 0.000001000 SOL!"
   },
   {
     "email": "hasiniainahasina1@gmail.com",
