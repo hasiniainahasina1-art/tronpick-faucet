@@ -207,9 +207,9 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777220205840,
     "timer": 60,
-    "pendingClaim": true,
-    "pendingClaimSince": 1777227847064,
-    "claimResult": null
+    "pendingClaim": false,
+    "pendingClaimSince": 1777226527971,
+    "claimResult": "❌ Aucune réaction"
   },
   {
     "email": "hasiniainahasina1@gmail.com",
@@ -311,11 +311,11 @@
       }
     ],
     "cookiesStatus": "valid",
-    "lastClaim": 1777220083529,
+    "lastClaim": 1777231251181,
     "timer": 60,
-    "pendingClaim": true,
-    "pendingClaimSince": 1777227847064,
-    "claimResult": "â Aucune rÃ©action"
+    "pendingClaim": false,
+    "pendingClaimSince": 1777226527971,
+    "claimResult": "❌ ×Error!Something went wrong! Please try again in 10 minutes!"
   },
   {
     "email": "hasiniainahasina1@gmail.com",
@@ -419,7 +419,7 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777232634719,
     "timer": 1,
-    "claimResult": "Ã¢ÂÂ ÃÂError!Something went wrong! Please try again in 10 minutes!",
+    "claimResult": "â ÃError!Something went wrong! Please try again in 10 minutes!",
     "pendingClaim": false,
     "pendingClaimSince": 1777224727281
   },
@@ -525,8 +525,8 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777222006376,
     "timer": 60,
-    "pendingClaim": true,
-    "pendingClaimSince": 1777227847064,
-    "claimResult": "â Aucune rÃ©action"
+    "pendingClaim": false,
+    "pendingClaimSince": 1777226527971,
+    "claimResult": "❌ Aucune réaction"
   }
 ]
