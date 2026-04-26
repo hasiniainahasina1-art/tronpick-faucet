@@ -103,7 +103,8 @@
     "timer": 1,
     "claimResult": null,
     "pendingClaim": false,
-    "pendingClaimSince": 1777224727281
+    "pendingClaimSince": 1777224727281,
+    "pendingLogout": true
   },
   {
     "email": "rivoniainafinoana123@gmail.com",
