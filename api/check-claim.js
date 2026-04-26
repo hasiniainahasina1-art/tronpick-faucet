@@ -1,3 +1,4 @@
+// api/check-claim.js - VERSION DIAGNOSTIC
 export default async function handler(req, res) {
     const SECRET = process.env.CRON_SECRET;
     const headerSecret = req.headers['x-cron-secret'];
@@ -6,10 +7,19 @@ export default async function handler(req, res) {
         return res.status(403).json({ error: 'Accès refusé' });
     }
 
+    const GH_TOKEN = process.env.GH_TOKEN;
+    const GH_USERNAME = process.env.GH_USERNAME;
+    const GH_REPO = process.env.GH_REPO;
+    const GH_BRANCH = process.env.GH_BRANCH || 'main';
+    const GH_FILE_PATH = process.env.GH_FILE_PATH || 'accounts.json';
+
     try {
-        const url = `https://api.github.com/repos/${process.env.GH_USERNAME}/${process.env.GH_REPO}/contents/${process.env.GH_FILE_PATH || 'accounts.json'}?ref=${process.env.GH_BRANCH || 'main'}`;
+        const url = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/contents/${GH_FILE_PATH}?ref=${GH_BRANCH}`;
         const response = await fetch(url, {
-            headers: { Authorization: `token ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github.v3+json' }
+            headers: {
+                Authorization: `token ${GH_TOKEN}`,
+                Accept: 'application/vnd.github.v3+json'
+            }
         });
 
         let accounts = [];
@@ -33,7 +43,9 @@ export default async function handler(req, res) {
         }));
 
         return res.json({ now, debug });
+
     } catch (error) {
+        console.error(error);
         return res.status(500).json({ error: error.message });
     }
 }
