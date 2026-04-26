@@ -1,17 +1,17 @@
 [
   {
-    "email": "hasiniainahasina1@gmail.com",
+    "email": "rivoniainafinoana123@gmail.com",
     "password": "Finoana123.",
-    "platform": "solpick",
+    "platform": "tronpick",
     "proxyIndex": 0,
     "enabled": true,
     "cookies": [
       {
         "name": "remember_token",
-        "value": "3a53b035640b02cf853b129eb85a6e67",
-        "domain": "solpick.io",
+        "value": "6a2f5467943a7a2c0d2a3a017594f82b",
+        "domain": "tronpick.io",
         "path": "/",
-        "expires": 1779785593.785389,
+        "expires": 1779784870.499111,
         "size": 46,
         "httpOnly": false,
         "secure": false,
@@ -20,12 +20,12 @@
         "sourceScheme": "Secure"
       },
       {
-        "name": "fp",
-        "value": "o6AEVwmIR6inGucU",
-        "domain": "solpick.io",
+        "name": "_ga",
+        "value": "GA1.1.1427755012.1777192838",
+        "domain": ".tronpick.io",
         "path": "/",
-        "expires": 1808729560,
-        "size": 18,
+        "expires": 1811752871.904053,
+        "size": 30,
         "httpOnly": false,
         "secure": false,
         "session": false,
@@ -34,10 +34,10 @@
       },
       {
         "name": "user_session",
-        "value": "ldhnp4glp963ksc5lill5u05jumtig2d",
-        "domain": "solpick.io",
+        "value": "isfivf9ubocqgb0amlu4j6kdp9iidjml",
+        "domain": "tronpick.io",
         "path": "/",
-        "expires": 1777279996.823344,
+        "expires": 1777279272.28919,
         "size": 44,
         "httpOnly": true,
         "secure": false,
@@ -46,12 +46,12 @@
         "sourceScheme": "Secure"
       },
       {
-        "name": "_ga",
-        "value": "GA1.1.115367748.1777193561",
-        "domain": ".solpick.io",
+        "name": "fp",
+        "value": "PkYhDXoBznWzDvv1",
+        "domain": "tronpick.io",
         "path": "/",
-        "expires": 1811753595.394139,
-        "size": 29,
+        "expires": 1808728838,
+        "size": 18,
         "httpOnly": false,
         "secure": false,
         "session": false,
@@ -60,10 +60,10 @@
       },
       {
         "name": "_ga_B22HX5LGBP",
-        "value": "GS2.1.s1777193560$o1$g1$t1777193595$j25$l0$h0",
-        "domain": ".solpick.io",
+        "value": "GS2.1.s1777192838$o1$g1$t1777192871$j27$l0$h0",
+        "domain": ".tronpick.io",
         "path": "/",
-        "expires": 1811753595.398515,
+        "expires": 1811752871.923966,
         "size": 59,
         "httpOnly": false,
         "secure": false,
@@ -73,10 +73,10 @@
       },
       {
         "name": "g_state",
-        "value": "{\"i_l\":0,\"i_ll\":1777193596344,\"i_b\":\"qRq33wBwRm1fc4noPJn/OYARD2L/dppDQ7aAd5kTzYU\",\"i_e\":{\"enable_itp_optimization\":0},\"i_et\":1777193561520}",
-        "domain": "solpick.io",
+        "value": "{\"i_l\":0,\"i_ll\":1777192873355,\"i_b\":\"VxBSpoFPv4YTx9M7O8u3QgZ0g5LHVrJfS6yQJA4ekTA\",\"i_e\":{\"enable_itp_optimization\":0},\"i_et\":1777192838657}",
+        "domain": "tronpick.io",
         "path": "/",
-        "expires": 1792745596,
+        "expires": 1792744873,
         "size": 146,
         "httpOnly": false,
         "secure": false,
@@ -86,10 +86,10 @@
       },
       {
         "name": "csrf_cookie_name",
-        "value": "82c0749985180e14e7612d08622b44fe",
-        "domain": "solpick.io",
+        "value": "219453630628e561ec35cb528b3e8695",
+        "domain": "tronpick.io",
         "path": "/",
-        "expires": 1777200796.823247,
+        "expires": 1777200072.289069,
         "size": 48,
         "httpOnly": false,
         "secure": false,
@@ -99,7 +99,9 @@
       }
     ],
     "cookiesStatus": "valid",
-    "lastClaim": 1777193603529,
-    "timer": 35
+    "lastClaim": 1777192880915,
+    "timer": 2.5,
+    "pendingClaim": true,
+    "pendingLogout": true
   }
 ]
