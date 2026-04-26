@@ -208,7 +208,7 @@
     "lastClaim": 1777216234381,
     "timer": 1,
     "pendingClaim": false,
-    "claimResult": null
+    "claimResult": "❌ Aucune réaction"
   },
   {
     "email": "hasiniainahasina1@gmail.com",
@@ -414,9 +414,7 @@
       }
     ],
     "cookiesStatus": "valid",
-    "lastClaim": 1777223694693,
-    "timer": 1,
-    "claimResult": null,
-    "pendingClaim": false
+    "lastClaim": 1777216279584,
+    "timer": 1
   }
 ]
