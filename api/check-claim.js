@@ -1,4 +1,4 @@
-// api/check-claim.js - VERSION DIAGNOSTIC
+// api/check-claim.js – DIAGNOSTIC FINAL (avec correction atob)
 export default async function handler(req, res) {
     const SECRET = process.env.CRON_SECRET;
     const headerSecret = req.headers['x-cron-secret'];
@@ -13,8 +13,17 @@ export default async function handler(req, res) {
     const GH_BRANCH = process.env.GH_BRANCH || 'main';
     const GH_FILE_PATH = process.env.GH_FILE_PATH || 'accounts.json';
 
+    const vars = {
+        GH_USERNAME,
+        GH_REPO,
+        GH_BRANCH,
+        GH_FILE_PATH,
+        hasToken: !!GH_TOKEN
+    };
+
+    const url = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/contents/${GH_FILE_PATH}?ref=${GH_BRANCH}`;
+
     try {
-        const url = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/contents/${GH_FILE_PATH}?ref=${GH_BRANCH}`;
         const response = await fetch(url, {
             headers: {
                 Authorization: `token ${GH_TOKEN}`,
@@ -22,14 +31,27 @@ export default async function handler(req, res) {
             }
         });
 
-        let accounts = [];
-        if (response.ok) {
-            const data = await response.json();
-            const content = Buffer.from(data.content, 'base64').toString('utf8');
-            accounts = JSON.parse(content);
-        } else if (response.status !== 404) {
-            throw new Error(`GitHub API error: ${response.status}`);
+        const status = response.status;
+        const responseText = await response.text();
+
+        if (!response.ok) {
+            return res.status(500).json({
+                error: 'GitHub API error',
+                status,
+                responseText: responseText.substring(0, 500),
+                url,
+                vars
+            });
         }
+
+        const data = JSON.parse(responseText);
+
+        // Utiliser atob pour décoder le base64 (plus compatible que Buffer)
+        const content = decodeURIComponent(
+            Array.from(atob(data.content), c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')
+        );
+
+        const accounts = JSON.parse(content);
 
         const now = Date.now();
         const debug = accounts.map(acc => ({
@@ -42,10 +64,9 @@ export default async function handler(req, res) {
             eligible: (acc.enabled !== false) && (now - (acc.lastClaim || 0) >= (acc.timer || 60) * 60 * 1000)
         }));
 
-        return res.json({ now, debug });
+        return res.json({ now, debug, vars, accountCount: accounts.length });
 
     } catch (error) {
-        console.error(error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: error.message, stack: error.stack });
     }
 }
