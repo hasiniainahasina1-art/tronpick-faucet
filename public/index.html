@@ -353,7 +353,7 @@
             function showToast(message, type = '') {
                 toast.textContent = message;
                 toast.className = `toast ${type} show`;
-                setTimeout(() => { toast.className = 'toast'; }, 4000);
+                setTimeout(() => { toast.className = 'toast'; }, 5000);
             }
 
             function openModal(title, account = null) {
@@ -395,20 +395,6 @@
                 return (mins || 0) + (secs || 0) / 60;
             }
 
-            function showLoader(accountElement) {
-                const info = accountElement.querySelector('.account-info');
-                if (info && !info.querySelector('.spinner')) {
-                    const spinner = document.createElement('span');
-                    spinner.className = 'spinner';
-                    info.prepend(spinner);
-                }
-            }
-
-            function hideLoader(accountElement) {
-                const spinner = accountElement.querySelector('.spinner');
-                if (spinner) spinner.remove();
-            }
-
             async function refreshAccounts() {
                 try {
                     currentAccounts = await loadAccounts();
@@ -423,11 +409,15 @@
                 countdownIntervals = [];
                 const container = document.getElementById('accountsContainer');
                 container.innerHTML = '';
-                if (!currentAccounts.length) {
+
+                // 👻 On n'affiche que les comptes valides (pas les échecs de login)
+                const visibleAccounts = currentAccounts.filter(acc => acc.cookiesStatus !== 'failed');
+
+                if (!visibleAccounts.length) {
                     container.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-secondary);">Aucun compte configuré.</div>';
                     return;
                 }
-                currentAccounts.forEach((acc, idx) => {
+                visibleAccounts.forEach((acc, displayIdx) => {
                     const now = Date.now();
                     const last = acc.lastClaim || 0;
                     const intervalMs = (acc.timer || 60) * 60 * 1000;
@@ -444,12 +434,12 @@
 
                     const item = document.createElement('div');
                     item.className = 'account-item';
-                    item.dataset.index = idx;
+                    item.dataset.index = displayIdx;
                     item.innerHTML = `
                         <div class="account-info">
                             <span class="account-email">${acc.email}</span>
                             <span class="account-site">${acc.platform || 'tronpick'}</span>
-                            <span class="account-countdown" id="cd-${idx}">${formatTime(remainingMs)}</span>
+                            <span class="account-countdown" id="cd-${displayIdx}">${formatTime(remainingMs)}</span>
                         </div>
                         <button class="btn btn-outline btn-delete" title="Supprimer le compte">🗑️</button>
                     `;
@@ -458,7 +448,7 @@
                     const interval = setInterval(() => {
                         const n = Date.now();
                         const r = Math.max(0, nextClaimTime - n);
-                        const sp = document.getElementById(`cd-${idx}`);
+                        const sp = document.getElementById(`cd-${displayIdx}`);
                         if (sp) {
                             sp.textContent = formatTime(r);
                             sp.className = 'account-countdown' + (r === 0 ? ' expired' : '');
@@ -467,15 +457,17 @@
                     countdownIntervals.push(interval);
                 });
 
+                // Suppression
                 document.querySelectorAll('.btn-delete').forEach(btn => {
                     btn.addEventListener('click', async (e) => {
                         const item = btn.closest('.account-item');
                         const idx = parseInt(item.dataset.index);
-                        const acc = currentAccounts[idx];
+                        // On doit retrouver le compte réel dans currentAccounts
+                        const acc = visibleAccounts[idx];
                         if (!confirm(`Supprimer définitivement le compte ${acc.email} ?`)) return;
                         showLoader(item);
                         btn.disabled = true;
-                        showToast(`🗑️ Lancement de la déconnexion de ${acc.email}...`, '');
+                        showToast(`🗑️ Déconnexion de ${acc.email}...`, '');
                         try {
                             await triggerWorkflow(LOGOUT_WORKFLOW_ID, {
                                 email: acc.email,
@@ -483,47 +475,50 @@
                                 platform: acc.platform,
                                 proxyIndex: String(acc.proxyIndex || 0)
                             });
-                            showToast(`⏳ Déconnexion en cours (peut prendre jusqu'à 2 minutes)...`, '');
+                            showToast(`⏳ Déconnexion en cours (peut prendre 2 min)...`, '');
                             let isDeleted = false;
-                            const maxAttempts = 12;
-                            for (let attempt = 0; attempt < maxAttempts; attempt++) {
-                                await new Promise(resolve => setTimeout(resolve, 10000));
-                                try {
-                                    currentAccounts = await loadAccounts();
-                                    if (!currentAccounts.some(a => a.email === acc.email)) {
-                                        isDeleted = true;
-                                        break;
-                                    }
-                                } catch (e) {}
+                            for (let attempt = 0; attempt < 12; attempt++) {
+                                await new Promise(r => setTimeout(r, 10000));
+                                currentAccounts = await loadAccounts();
+                                if (!currentAccounts.some(a => a.email === acc.email && a.platform === acc.platform)) {
+                                    isDeleted = true;
+                                    break;
+                                }
                             }
                             if (isDeleted) {
-                                showToast(`✅ Compte ${acc.email} supprimé avec succès.`, 'success');
-                                await refreshAccounts();
+                                showToast(`✅ Compte ${acc.email} supprimé.`, 'success');
                             } else {
-                                showToast(`⚠️ Le compte existe toujours après 2 minutes. Réessayez ou vérifiez les logs du workflow.`, 'error');
+                                showToast(`⚠️ Le compte existe toujours après 2 min.`, 'error');
                             }
-                        } catch (error) {
-                            console.error('Erreur suppression:', error);
-                            let message = error.message;
-                            if (message.includes('Failed to fetch') || message.includes('NetworkError')) {
-                                message = 'Erreur de connexion (timeout Vercel ?). Réessayez.';
-                            } else if (message.includes('422')) {
-                                message = 'Le workflow est peut-être déjà en cours. Patientez puis réessayez.';
-                            }
-                            showToast(`❌ Échec : ${message}`, 'error');
+                        } catch (err) {
+                            showToast(`❌ Erreur: ${err.message}`, 'error');
                         } finally {
                             hideLoader(item);
                             btn.disabled = false;
+                            await refreshAccounts();
                         }
                     });
                 });
+            }
+
+            function showLoader(el) {
+                const info = el.querySelector('.account-info');
+                if (info && !info.querySelector('.spinner')) {
+                    const spinner = document.createElement('span');
+                    spinner.className = 'spinner';
+                    info.prepend(spinner);
+                }
+            }
+            function hideLoader(el) {
+                const spinner = el.querySelector('.spinner');
+                if (spinner) spinner.remove();
             }
 
             // Initialisation
             refreshAccounts();
             refreshBtn.addEventListener('click', refreshAccounts);
 
-            // Soumission du formulaire (ajout ou modification)
+            // Ajout / Modification
             form.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const email = emailInput.value.trim().toLowerCase();
@@ -544,8 +539,8 @@
                     await refreshAccounts();
                     showToast('✅ Compte mis à jour.', 'success');
                 } else {
-                    if (currentAccounts.some(a => a.email === email && a.platform === platform)) {
-                        showToast('❌ Un compte avec cet email et cette plateforme existe déjà.', 'error');
+                    if (currentAccounts.some(a => a.email === email && a.platform === platform && a.cookiesStatus !== 'failed')) {
+                        showToast('❌ Ce compte existe déjà.', 'error');
                         return;
                     }
                     closeModal();
@@ -563,31 +558,28 @@
                                 currentAccounts = await loadAccounts();
                                 const found = currentAccounts.find(a => a.email === email && a.platform === platform);
                                 if (found) {
-                                    if (found.cookies && found.cookies.length > 0) {
-                                        clearInterval(checkInterval);
+                                    clearInterval(checkInterval);
+                                    if (found.cookies && found.cookies.length > 0 && found.cookiesStatus === 'valid') {
                                         showToast(`✅ Compte ${email} ajouté.`, 'success');
-                                        renderAccounts();
                                     } else if (found.cookiesStatus === 'failed') {
-                                        clearInterval(checkInterval);
-                                        showToast(`❌ ${found.errorMessage || 'Échec de connexion'}`, 'error');
-                                        // Supprimer le compte erroné de la liste
+                                        showToast(`❌ ${found.errorMessage || 'Identifiants incorrects'}`, 'error');
+                                        // Nettoyage : supprimer le compte erroné
                                         const filtered = currentAccounts.filter(a => !(a.email === email && a.platform === platform));
                                         await saveAccounts(filtered);
-                                        await refreshAccounts();
                                     }
+                                    await refreshAccounts();
                                 }
-                                if (attempts > 24 && !found) {
+                                if (attempts++ > 24) {
                                     clearInterval(checkInterval);
-                                    showToast(`❌ Échec ajout de ${email}.`, 'error');
-                                    renderAccounts();
+                                    showToast(`❌ Échec de l'ajout (timeout).`, 'error');
+                                    await refreshAccounts();
                                 }
-                                attempts++;
                             } catch {
                                 clearInterval(checkInterval);
                             }
                         }, 5000);
-                    } catch (e) {
-                        showToast(`❌ Erreur: ${e.message}`, 'error');
+                    } catch (err) {
+                        showToast(`❌ Erreur: ${err.message}`, 'error');
                     }
                 }
             });
