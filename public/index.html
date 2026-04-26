@@ -276,8 +276,9 @@
             const BRANCH = 'main';
             const FILE_PATH = 'accounts.json';
 
+            // ✅ Appel via /api/data (masque l'utilisation de GitHub)
             async function githubApi(method, path, body = null) {
-                const url = `/api/github?path=${encodeURIComponent(path)}`;
+                const url = `/api/data?path=${encodeURIComponent(path)}`;
                 const options = { method, headers: { 'Content-Type': 'application/json' } };
                 if (body) options.body = JSON.stringify(body);
                 const response = await fetch(url, options);
