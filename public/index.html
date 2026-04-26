@@ -397,8 +397,23 @@
 
             async function refreshAccounts() {
                 try {
+                    const previousAccounts = JSON.parse(JSON.stringify(currentAccounts)); // copie pour comparer
                     currentAccounts = await loadAccounts();
                     renderAccounts();
+
+                    // Vérifier les nouveaux résultats de claim
+                    for (const acc of currentAccounts) {
+                        if (acc.claimResult) {
+                            const oldAcc = previousAccounts.find(a => a.email === acc.email && a.platform === acc.platform);
+                            if (!oldAcc || oldAcc.claimResult !== acc.claimResult) {
+                                const type = acc.claimResult.startsWith('✅') ? 'success' : 'error';
+                                showToast(`${acc.email} : ${acc.claimResult}`, type);
+                                // Effacer le message une fois affiché
+                                acc.claimResult = null;
+                                await saveAccounts(currentAccounts);
+                            }
+                        }
+                    }
                 } catch (e) {
                     showToast(`Erreur chargement: ${e.message}`, 'error');
                 }
@@ -410,7 +425,6 @@
                 const container = document.getElementById('accountsContainer');
                 container.innerHTML = '';
 
-                // 👻 On n'affiche que les comptes valides (pas les échecs de login)
                 const visibleAccounts = currentAccounts.filter(acc => acc.cookiesStatus !== 'failed');
 
                 if (!visibleAccounts.length) {
@@ -457,12 +471,10 @@
                     countdownIntervals.push(interval);
                 });
 
-                // Suppression
                 document.querySelectorAll('.btn-delete').forEach(btn => {
                     btn.addEventListener('click', async (e) => {
                         const item = btn.closest('.account-item');
                         const idx = parseInt(item.dataset.index);
-                        // On doit retrouver le compte réel dans currentAccounts
                         const acc = visibleAccounts[idx];
                         if (!confirm(`Supprimer définitivement le compte ${acc.email} ?`)) return;
                         showLoader(item);
@@ -518,6 +530,9 @@
             refreshAccounts();
             refreshBtn.addEventListener('click', refreshAccounts);
 
+            // Rafraîchissement automatique toutes les 30 secondes
+            setInterval(refreshAccounts, 30000);
+
             // Ajout / Modification
             form.addEventListener('submit', async (e) => {
                 e.preventDefault();
@@ -563,7 +578,6 @@
                                         showToast(`✅ Compte ${email} ajouté.`, 'success');
                                     } else if (found.cookiesStatus === 'failed') {
                                         showToast(`❌ ${found.errorMessage || 'Identifiants incorrects'}`, 'error');
-                                        // Nettoyage : supprimer le compte erroné
                                         const filtered = currentAccounts.filter(a => !(a.email === email && a.platform === platform));
                                         await saveAccounts(filtered);
                                     }
