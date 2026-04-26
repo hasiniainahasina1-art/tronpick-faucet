@@ -21,7 +21,10 @@ if (JP_PROXY_LIST.length === 0) {
     console.error('❌ JP_PROXY_LIST doit contenir au moins 1 proxy');
     process.exit(1);
 }
-console.log(`🌐 ${JP_PROXY_LIST.length} proxy(s) chargé(s).`);
+
+// ✅ Utiliser toujours le premier proxy de la liste (aucun proxyIndex de compte utilisé)
+const PRIMARY_PROXY = JP_PROXY_LIST[0];
+console.log(`🌐 Proxy unique utilisé : ${PRIMARY_PROXY}`);
 
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
@@ -156,13 +159,6 @@ async function saveAccounts(accounts) {
     });
 }
 
-function getProxyUrlForAccount(account) {
-    if (account.proxyIndex !== undefined && JP_PROXY_LIST[account.proxyIndex]) {
-        return JP_PROXY_LIST[account.proxyIndex];
-    }
-    return JP_PROXY_LIST[0];
-}
-
 async function connectWithProxy(proxyUrl) {
     const proxyConfig = parseProxyUrl(proxyUrl);
     if (!proxyConfig) throw new Error('Proxy invalide');
@@ -189,12 +185,10 @@ async function performLoginAndCaptureCookies(account) {
     };
     const loginUrl = siteUrls[platform];
     if (!loginUrl) throw new Error('Plateforme inconnue');
-    const proxyUrl = getProxyUrlForAccount(account);
-    if (!proxyUrl) throw new Error('Aucun proxy fourni');
 
     let browser;
     try {
-        const { browser: br, page } = await connectWithProxy(proxyUrl);
+        const { browser: br, page } = await connectWithProxy(PRIMARY_PROXY);
         browser = br;
         await page.setViewport({ width: 1280, height: 720 });
         await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 60000 });
@@ -253,12 +247,10 @@ async function claimWithCookies(account) {
         binpick: 'https://binpick.io/faucet.php'
     };
     const faucetUrl = siteUrls[platform] || 'https://tronpick.io/faucet.php';
-    const proxyUrl = getProxyUrlForAccount(account);
-    if (!proxyUrl) throw new Error('Aucun proxy fourni');
 
     let browser;
     try {
-        const { browser: br, page } = await connectWithProxy(proxyUrl);
+        const { browser: br, page } = await connectWithProxy(PRIMARY_PROXY);
         browser = br;
         await page.setCookie(...cookies);
         await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
@@ -339,45 +331,37 @@ async function claimWithCookies(account) {
     }
 }
 
-// --- Main (un seul compte par exécution, avec pause de 2h si erreur réseau) ---
+// --- Main (un seul compte, proxy unique, pause de 2h si erreur réseau) ---
 (async () => {
     try {
+        // 📧 Le compte à traiter est passé via la variable d'environnement CLAIM_EMAIL
+        const targetEmail = process.env.CLAIM_EMAIL;
+        if (!targetEmail) {
+            console.error('❌ Aucun email fourni (CLAIM_EMAIL).');
+            process.exit(1);
+        }
+
         let accounts = await loadAccounts();
         console.log(`📋 Comptes chargés : ${accounts.length}`);
-        if (!accounts.length) return;
+
+        // Rechercher le compte correspondant
+        let targetAccount = accounts.find(acc => acc.email === targetEmail && acc.enabled !== false);
+        if (!targetAccount) {
+            console.error(`❌ Compte ${targetEmail} introuvable ou désactivé.`);
+            process.exit(1);
+        }
 
         const now = Date.now();
-        let nextIndex = 0;
-
-        for (const acc of accounts) {
-            if (acc.proxyIndex === undefined) {
-                acc.proxyIndex = nextIndex % JP_PROXY_LIST.length;
-                nextIndex++;
-            }
-            if (!acc.timer) acc.timer = 60;
+        const lastClaim = targetAccount.lastClaim || 0;
+        const intervalMs = (targetAccount.timer || 60) * 60 * 1000;
+        if ((now - lastClaim) < intervalMs) {
+            console.log(`⏳ Le compte ${targetEmail} n'est pas encore éligible.`);
+            process.exit(0);
         }
 
-        let targetAccount = null;
-        for (const acc of accounts) {
-            if (!acc.enabled) continue;
-            const lastClaim = acc.lastClaim || 0;
-            const intervalMs = (acc.timer || 60) * 60 * 1000;
-            const isEligible = (now - lastClaim) >= intervalMs;
-            if (isEligible) {
-                targetAccount = acc;
-                break;
-            }
-        }
+        console.log(`\n===== Traitement : ${targetEmail} =====`);
 
-        if (!targetAccount) {
-            console.log('⏳ Aucun compte éligible pour le moment.');
-            return;
-        }
-
-        console.log(`\n===== Traitement unique : ${targetAccount.email} =====`);
-        const proxyUrl = getProxyUrlForAccount(targetAccount);
-        console.log(`🔄 Proxy : ${proxyUrl}`);
-
+        // Login si nécessaire
         if (!targetAccount.cookies || targetAccount.cookiesStatus === 'expired' || targetAccount.cookiesStatus === 'failed') {
             console.log(`🍪 Tentative de login...`);
             try {
@@ -388,10 +372,11 @@ async function claimWithCookies(account) {
                 targetAccount.cookiesStatus = 'failed';
                 console.log(`❌ Échec login : ${e.message}`);
                 await saveAccounts(accounts);
-                return;
+                process.exit(1);
             }
         }
 
+        // Claim
         console.log(`🚀 Claim éligible`);
         try {
             const result = await claimWithCookies(targetAccount);
@@ -405,9 +390,9 @@ async function claimWithCookies(account) {
             } else {
                 console.log(`❌ Claim échoué : ${result.message}`);
 
-                // Si l'erreur contient "try again in 10 minutes", on décale le prochain claim de 2 heures
+                // Si l'erreur contient "try again in 10 minutes", pause de 2 heures
                 if (result.message.includes('try again in 10 minutes')) {
-                    const deuxHeuresMs = 2 * 60 * 60 * 1000; // 2 heures
+                    const deuxHeuresMs = 2 * 60 * 60 * 1000;
                     targetAccount.lastClaim = now + deuxHeuresMs - ((targetAccount.timer || 60) * 60 * 1000);
                     console.log(`⏰ Prochain claim repoussé de 2 heures (problème réseau).`);
                 }
@@ -420,9 +405,11 @@ async function claimWithCookies(account) {
             }
         }
 
+        // Sauvegarder les modifications
         await saveAccounts(accounts);
         console.log('💾 Comptes sauvegardés.');
         console.log('🏁 Terminé.');
+        process.exit(0);
     } catch (e) {
         console.error('Erreur fatale:', e);
         process.exit(1);
