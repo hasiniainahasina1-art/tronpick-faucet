@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Finoana Auto Claim</title>
+    <style>
+        :root {
+            --bg: #f0f4f8;
+            --card-bg: #ffffff;
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --danger: #ef4444;
+            --text: #1e293b;
+            --text-light: #64748b;
+            --border: #e2e8f0;
+            --radius: 16px;
+            --shadow: 0 10px 25px rgba(0,0,0,0.06);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #e0e7ff 0%, #f0f4f8 100%);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .login-container {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 40px 32px;
+            width: 100%;
+            max-width: 420px;
+        }
+        .logo {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        .logo-icon {
+            font-size: 2.5rem;
+            margin-bottom: 8px;
+            color: var(--primary);
+        }
+        .logo h1 {
+            font-size: 1.4rem;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+        }
+        .logo p {
+            font-size: 0.85rem;
+            color: var(--text-light);
+            margin-top: 4px;
+        }
+        .form-group {
+            margin-bottom: 16px;
+            position: relative;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 600;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text);
+        }
+        .input-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+        .input-wrapper input {
+            width: 100%;
+            padding: 12px 44px 12px 14px;
+            border: 1.5px solid var(--border);
+            border-radius: 10px;
+            font-size: 0.95rem;
+            background: #fafbfc;
+            transition: border 0.2s, box-shadow 0.2s;
+            outline: none;
+        }
+        .input-wrapper input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37,99,235,0.15);
+            background: #fff;
+        }
+        .input-wrapper .icon {
+            position: absolute;
+            right: 12px;
+            font-size: 1.2rem;
+            color: var(--text-light);
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 4px;
+        }
+        .input-wrapper .icon:hover { color: var(--primary); }
+        .error-message {
+            color: var(--danger);
+            font-size: 0.75rem;
+            margin-top: 6px;
+            display: none;
+        }
+        .error-message.visible { display: block; }
+        .btn-primary {
+            width: 100%;
+            padding: 13px;
+            border-radius: 10px;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 0.95rem;
+            background: var(--primary);
+            color: white;
+            transition: background 0.2s, transform 0.2s;
+            letter-spacing: 0.3px;
+        }
+        .btn-primary:hover { background: var(--primary-hover); transform: translateY(-1px); }
+        .btn-primary:active { transform: translateY(0); }
+        .btn-primary:disabled { background: #94a3b8; cursor: not-allowed; transform: none; }
+        .toggle-link {
+            text-align: center;
+            margin-top: 16px;
+            font-size: 0.85rem;
+        }
+        .toggle-link a {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .toggle-link a:hover { text-decoration: underline; }
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .version {
+            text-align: center;
+            margin-top: 24px;
+            font-size: 0.7rem;
+            color: var(--text-light);
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="logo">
+            <div class="logo-icon">⚙️</div>
+            <h1>Finoana Claim</h1>
+            <p id="formDescription">Connectez-vous à votre compte</p>
+        </div>
+
+        <form id="authForm" novalidate>
+            <div class="form-group" id="emailGroup">
+                <label for="email">Adresse email</label>
+                <div class="input-wrapper">
+                    <input type="email" id="email" placeholder="vous@exemple.com" required autocomplete="email">
+                    <span class="icon">📧</span>
+                </div>
+                <div class="error-message" id="emailError">Veuillez entrer une adresse email valide.</div>
+            </div>
+
+            <div class="form-group" id="passwordGroup">
+                <label for="password">Mot de passe</label>
+                <div class="input-wrapper">
+                    <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password">
+                    <button type="button" class="icon" id="togglePassword" tabindex="-1">👁️</button>
+                </div>
+                <div class="error-message" id="passwordError">Le mot de passe doit contenir au moins 6 caractères.</div>
+            </div>
+
+            <div class="form-group" id="apiErrorGroup" style="display:none;">
+                <div class="error-message visible" id="apiError"></div>
+            </div>
+
+            <button type="submit" class="btn-primary" id="authBtn">
+                <span id="authBtnText">Se connecter</span>
+            </button>
+
+            <div class="toggle-link">
+                <span id="toggleText">Pas encore de compte ?</span>
+                <a href="#" id="toggleAuth">Créer un compte</a>
+            </div>
+        </form>
+
+        <div class="version">v2.0 · Interface sécurisée</div>
+    </div>
+
+    <!-- Bibliothèque Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        (function() {
+            // Initialisation Supabase
+            const supabaseUrl = 'https://xwmituhhszailaaxposg.supabase.co';
+            const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR...'; // ⚠️ À remplacer par ta vraie clé anon
+            const supabase = supabase.createClient(supabaseUrl, supabaseAnonKey);
+
+            // État : mode 'login' ou 'signup'
+            let mode = 'login';
+
+            // Éléments du DOM
+            const form = document.getElementById('authForm');
+            const emailInput = document.getElementById('email');
+            const passwordInput = document.getElementById('password');
+            const toggleBtn = document.getElementById('togglePassword');
+            const authBtn = document.getElementById('authBtn');
+            const authBtnText = document.getElementById('authBtnText');
+            const toggleAuthLink = document.getElementById('toggleAuth');
+            const toggleText = document.getElementById('toggleText');
+            const formDescription = document.getElementById('formDescription');
+            const apiError = document.getElementById('apiError');
+            const apiErrorGroup = document.getElementById('apiErrorGroup');
+
+            // Bascule affichage mot de passe
+            toggleBtn.addEventListener('click', () => {
+                const isPassword = passwordInput.type === 'password';
+                passwordInput.type = isPassword ? 'text' : 'password';
+                toggleBtn.textContent = isPassword ? '🙈' : '👁️';
+            });
+
+            // Bascule connexion / inscription
+            function setMode(newMode) {
+                mode = newMode;
+                if (mode === 'login') {
+                    formDescription.textContent = 'Connectez-vous à votre compte';
+                    authBtnText.textContent = 'Se connecter';
+                    toggleText.textContent = 'Pas encore de compte ?';
+                    toggleAuthLink.textContent = 'Créer un compte';
+                } else {
+                    formDescription.textContent = 'Créez votre compte';
+                    authBtnText.textContent = 'Créer un compte';
+                    toggleText.textContent = 'Déjà un compte ?';
+                    toggleAuthLink.textContent = 'Se connecter';
+                }
+                apiErrorGroup.style.display = 'none';
+            }
+
+            toggleAuthLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                setMode(mode === 'login' ? 'signup' : 'login');
+            });
+
+            // Validation simple
+            function isValidEmail(email) {
+                return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+            }
+
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                apiErrorGroup.style.display = 'none';
+
+                const email = emailInput.value.trim();
+                const password = passwordInput.value;
+
+                if (!isValidEmail(email)) {
+                    apiError.textContent = 'Adresse email invalide.';
+                    apiErrorGroup.style.display = 'block';
+                    return;
+                }
+                if (password.length < 6) {
+                    apiError.textContent = 'Le mot de passe doit contenir au moins 6 caractères.';
+                    apiErrorGroup.style.display = 'block';
+                    return;
+                }
+
+                authBtn.disabled = true;
+                authBtnText.innerHTML = '<span class="spinner"></span> Patientez…';
+
+                let result;
+                if (mode === 'login') {
+                    result = await supabase.auth.signInWithPassword({ email, password });
+                } else {
+                    result = await supabase.auth.signUp({ email, password });
+                }
+
+                authBtn.disabled = false;
+                authBtnText.textContent = mode === 'login' ? 'Se connecter' : 'Créer un compte';
+
+                if (result.error) {
+                    apiError.textContent = result.error.message;
+                    apiErrorGroup.style.display = 'block';
+                    return;
+                }
+
+                // Succès
+                if (mode === 'signup') {
+                    // L'utilisateur est connecté automatiquement après signUp (si confirmation email désactivée)
+                    // S'il faut une confirmation, on affiche un message
+                    if (result.data.user?.identities?.length === 0) {
+                        apiError.textContent = 'Un email de confirmation vous a été envoyé.';
+                        apiErrorGroup.style.display = 'block';
+                        return;
+                    }
+                }
+
+                // Stocker le token pour l'accès au dashboard
+                localStorage.setItem('auth_token', result.data.session.access_token);
+                window.location.href = '/dashboard.html';
+            });
+
+            // Vérifier si déjà connecté
+            const existingToken = localStorage.getItem('auth_token');
+            if (existingToken) {
+                // Rediriger directement au dashboard
+                window.location.href = '/dashboard.html';
+            }
+        })();
+    </script>
+</body>
+</html>
