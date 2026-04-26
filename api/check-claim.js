@@ -1,4 +1,4 @@
-// api/check-claim.js – VERSION PARALLÈLE AVEC NETTOYAGE AUTOMATIQUE
+// api/check-claim.js – VERSION FINALE (avec plateforme dans les inputs, nettoyage auto, dispatch parallèle)
 export default async function handler(req, res) {
     const SECRET = process.env.CRON_SECRET;
     const headerSecret = req.headers['x-cron-secret'];
@@ -52,12 +52,11 @@ export default async function handler(req, res) {
                     acc.pendingClaim = false;
                     delete acc.pendingClaimSince;
                     cleaned = true;
-                    console.log(`🧹 Flag pendingClaim expiré supprimé pour ${acc.email}`);
+                    console.log(`🧹 Flag pendingClaim expiré supprimé pour ${acc.email} (${acc.platform})`);
                 }
             }
         }
 
-        // Sauvegarder le nettoyage si nécessaire
         if (cleaned) {
             const updatedContent = btoa(unescape(encodeURIComponent(JSON.stringify(accounts, null, 2))));
             await fetch(url, {
@@ -77,12 +76,12 @@ export default async function handler(req, res) {
             console.log('✅ Fichier nettoyé avec succès.');
         }
 
-        // 3. Filtrer les comptes éligibles (hors ceux en déconnexion ou avec pendingClaim actif)
+        // 3. Filtrer les comptes éligibles (hors pendingLogout, pendingClaim, non activés)
         const eligibleAccounts = accounts.filter(acc => {
             if (acc.enabled === false) return false;
             if (acc.pendingLogout === true) return false;
             if (acc.pendingClaim === true) {
-                console.log(`⏭️ Ignoré (claim déjà en cours) : ${acc.email}`);
+                console.log(`⏭️ Ignoré (claim déjà en cours) : ${acc.email} (${acc.platform})`);
                 return false;
             }
             const last = acc.lastClaim || 0;
@@ -99,10 +98,10 @@ export default async function handler(req, res) {
             const original = accounts.find(a => a.email === acc.email && a.platform === acc.platform);
             if (original) {
                 original.pendingClaim = true;
-                original.pendingClaimSince = now;   // horodatage pour le nettoyage
+                original.pendingClaimSince = now;
             }
         }
-        // Sauvegarder les flags
+
         const updatedContent = btoa(unescape(encodeURIComponent(JSON.stringify(accounts, null, 2))));
         await fetch(url, {
             method: 'PUT',
@@ -119,7 +118,7 @@ export default async function handler(req, res) {
             })
         });
 
-        // 5. Lancer un workflow par compte éligible
+        // 5. Lancer un workflow par compte éligible (avec email + plateforme)
         const dispatchUrl = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${CLAIM_WORKFLOW_ID}/dispatches`;
         const triggered = [];
 
@@ -134,17 +133,20 @@ export default async function handler(req, res) {
                     },
                     body: JSON.stringify({
                         ref: GH_BRANCH,
-                        inputs: { email: acc.email }
+                        inputs: {
+                            email: acc.email,
+                            platform: acc.platform
+                        }
                     })
                 });
 
                 if (dispatchResponse.ok) {
-                    triggered.push(acc.email);
+                    triggered.push(`${acc.email} (${acc.platform})`);
                 } else {
-                    console.error(`❌ Dispatch failed for ${acc.email}: ${dispatchResponse.status}`);
+                    console.error(`❌ Dispatch failed for ${acc.email} (${acc.platform}): ${dispatchResponse.status}`);
                 }
             } catch (err) {
-                console.error(`❌ Erreur pour ${acc.email}:`, err.message);
+                console.error(`❌ Erreur pour ${acc.email} (${acc.platform}):`, err.message);
             }
         }
 
