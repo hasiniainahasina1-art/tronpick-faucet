@@ -208,7 +208,7 @@
     "lastClaim": 1777206890009,
     "timer": 45,
     "pendingClaim": false,
-    "claimResult": null
+    "claimResult": "❌ Aucune réaction"
   },
   {
     "email": "rivoniainafinoana123@gmail.com",
@@ -312,8 +312,7 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777205474024,
     "timer": 2.5,
-    "pendingClaim": false,
-    "claimResult": "❌ Aucune réaction"
+    "pendingClaim": false
   },
   {
     "email": "hasiniainahasina1@gmail.com",
