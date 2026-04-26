@@ -15,7 +15,6 @@ export default async function handler(req, res) {
     const CLAIM_WORKFLOW_ID = 'claim.yml';
 
     try {
-        // 1. Lire les comptes
         const url = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/contents/${GH_FILE_PATH}?ref=${GH_BRANCH}`;
         const response = await fetch(url, {
             headers: {
@@ -41,7 +40,7 @@ export default async function handler(req, res) {
             return res.json({ status: 'ok', message: 'Aucun compte' });
         }
 
-        // 2. 🧹 Suppression OBLIGATOIRE de tous les flags pendingClaim
+        // Nettoyage automatique des pendingClaim
         let cleaned = false;
         for (const acc of accounts) {
             if (acc.pendingClaim) {
@@ -71,12 +70,10 @@ export default async function handler(req, res) {
             console.log('✅ Tous les pendingClaim ont été supprimés.');
         }
 
-        // 3. Filtrer les comptes éligibles (hors pendingLogout, désactivés)
         const now = Date.now();
         const eligibleAccounts = accounts.filter(acc => {
             if (acc.enabled === false) return false;
             if (acc.pendingLogout === true) return false;
-            // Plus de vérification de pendingClaim puisqu'on vient de tous les supprimer
             const last = acc.lastClaim || 0;
             const intervalMs = (acc.timer || 60) * 60 * 1000;
             return (now - last) >= intervalMs;
@@ -86,7 +83,7 @@ export default async function handler(req, res) {
             return res.json({ status: 'ok', message: 'Aucun compte éligible' });
         }
 
-        // 4. Poser le flag pendingClaim + pendingClaimSince pour chaque compte éligible
+        // Poser les flags
         for (const acc of eligibleAccounts) {
             const original = accounts.find(a => a.email === acc.email && a.platform === acc.platform);
             if (original) {
@@ -111,7 +108,6 @@ export default async function handler(req, res) {
             })
         });
 
-        // 5. Lancer un workflow par compte éligible (avec email + plateforme)
         const dispatchUrl = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${CLAIM_WORKFLOW_ID}/dispatches`;
         const triggered = [];
 
