@@ -207,6 +207,6 @@
     "lastClaim": 1777196532643,
     "timer": 29,
     "pendingClaim": true,
-    "claimResult": "â ÃError!Please wait for 59 minutes, 8 seconds to the next faucet claim!"
+    "claimResult": null
   }
 ]
