@@ -205,10 +205,10 @@
       }
     ],
     "cookiesStatus": "valid",
-    "lastClaim": 1777206890009,
+    "lastClaim": 1777215054137,
     "timer": 45,
-    "pendingClaim": true,
-    "claimResult": null,
+    "pendingClaim": false,
+    "claimResult": "❌ ×Error!Something went wrong! Please try again in 10 minutes!",
     "pendingClaimSince": 1777210385236
   },
   {
@@ -418,8 +418,7 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777206116259,
     "timer": 1,
-    "pendingClaim": false,
-    "pendingClaimSince": 1777210385236,
-    "claimResult": "❌ Aucune réaction"
+    "pendingClaim": true,
+    "pendingClaimSince": 1777210385236
   }
 ]
