@@ -112,6 +112,7 @@
     "cookiesStatus": "failed",
     "errorMessage": "Échec connexion",
     "lastClaim": 0,
-    "timer": 60
+    "timer": 60,
+    "pendingLogout": true
   }
 ]
