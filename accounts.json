@@ -209,7 +209,7 @@
     "timer": 60,
     "pendingClaim": true,
     "pendingClaimSince": 1777226047334,
-    "claimResult": "❌ Aucune réaction"
+    "claimResult": null
   },
   {
     "email": "hasiniainahasina1@gmail.com",
@@ -315,7 +315,7 @@
     "timer": 60,
     "pendingClaim": true,
     "pendingClaimSince": 1777226047334,
-    "claimResult": "❌ Aucune réaction"
+    "claimResult": "â Aucune rÃ©action"
   },
   {
     "email": "hasiniainahasina1@gmail.com",
@@ -419,7 +419,7 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777232634719,
     "timer": 1,
-    "claimResult": "❌ ×Error!Something went wrong! Please try again in 10 minutes!",
+    "claimResult": "â ÃError!Something went wrong! Please try again in 10 minutes!",
     "pendingClaim": false,
     "pendingClaimSince": 1777224727281
   },
