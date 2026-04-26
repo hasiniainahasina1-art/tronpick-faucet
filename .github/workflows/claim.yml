@@ -2,11 +2,10 @@ name: Claim Tronpick Faucet
 
 on:
   workflow_dispatch:
-
-# 🔒 UN SEUL workflow à la fois (file d'attente)
-concurrency:
-  group: claim-single-instance
-  cancel-in-progress: false
+    inputs:
+      email:
+        required: true
+        type: string
 
 jobs:
   claim:
@@ -28,8 +27,9 @@ jobs:
       - name: 📦 Installer les dépendances Node.js
         run: npm install
 
-      - name: 🤖 Exécuter le script (un seul compte par exécution)
+      - name: 🤖 Exécuter le claim pour ${{ github.event.inputs.email }}
         env:
+          CLAIM_EMAIL: ${{ github.event.inputs.email }}
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GH_USERNAME: ${{ secrets.GH_USERNAME }}
           GH_REPO: ${{ secrets.GH_REPO }}
@@ -42,5 +42,5 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: faucet-screenshots-${{ github.run_id }}
+          name: screenshots-${{ github.event.inputs.email }}
           path: screenshots/
