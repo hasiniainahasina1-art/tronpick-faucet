@@ -22,7 +22,7 @@ if (JP_PROXY_LIST.length === 0) {
     process.exit(1);
 }
 
-// ✅ Utiliser toujours le premier proxy de la liste (aucun proxyIndex de compte utilisé)
+// ✅ Utiliser toujours le premier proxy de la liste
 const PRIMARY_PROXY = JP_PROXY_LIST[0];
 console.log(`🌐 Proxy unique utilisé : ${PRIMARY_PROXY}`);
 
@@ -331,10 +331,9 @@ async function claimWithCookies(account) {
     }
 }
 
-// --- Main (un seul compte, proxy unique, pause de 2h si erreur réseau) ---
+// --- Main (un seul compte, proxy unique, retrait du flag pendingClaim) ---
 (async () => {
     try {
-        // 📧 Le compte à traiter est passé via la variable d'environnement CLAIM_EMAIL
         const targetEmail = process.env.CLAIM_EMAIL;
         if (!targetEmail) {
             console.error('❌ Aucun email fourni (CLAIM_EMAIL).');
@@ -344,7 +343,6 @@ async function claimWithCookies(account) {
         let accounts = await loadAccounts();
         console.log(`📋 Comptes chargés : ${accounts.length}`);
 
-        // Rechercher le compte correspondant
         let targetAccount = accounts.find(acc => acc.email === targetEmail && acc.enabled !== false);
         if (!targetAccount) {
             console.error(`❌ Compte ${targetEmail} introuvable ou désactivé.`);
@@ -356,6 +354,9 @@ async function claimWithCookies(account) {
         const intervalMs = (targetAccount.timer || 60) * 60 * 1000;
         if ((now - lastClaim) < intervalMs) {
             console.log(`⏳ Le compte ${targetEmail} n'est pas encore éligible.`);
+            // Retirer le flag pendingClaim même si pas éligible, car il ne faut pas bloquer le compte pour toujours
+            targetAccount.pendingClaim = false;
+            await saveAccounts(accounts);
             process.exit(0);
         }
 
@@ -371,6 +372,8 @@ async function claimWithCookies(account) {
             } catch (e) {
                 targetAccount.cookiesStatus = 'failed';
                 console.log(`❌ Échec login : ${e.message}`);
+                // Retirer le flag
+                targetAccount.pendingClaim = false;
                 await saveAccounts(accounts);
                 process.exit(1);
             }
@@ -405,7 +408,8 @@ async function claimWithCookies(account) {
             }
         }
 
-        // Sauvegarder les modifications
+        // ✅ Retirer le flag pendingClaim dans tous les cas
+        targetAccount.pendingClaim = false;
         await saveAccounts(accounts);
         console.log('💾 Comptes sauvegardés.');
         console.log('🏁 Terminé.');
