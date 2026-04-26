@@ -207,6 +207,6 @@
     "lastClaim": 1777206890009,
     "timer": 45,
     "pendingClaim": false,
-    "claimResult": "❌ ×Error!Something went wrong! Please try again in 10 minutes!"
+    "claimResult": null
   }
 ]
