@@ -205,6 +205,7 @@
     ],
     "cookiesStatus": "valid",
     "lastClaim": 1777193603529,
-    "timer": 35
+    "timer": 35,
+    "pendingLogout": true
   }
 ]
