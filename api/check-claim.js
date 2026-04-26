@@ -1,4 +1,4 @@
-// api/check-claim.js – VERSION PRODUCTION FINALE
+// api/check-claim.js – VERSION PARALLÈLE (procuration rotative)
 export default async function handler(req, res) {
     const SECRET = process.env.CRON_SECRET;
     const headerSecret = req.headers['x-cron-secret'];
@@ -14,35 +14,8 @@ export default async function handler(req, res) {
     const GH_FILE_PATH = process.env.GH_FILE_PATH || 'accounts.json';
     const CLAIM_WORKFLOW_ID = 'claim.yml';
 
-    // Vérifier si un workflow "Claim Tronpick Faucet" est déjà en cours
-    async function isWorkflowAlreadyRunning() {
-        try {
-            const url = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/actions/runs?status=in_progress&status=queued`;
-            const response = await fetch(url, {
-                headers: {
-                    Authorization: `token ${GH_TOKEN}`,
-                    Accept: 'application/vnd.github.v3+json'
-                }
-            });
-            if (!response.ok) return false;
-            const data = await response.json();
-            return data.workflow_runs.some(run => run.name === 'Claim Tronpick Faucet');
-        } catch {
-            return false;
-        }
-    }
-
     try {
-        // 1. Vérifier si un workflow est déjà en cours
-        if (await isWorkflowAlreadyRunning()) {
-            return res.json({
-                status: 'ok',
-                message: 'Un workflow est déjà en cours, aucun nouveau déclenchement.',
-                alreadyRunning: true
-            });
-        }
-
-        // 2. Lire les comptes
+        // Lire les comptes
         const url = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/contents/${GH_FILE_PATH}?ref=${GH_BRANCH}`;
         const response = await fetch(url, {
             headers: {
@@ -66,14 +39,11 @@ export default async function handler(req, res) {
             return res.json({ status: 'ok', message: 'Aucun compte' });
         }
 
-        // 3. Trouver les comptes éligibles (en excluant ceux en cours de déconnexion)
+        // Filtrer les comptes éligibles (ni désactivés, ni en cours de déconnexion)
         const now = Date.now();
         const eligibleAccounts = accounts.filter(acc => {
             if (acc.enabled === false) return false;
-            if (acc.pendingLogout === true) {
-                console.log(`⏭️ Ignoré (déconnexion en cours) : ${acc.email}`);
-                return false;
-            }
+            if (acc.pendingLogout === true) return false;
             const last = acc.lastClaim || 0;
             const intervalMs = (acc.timer || 60) * 60 * 1000;
             return (now - last) >= intervalMs;
@@ -83,7 +53,7 @@ export default async function handler(req, res) {
             return res.json({ status: 'ok', message: 'Aucun compte éligible' });
         }
 
-        // 4. Déclencher un workflow par compte éligible
+        // Déclencher un workflow par compte éligible (en passant l'email en paramètre)
         const dispatchUrl = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${CLAIM_WORKFLOW_ID}/dispatches`;
         const triggered = [];
 
@@ -96,18 +66,19 @@ export default async function handler(req, res) {
                         Accept: 'application/vnd.github.v3+json',
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ ref: GH_BRANCH })
+                    body: JSON.stringify({
+                        ref: GH_BRANCH,
+                        inputs: { email: acc.email }
+                    })
                 });
 
                 if (dispatchResponse.ok) {
                     triggered.push(acc.email);
-                }
-
-                if (eligibleAccounts.length > 1) {
-                    await new Promise(resolve => setTimeout(resolve, 2000));
+                } else {
+                    console.error(`❌ Dispatch failed for ${acc.email}: ${dispatchResponse.status}`);
                 }
             } catch (err) {
-                console.error(`Erreur pour ${acc.email}:`, err.message);
+                console.error(`❌ Erreur pour ${acc.email}:`, err.message);
             }
         }
 
