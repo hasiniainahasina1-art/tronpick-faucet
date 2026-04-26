@@ -208,7 +208,7 @@
     "lastClaim": 1777216234381,
     "timer": 1,
     "pendingClaim": false,
-    "claimResult": "❌ ×Error!Request timed out. Please try again!"
+    "claimResult": null
   },
   {
     "email": "hasiniainahasina1@gmail.com",
