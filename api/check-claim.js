@@ -1,4 +1,4 @@
-// api/check-claim.js – VERSION PARALLÈLE (procuration rotative)
+// api/check-claim.js – VERSION PARALLÈLE AVEC FLAG pendingClaim
 export default async function handler(req, res) {
     const SECRET = process.env.CRON_SECRET;
     const headerSecret = req.headers['x-cron-secret'];
@@ -39,11 +39,14 @@ export default async function handler(req, res) {
             return res.json({ status: 'ok', message: 'Aucun compte' });
         }
 
-        // Filtrer les comptes éligibles (ni désactivés, ni en cours de déconnexion)
         const now = Date.now();
         const eligibleAccounts = accounts.filter(acc => {
             if (acc.enabled === false) return false;
             if (acc.pendingLogout === true) return false;
+            if (acc.pendingClaim === true) {
+                console.log(`⏭️ Ignoré (claim déjà en cours) : ${acc.email}`);
+                return false;
+            }
             const last = acc.lastClaim || 0;
             const intervalMs = (acc.timer || 60) * 60 * 1000;
             return (now - last) >= intervalMs;
@@ -53,7 +56,46 @@ export default async function handler(req, res) {
             return res.json({ status: 'ok', message: 'Aucun compte éligible' });
         }
 
-        // Déclencher un workflow par compte éligible (en passant l'email en paramètre)
+        // Pour chaque compte éligible, on pose le flag pendingClaim = true avant de dispatcher
+        let sha = null;
+        try {
+            const res = await fetch(url, {
+                headers: {
+                    Authorization: `token ${GH_TOKEN}`,
+                    Accept: 'application/vnd.github.v3+json'
+                }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                sha = data.sha;
+            }
+        } catch (e) {}
+
+        for (const acc of eligibleAccounts) {
+            const originalAccount = accounts.find(a => a.email === acc.email && a.platform === acc.platform);
+            if (originalAccount) {
+                originalAccount.pendingClaim = true;
+            }
+        }
+
+        // Sauvegarder les modifications (ajout des flags)
+        const updatedContent = btoa(unescape(encodeURIComponent(JSON.stringify(accounts, null, 2))));
+        await fetch(url, {
+            method: 'PUT',
+            headers: {
+                Authorization: `token ${GH_TOKEN}`,
+                Accept: 'application/vnd.github.v3+json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                message: 'Marquage pendingClaim pour comptes éligibles',
+                content: updatedContent,
+                branch: GH_BRANCH,
+                sha
+            })
+        });
+
+        // Lancer un workflow par compte
         const dispatchUrl = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${CLAIM_WORKFLOW_ID}/dispatches`;
         const triggered = [];
 
