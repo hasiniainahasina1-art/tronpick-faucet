@@ -103,7 +103,7 @@
     "timer": 60,
     "pendingClaim": true,
     "claimResult": null,
-    "pendingClaimSince": 1777210508799
+    "pendingClaimSince": 1777210385236
   },
   {
     "email": "rivoniainafinoana123@gmail.com",
@@ -209,7 +209,7 @@
     "timer": 45,
     "pendingClaim": true,
     "claimResult": null,
-    "pendingClaimSince": 1777210508799
+    "pendingClaimSince": 1777210385236
   },
   {
     "email": "rivoniainafinoana123@gmail.com",
@@ -311,10 +311,11 @@
       }
     ],
     "cookiesStatus": "valid",
-    "lastClaim": 1777210369732,
-    "timer": 60,
+    "lastClaim": 1777205474024,
+    "timer": 2.5,
     "pendingClaim": false,
-    "claimResult": "✅ ×Success!You got 0.000001000 SOL!"
+    "pendingClaimSince": 1777210385236,
+    "claimResult": "❌ ×Error!Please wait for 59 minutes, 4 seconds to the next faucet claim!"
   },
   {
     "email": "hasiniainahasina1@gmail.com",
@@ -419,6 +420,6 @@
     "lastClaim": 1777206116259,
     "timer": 1,
     "pendingClaim": true,
-    "pendingClaimSince": 1777210508799
+    "pendingClaimSince": 1777210385236
   }
 ]
