@@ -51,10 +51,15 @@ function parseProxyUrl(proxyUrl) {
     };
 }
 
-// ---------- GitHub ----------
+// ---------- Fonctions GitHub ----------
 async function loadAccounts() {
     try {
-        const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH });
+        const res = await octokit.repos.getContent({
+            owner: GH_USERNAME,
+            repo: GH_REPO,
+            path: GH_FILE_PATH,
+            ref: GH_BRANCH
+        });
         return JSON.parse(Buffer.from(res.data.content, 'base64').toString('utf8'));
     } catch (e) {
         if (e.status === 404) return [];
@@ -65,7 +70,12 @@ async function loadAccounts() {
 async function saveAccounts(accounts) {
     let sha = null;
     try {
-        const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: GH_FILE_PATH, ref: GH_BRANCH });
+        const res = await octokit.repos.getContent({
+            owner: GH_USERNAME,
+            repo: GH_REPO,
+            path: GH_FILE_PATH,
+            ref: GH_BRANCH
+        });
         sha = res.data.sha;
     } catch (e) {}
     const content = Buffer.from(JSON.stringify(accounts, null, 2)).toString('base64');
@@ -109,7 +119,7 @@ async function extractCsrfToken(page) {
 }
 
 // ---------- Déconnexion humaine ----------
-async function performHumanLogout(accountCookies) {
+async function performNormalLogout(accountCookies) {
     const proxyUrl = JP_PROXY_LIST[proxyIndex] || JP_PROXY_LIST[0];
     const proxyConfig = parseProxyUrl(proxyUrl);
     if (!proxyConfig) throw new Error('Proxy invalide');
@@ -126,13 +136,11 @@ async function performHumanLogout(accountCookies) {
     try {
         await page.setViewport({ width: 1280, height: 720 });
 
-        // 1) Cookies
         if (accountCookies && accountCookies.length > 0) {
             await page.setCookie(...accountCookies);
             console.log(`🍪 ${accountCookies.length} cookie(s) injecté(s)`);
         }
 
-        // 2) Charger faucet.php
         const faucetUrl = `https://${platform}.io/faucet.php`;
         await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
         console.log('⏳ Attente 20 secondes (stabilisation)...');
@@ -145,7 +153,7 @@ async function performHumanLogout(accountCookies) {
 
         await page.screenshot({ path: path.join(screenshotsDir, `01_before_logout_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-        // 3) Chercher le bouton "Log out" (comme un humain)
+        // Chercher le bouton "Log out"
         const logoutCoords = await page.evaluate(() => {
             const candidates = [...document.querySelectorAll('button, a, div[role="button"], input[type="submit"]')];
             const btn = candidates.find(el => {
@@ -181,7 +189,6 @@ async function performHumanLogout(accountCookies) {
                 await delay(2000);
             }
 
-            // Attendre la redirection
             try {
                 await page.waitForFunction(() => window.location.href.includes('login.php'), { timeout: 15000 });
                 console.log('✅ Redirigé vers login.php');
@@ -220,14 +227,13 @@ async function performHumanLogout(accountCookies) {
             }
         }
 
-        // Si on arrive là, échec
         throw new Error('Échec de la déconnexion');
     } finally {
         await browser.close().catch(() => {});
     }
 }
 
-// ---------- Main ----------
+// --- Main (avec flag pendingLogout) ---
 (async () => {
     try {
         let accounts = await loadAccounts();
@@ -244,9 +250,16 @@ async function performHumanLogout(accountCookies) {
         if (!account.cookies || account.cookiesStatus === 'expired') {
             console.log('⏩ Cookies déjà expirés, suppression directe.');
         } else {
-            await performHumanLogout(account.cookies);
+            // ✅ Marquer le compte comme "en cours de déconnexion"
+            account.pendingLogout = true;
+            await saveAccounts(accounts);
+            console.log(`🏷️ Compte marqué pendingLogout.`);
+
+            // Effectuer la déconnexion réelle
+            await performNormalLogout(account.cookies);
         }
 
+        // Supprimer le compte
         accounts.splice(idx, 1);
         await saveAccounts(accounts);
         console.log(`🗑️ Compte ${normalizedEmail} supprimé avec succès.`);
