@@ -26,20 +26,14 @@ jobs:
     steps:
       - name: 📥 Récupérer le code source
         uses: actions/checkout@v4
-
       - name: 🟢 Installer Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
       - name: 📦 Installer les dépendances système (xvfb)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb
-
+        run: sudo apt-get update && sudo apt-get install -y xvfb
       - name: 📦 Installer les dépendances Node.js
         run: npm install puppeteer-real-browser @octokit/rest
-
       - name: 🤖 Exécuter le script de déconnexion
         env:
           LOGOUT_EMAIL: ${{ github.event.inputs.email }}
@@ -53,7 +47,6 @@ jobs:
           GH_FILE_PATH: ${{ secrets.GH_FILE_PATH || 'accounts.json' }}
           JP_PROXY_LIST: ${{ secrets.JP_PROXY_LIST }}
         run: xvfb-run --auto-servernum node logout.js
-
       - name: 📤 Upload des captures d'écran
         uses: actions/upload-artifact@v4
         if: always()
