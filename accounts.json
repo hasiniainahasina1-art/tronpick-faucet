@@ -311,11 +311,11 @@
       }
     ],
     "cookiesStatus": "valid",
-    "lastClaim": 1777220083529,
+    "lastClaim": 1777231130978,
     "timer": 60,
     "pendingClaim": false,
     "pendingClaimSince": 1777226527971,
-    "claimResult": "❌ Aucune réaction"
+    "claimResult": "❌ ×Error!Something went wrong! Please try again in 10 minutes!"
   },
   {
     "email": "hasiniainahasina1@gmail.com",
