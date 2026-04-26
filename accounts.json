@@ -1,112 +1,5 @@
 [
   {
-    "email": "rivoniainafinoana123@gmail.com",
-    "password": "Finoana123.",
-    "platform": "solpick",
-    "proxyIndex": 1,
-    "enabled": true,
-    "cookies": [
-      {
-        "name": "csrf_cookie_name",
-        "value": "56c5a71a67f8285843831bbc702e99aa",
-        "domain": "solpick.io",
-        "path": "/",
-        "expires": 1777223427.121468,
-        "size": 48,
-        "httpOnly": false,
-        "secure": false,
-        "session": false,
-        "priority": "Medium",
-        "sourceScheme": "Secure"
-      },
-      {
-        "name": "_ga",
-        "value": "GA1.1.1855471463.1777216191",
-        "domain": ".solpick.io",
-        "path": "/",
-        "expires": 1811776225.699898,
-        "size": 30,
-        "httpOnly": false,
-        "secure": false,
-        "session": false,
-        "priority": "Medium",
-        "sourceScheme": "Secure"
-      },
-      {
-        "name": "user_session",
-        "value": "5gagdjv2t9mldo2l1jivg92pc9au1sco",
-        "domain": "solpick.io",
-        "path": "/",
-        "expires": 1777302627.121568,
-        "size": 44,
-        "httpOnly": true,
-        "secure": false,
-        "session": false,
-        "priority": "Medium",
-        "sourceScheme": "Secure"
-      },
-      {
-        "name": "fp",
-        "value": "DZo3D2BI4RpDrvCr",
-        "domain": "solpick.io",
-        "path": "/",
-        "expires": 1808752191,
-        "size": 18,
-        "httpOnly": false,
-        "secure": false,
-        "session": false,
-        "priority": "Medium",
-        "sourceScheme": "Secure"
-      },
-      {
-        "name": "_ga_B22HX5LGBP",
-        "value": "GS2.1.s1777216190$o1$g1$t1777216225$j25$l0$h0",
-        "domain": ".solpick.io",
-        "path": "/",
-        "expires": 1811776225.707993,
-        "size": 59,
-        "httpOnly": false,
-        "secure": false,
-        "session": false,
-        "priority": "Medium",
-        "sourceScheme": "Secure"
-      },
-      {
-        "name": "g_state",
-        "value": "{\"i_l\":0,\"i_ll\":1777216226636,\"i_b\":\"fGBXHX5i2+v7rzV+rB469Nodo9zx5J4pb1OvIkI04IQ\",\"i_e\":{\"enable_itp_optimization\":0},\"i_et\":1777216191524}",
-        "domain": "solpick.io",
-        "path": "/",
-        "expires": 1792768226,
-        "size": 146,
-        "httpOnly": false,
-        "secure": false,
-        "session": false,
-        "priority": "Medium",
-        "sourceScheme": "Secure"
-      },
-      {
-        "name": "remember_token",
-        "value": "eefd105b81e705d524b8d6ee04d3ddc4",
-        "domain": "solpick.io",
-        "path": "/",
-        "expires": 1779808224.134763,
-        "size": 46,
-        "httpOnly": false,
-        "secure": false,
-        "session": false,
-        "priority": "Medium",
-        "sourceScheme": "Secure"
-      }
-    ],
-    "cookiesStatus": "valid",
-    "lastClaim": 1777220205840,
-    "timer": 60,
-    "pendingClaim": false,
-    "pendingClaimSince": 1777226527971,
-    "claimResult": null,
-    "pendingLogout": true
-  },
-  {
     "email": "hasiniainahasina1@gmail.com",
     "password": "Finoana123.",
     "platform": "solpick",
@@ -210,8 +103,7 @@
     "timer": 60,
     "pendingClaim": false,
     "pendingClaimSince": 1777226527971,
-    "claimResult": null,
-    "pendingLogout": true
+    "claimResult": null
   },
   {
     "email": "hasiniainahasina1@gmail.com",
