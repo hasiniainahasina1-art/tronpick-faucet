@@ -526,6 +526,6 @@
     "timer": 60,
     "pendingClaim": false,
     "pendingClaimSince": 1777221967102,
-    "claimResult": "✅ ×Success!You got 0.00000250 LTC!"
+    "claimResult": null
   }
 ]
