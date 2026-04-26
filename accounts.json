@@ -314,7 +314,7 @@
     "timer": 2.5,
     "pendingClaim": false,
     "pendingClaimSince": 1777210385236,
-    "claimResult": "❌ Aucune réaction"
+    "claimResult": null
   },
   {
     "email": "hasiniainahasina1@gmail.com",
@@ -420,6 +420,6 @@
     "timer": 1,
     "pendingClaim": false,
     "pendingClaimSince": 1777210385236,
-    "claimResult": "Ã¢ÂÂ Aucune rÃÂ©action"
+    "claimResult": "❌ Aucune réaction"
   }
 ]
