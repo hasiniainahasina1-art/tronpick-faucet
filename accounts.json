@@ -205,10 +205,11 @@
       }
     ],
     "cookiesStatus": "valid",
-    "lastClaim": 1777216234381,
-    "timer": 1,
-    "pendingClaim": true,
-    "pendingClaimSince": 1777216447114
+    "lastClaim": 1777216364521,
+    "timer": 60,
+    "pendingClaim": false,
+    "pendingClaimSince": 1777216328220,
+    "claimResult": "✅ Bouton désactivé (succès présumé)"
   },
   {
     "email": "hasiniainahasina1@gmail.com",
@@ -313,7 +314,7 @@
     "lastClaim": 1777216264205,
     "timer": 1,
     "pendingClaim": true,
-    "pendingClaimSince": 1777216447114
+    "pendingClaimSince": 1777216328220
   },
   {
     "email": "hasiniainahasina1@gmail.com",
@@ -416,8 +417,6 @@
     ],
     "cookiesStatus": "valid",
     "lastClaim": 1777216279584,
-    "timer": 1,
-    "pendingClaim": true,
-    "pendingClaimSince": 1777216447114
+    "timer": 1
   }
 ]
