@@ -315,7 +315,7 @@
     "timer": 60,
     "pendingClaim": false,
     "pendingClaimSince": 1777226527971,
-    "claimResult": "❌ ×Error!Something went wrong! Please try again in 10 minutes!"
+    "claimResult": null
   },
   {
     "email": "hasiniainahasina1@gmail.com",
