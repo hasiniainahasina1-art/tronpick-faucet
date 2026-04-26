@@ -421,6 +421,6 @@
     "timer": 60,
     "pendingClaim": false,
     "pendingClaimSince": 1777226527971,
-    "claimResult": "â Aucune rÃ©action"
+    "claimResult": null
   }
 ]
