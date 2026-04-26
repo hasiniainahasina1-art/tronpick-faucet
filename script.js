@@ -136,27 +136,64 @@ async function loadAccounts() {
     }
 }
 
+// ✅ Nouvelle fonction saveAccounts avec gestion des conflits 409
 async function saveAccounts(accounts) {
-    let sha = null;
-    try {
-        const res = await octokit.repos.getContent({
-            owner: GH_USERNAME,
-            repo: GH_REPO,
-            path: GH_FILE_PATH,
-            ref: GH_BRANCH
-        });
-        sha = res.data.sha;
-    } catch (e) {}
-    const content = Buffer.from(JSON.stringify(accounts, null, 2)).toString('base64');
-    await octokit.repos.createOrUpdateFileContents({
-        owner: GH_USERNAME,
-        repo: GH_REPO,
-        path: GH_FILE_PATH,
-        message: 'Mise à jour automatique',
-        content,
-        branch: GH_BRANCH,
-        sha
-    });
+    let maxRetries = 3;
+    while (maxRetries-- > 0) {
+        try {
+            let sha = null;
+            try {
+                const res = await octokit.repos.getContent({
+                    owner: GH_USERNAME,
+                    repo: GH_REPO,
+                    path: GH_FILE_PATH,
+                    ref: GH_BRANCH
+                });
+                sha = res.data.sha;
+            } catch (e) {
+                // fichier inexistant, sha reste null
+            }
+            const content = Buffer.from(JSON.stringify(accounts, null, 2)).toString('base64');
+            await octokit.repos.createOrUpdateFileContents({
+                owner: GH_USERNAME,
+                repo: GH_REPO,
+                path: GH_FILE_PATH,
+                message: 'Mise à jour automatique',
+                content,
+                branch: GH_BRANCH,
+                sha
+            });
+            return; // succès
+        } catch (e) {
+            if (e.status === 409) {
+                console.warn('⚠️ Conflit de version (409), rechargement et nouvel essai…');
+                try {
+                    const res = await octokit.repos.getContent({
+                        owner: GH_USERNAME,
+                        repo: GH_REPO,
+                        path: GH_FILE_PATH,
+                        ref: GH_BRANCH
+                    });
+                    const latest = JSON.parse(Buffer.from(res.data.content, 'base64').toString('utf8'));
+                    // Fusionner avec la version fraîche : remplacer le compte concerné
+                    const freshAccounts = latest;
+                    const idx = freshAccounts.findIndex(a => a.email === targetAccount.email && a.platform === targetAccount.platform);
+                    if (idx !== -1) {
+                        freshAccounts[idx] = targetAccount;
+                    } else {
+                        freshAccounts.push(targetAccount);
+                    }
+                    accounts = freshAccounts;
+                } catch (reloadErr) {
+                    console.error('❌ Impossible de recharger après conflit :', reloadErr);
+                    throw e;
+                }
+            } else {
+                throw e;
+            }
+        }
+    }
+    throw new Error('Impossible de sauvegarder après plusieurs tentatives (conflit persistant).');
 }
 
 async function connectWithProxy(proxyUrl) {
@@ -331,7 +368,7 @@ async function claimWithCookies(account) {
     }
 }
 
-// --- Main (un seul compte, proxy unique, retrait du flag pendingClaim) ---
+// --- Main (un seul compte, proxy unique, retrait du flag pendingClaim, notification claimResult) ---
 (async () => {
     try {
         const targetEmail = process.env.CLAIM_EMAIL;
@@ -354,8 +391,8 @@ async function claimWithCookies(account) {
         const intervalMs = (targetAccount.timer || 60) * 60 * 1000;
         if ((now - lastClaim) < intervalMs) {
             console.log(`⏳ Le compte ${targetEmail} n'est pas encore éligible.`);
-            // Retirer le flag pendingClaim même si pas éligible, car il ne faut pas bloquer le compte pour toujours
             targetAccount.pendingClaim = false;
+            targetAccount.claimResult = null;
             await saveAccounts(accounts);
             process.exit(0);
         }
@@ -371,8 +408,8 @@ async function claimWithCookies(account) {
                 targetAccount.cookiesStatus = 'valid';
             } catch (e) {
                 targetAccount.cookiesStatus = 'failed';
+                targetAccount.claimResult = `❌ ${e.message}`;
                 console.log(`❌ Échec login : ${e.message}`);
-                // Retirer le flag
                 targetAccount.pendingClaim = false;
                 await saveAccounts(accounts);
                 process.exit(1);
@@ -389,8 +426,10 @@ async function claimWithCookies(account) {
                     console.log(`🕒 Premier claim réussi : timer passé à 60 min.`);
                     targetAccount.timer = 60;
                 }
+                targetAccount.claimResult = `✅ ${result.message || 'Claim réussi'}`;
                 console.log(`✅ Claim réussi : ${result.message}`);
             } else {
+                targetAccount.claimResult = `❌ ${result.message}`;
                 console.log(`❌ Claim échoué : ${result.message}`);
 
                 // Si l'erreur contient "try again in 10 minutes", pause de 2 heures
@@ -401,6 +440,7 @@ async function claimWithCookies(account) {
                 }
             }
         } catch (e) {
+            targetAccount.claimResult = `❌ ${e.message}`;
             console.error(`❌ Erreur claim : ${e.message}`);
             if (e.message.includes('expir')) {
                 targetAccount.cookies = null;
