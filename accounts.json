@@ -207,8 +207,8 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777220205840,
     "timer": 60,
-    "pendingClaim": false,
-    "pendingClaimSince": 1777224727281,
+    "pendingClaim": true,
+    "pendingClaimSince": 1777225087278,
     "claimResult": "❌ Aucune réaction"
   },
   {
@@ -314,7 +314,7 @@
     "lastClaim": 1777220083529,
     "timer": 60,
     "pendingClaim": true,
-    "pendingClaimSince": 1777224727281,
+    "pendingClaimSince": 1777225087278,
     "claimResult": "❌ Aucune réaction"
   },
   {
@@ -421,7 +421,7 @@
     "timer": 1,
     "claimResult": null,
     "pendingClaim": true,
-    "pendingClaimSince": 1777224727281
+    "pendingClaimSince": 1777225087278
   },
   {
     "email": "rivoniainafinoana123@gmail.com",
