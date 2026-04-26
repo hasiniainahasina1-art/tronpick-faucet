@@ -135,9 +135,10 @@ async function loadAccounts() {
     }
 }
 
+// 🔄 NOUVELLE VERSION : sauvegarde avec 5 tentatives et délai en cas de conflit
 async function saveAccounts(accounts, modifiedAccount = null) {
-    let maxRetries = 3;
-    while (maxRetries-- > 0) {
+    const maxRetries = 5;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             let sha = null;
             try {
@@ -160,26 +161,36 @@ async function saveAccounts(accounts, modifiedAccount = null) {
                 branch: GH_BRANCH,
                 sha
             });
+            console.log(`💾 Sauvegarde réussie (tentative ${attempt}).`);
             return;
         } catch (e) {
             if (e.status === 409) {
-                console.warn('⚠️ Conflit de version (409), rechargement et nouvel essai…');
-                try {
-                    const res = await octokit.repos.getContent({
-                        owner: GH_USERNAME,
-                        repo: GH_REPO,
-                        path: GH_FILE_PATH,
-                        ref: GH_BRANCH
-                    });
-                    const latest = JSON.parse(Buffer.from(res.data.content, 'base64').toString('utf8'));
-                    if (modifiedAccount) {
-                        const idx = latest.findIndex(a => a.email === modifiedAccount.email && a.platform === modifiedAccount.platform);
-                        if (idx !== -1) latest[idx] = modifiedAccount;
-                        else latest.push(modifiedAccount);
+                console.warn(`⚠️ Conflit de version (409) – tentative ${attempt}/${maxRetries}`);
+                if (attempt < maxRetries) {
+                    // Attendre un délai aléatoire avant de recharger
+                    await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
+                    try {
+                        const res = await octokit.repos.getContent({
+                            owner: GH_USERNAME,
+                            repo: GH_REPO,
+                            path: GH_FILE_PATH,
+                            ref: GH_BRANCH
+                        });
+                        const latest = JSON.parse(Buffer.from(res.data.content, 'base64').toString('utf8'));
+                        if (modifiedAccount) {
+                            const idx = latest.findIndex(a => a.email === modifiedAccount.email && a.platform === modifiedAccount.platform);
+                            if (idx !== -1) {
+                                latest[idx] = modifiedAccount;
+                            } else {
+                                latest.push(modifiedAccount);
+                            }
+                        }
+                        accounts = latest;
+                    } catch (reloadErr) {
+                        console.error('❌ Impossible de recharger après conflit :', reloadErr);
                     }
-                    accounts = latest;
-                } catch (reloadErr) {
-                    console.error('❌ Impossible de recharger après conflit :', reloadErr);
+                } else {
+                    console.error('❌ Échec de la sauvegarde après plusieurs tentatives.');
                     throw e;
                 }
             } else {
@@ -187,7 +198,6 @@ async function saveAccounts(accounts, modifiedAccount = null) {
             }
         }
     }
-    throw new Error('Impossible de sauvegarder après plusieurs tentatives (conflit persistant).');
 }
 
 async function connectWithProxy(proxyUrl) {
@@ -375,7 +385,6 @@ async function claimWithCookies(account) {
         let accounts = await loadAccounts();
         console.log(`📋 Comptes chargés : ${accounts.length}`);
 
-        // ✅ Recherche par email + plateforme
         let targetAccount = accounts.find(acc =>
             acc.email === targetEmail &&
             acc.platform === targetPlatform &&
