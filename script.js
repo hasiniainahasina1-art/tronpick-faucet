@@ -136,7 +136,7 @@ async function loadAccounts() {
     }
 }
 
-// ✅ Nouvelle version de saveAccounts, avec paramètre optionnel modifiedAccount
+// ✅ Sauvegarde avec gestion des conflits
 async function saveAccounts(accounts, modifiedAccount = null) {
     let maxRetries = 3;
     while (maxRetries-- > 0) {
@@ -150,9 +150,8 @@ async function saveAccounts(accounts, modifiedAccount = null) {
                     ref: GH_BRANCH
                 });
                 sha = res.data.sha;
-            } catch (e) {
-                // fichier inexistant, sha restera null
-            }
+            } catch (e) {}
+
             const content = Buffer.from(JSON.stringify(accounts, null, 2)).toString('base64');
             await octokit.repos.createOrUpdateFileContents({
                 owner: GH_USERNAME,
@@ -163,12 +162,11 @@ async function saveAccounts(accounts, modifiedAccount = null) {
                 branch: GH_BRANCH,
                 sha
             });
-            return; // succès
+            return;
         } catch (e) {
             if (e.status === 409) {
                 console.warn('⚠️ Conflit de version (409), rechargement et nouvel essai…');
                 try {
-                    // Recharger la version la plus récente
                     const res = await octokit.repos.getContent({
                         owner: GH_USERNAME,
                         repo: GH_REPO,
@@ -176,16 +174,11 @@ async function saveAccounts(accounts, modifiedAccount = null) {
                         ref: GH_BRANCH
                     });
                     const latest = JSON.parse(Buffer.from(res.data.content, 'base64').toString('utf8'));
-                    // Si un compte modifié est fourni, on remplace l'entrée correspondante dans les données fraîches
                     if (modifiedAccount) {
                         const idx = latest.findIndex(a => a.email === modifiedAccount.email && a.platform === modifiedAccount.platform);
-                        if (idx !== -1) {
-                            latest[idx] = modifiedAccount;
-                        } else {
-                            latest.push(modifiedAccount);
-                        }
+                        if (idx !== -1) latest[idx] = modifiedAccount;
+                        else latest.push(modifiedAccount);
                     }
-                    // On remplace le tableau accounts par cette version fusionnée pour la prochaine tentative
                     accounts = latest;
                 } catch (reloadErr) {
                     console.error('❌ Impossible de recharger après conflit :', reloadErr);
@@ -371,7 +364,7 @@ async function claimWithCookies(account) {
     }
 }
 
-// --- Main (un seul compte, proxy unique, notification claimResult, sauvegarde robuste) ---
+// --- Main (un seul compte, proxy unique, retrait flag, notification claimResult) ---
 (async () => {
     try {
         const targetEmail = process.env.CLAIM_EMAIL;
@@ -394,7 +387,6 @@ async function claimWithCookies(account) {
         const intervalMs = (targetAccount.timer || 60) * 60 * 1000;
         if ((now - lastClaim) < intervalMs) {
             console.log(`⏳ Le compte ${targetEmail} n'est pas encore éligible.`);
-            // Même si pas éligible, on retire le flag pendingClaim au cas où
             targetAccount.pendingClaim = false;
             targetAccount.claimResult = null;
             await saveAccounts(accounts, targetAccount);
@@ -453,7 +445,6 @@ async function claimWithCookies(account) {
 
         // ✅ Retirer le flag pendingClaim et sauvegarder
         targetAccount.pendingClaim = false;
-        // On passe targetAccount pour que saveAccounts puisse gérer les conflits en fusionnant correctement
         await saveAccounts(accounts, targetAccount);
         console.log('💾 Comptes sauvegardés.');
         console.log('🏁 Terminé.');
