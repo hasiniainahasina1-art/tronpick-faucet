@@ -149,32 +149,9 @@ async function run() {
         await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 60000 });
         await page.screenshot({ path: path.join(screenshotsDir, '01_login_page.png'), fullPage: true });
 
-        let loginSuccess = false;
-        let lastError = null;
-        const maxAttempts = 2;
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-            try {
-                console.log(`🔄 Tentative de login ${attempt}/${maxAttempts}`);
-                await performLogin(page, email, password);
-                loginSuccess = true;
-                break;
-            } catch (err) {
-                lastError = err;
-                console.log(`❌ Échec tentative ${attempt}: ${err.message}`);
-                if (attempt < maxAttempts) {
-                    console.log('⏳ Attente 5 secondes avant actualisation...');
-                    await delay(5000);
-                    console.log('🔄 Actualisation de la page...');
-                    await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
-                    console.log('⏳ Attente 20 secondes supplémentaires...');
-                    await delay(20000);
-                }
-            }
-        }
-
-        if (!loginSuccess) {
-            throw new Error(lastError ? lastError.message : 'Login échoué');
-        }
+        // Une seule tentative
+        console.log('🔑 Tentative unique de login');
+        await performLogin(page, email, password);
 
         const freshCookies = await page.cookies();
         console.log(`🍪 Cookies récupérés : ${freshCookies.length}`);
@@ -215,7 +192,7 @@ async function run() {
                 owner: GH_USERNAME,
                 repo: GH_REPO,
                 path: GH_FILE_PATH,
-                message: `Test login for ${normalizedEmail} - success (${freshCookies.length} cookies)`,
+                message: `Login réussi pour ${normalizedEmail}`,
                 content,
                 branch: GH_BRANCH,
                 sha
@@ -228,7 +205,7 @@ async function run() {
     } catch (err) {
         console.error('❌ Erreur fatale :', err.message);
 
-        // ✅ Sauvegarder l'échec dans accounts.json
+        // Sauvegarder l'échec dans accounts.json
         try {
             const octokit = new Octokit({ auth: GH_TOKEN });
             let accounts = [];
