@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Finoana Auto Claim – Gestionnaire</title>
+    <style>
+        :root {
+            --bg: #f5f7fa;
+            --card-bg: #ffffff;
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --text: #1e293b;
+            --text-secondary: #64748b;
+            --border: #e2e8f0;
+            --radius: 8px;
+            --shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 0.85rem;
+            line-height: 1.4;
+            min-height: 100vh;
+        }
+        .header {
+            background: var(--card-bg);
+            padding: 12px 24px;
+            box-shadow: var(--shadow);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .header h1 {
+            font-size: 1.2rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn {
+            padding: 6px 14px;
+            border-radius: 6px;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 0.8rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.2s;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: var(--primary-hover); }
+        .btn-success { background: var(--success); color: white; }
+        .btn-success:hover { background: #059669; }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-danger:hover { background: #dc2626; }
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            padding: 4px 10px;
+        }
+        .btn-outline:hover { background: #f1f5f9; }
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 0 16px;
+        }
+        .card {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .card h2 {
+            font-size: 1rem;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .accounts-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .account-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            background: #f8fafc;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .account-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+            flex: 1;
+        }
+        .account-email {
+            font-weight: 600;
+            font-size: 0.9rem;
+            min-width: 150px;
+        }
+        .account-site {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            background: #e2e8f0;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+        .account-countdown {
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            color: var(--primary);
+            font-size: 0.85rem;
+            min-width: 60px;
+        }
+        .account-countdown.expired { color: var(--danger); }
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            margin-right: 8px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: var(--text);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-weight: 500;
+            font-size: 0.8rem;
+            z-index: 2000;
+            opacity: 0;
+            transform: translateX(80px);
+            transition: all 0.3s ease;
+            max-width: 300px;
+        }
+        .toast.show { opacity: 1; transform: translateX(0); }
+        .toast.success { background: var(--success); }
+        .toast.error { background: var(--danger); }
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            padding: 20px;
+            width: 90%;
+            max-width: 420px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+            animation: fadeSlide 0.2s ease;
+        }
+        @keyframes fadeSlide {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .modal h3 { font-size: 1rem; margin-bottom: 16px; }
+        .form-group { margin-bottom: 12px; }
+        .form-group label {
+            display: block;
+            margin-bottom: 4px;
+            font-weight: 500;
+            font-size: 0.8rem;
+            color: var(--text);
+        }
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.8rem;
+            transition: border 0.15s;
+        }
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>⚙️ Finoana Auto Claim</h1>
+        <button class="btn btn-primary" id="btnAddAccount">➕ Ajouter un compte</button>
+    </header>
+
+    <div class="container">
+        <div class="card">
+            <h2>📋 Comptes configurés</h2>
+            <div id="accountsContainer" class="accounts-list"></div>
+            <div style="text-align:center; margin-top:10px;">
+                <button class="btn btn-outline" id="refreshBtn">🔄 Rafraîchir la liste</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal">
+            <h3 id="modalTitle">➕ Nouveau compte</h3>
+            <form id="accountForm">
+                <input type="hidden" id="editIndex" value="-1">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="email" required placeholder="exemple@mail.com">
+                </div>
+                <div class="form-group">
+                    <label>Mot de passe</label>
+                    <input type="password" id="password" required placeholder="••••••••">
+                </div>
+                <div class="form-group">
+                    <label>Plateforme</label>
+                    <select id="platform">
+                        <option value="tronpick">TronPick</option>
+                        <option value="litepick">LitePick</option>
+                        <option value="dogepick">DogePick</option>
+                        <option value="solpick">SolPick</option>
+                        <option value="binpick">BinPick</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Timer initial (mm:ss)</label>
+                    <input type="text" id="initialTimer" placeholder="60:00" pattern="[0-9]{1,2}:[0-5][0-9]">
+                </div>
+                <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
+                    <button type="button" class="btn btn-outline" id="btnCancel">Annuler</button>
+                    <button type="submit" class="btn btn-success" id="btnSubmit">💾 Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        (function() {
+            const GH_USERNAME = 'hasiniainahasina1-art';
+            const GH_REPO = 'tronpick-faucet';
+            const LOGIN_WORKFLOW_ID = 'test-account.yml';
+            const LOGOUT_WORKFLOW_ID = 'logout.yml';
+            const BRANCH = 'main';
+            const FILE_PATH = 'accounts.json';
+
+            // ✅ Appel via /api/data (masque l'utilisation de GitHub)
+            async function githubApi(method, path, body = null) {
+                const url = `/api/data?path=${encodeURIComponent(path)}`;
+                const options = { method, headers: { 'Content-Type': 'application/json' } };
+                if (body) options.body = JSON.stringify(body);
+                const response = await fetch(url, options);
+                if (response.status === 204) return {};
+                const data = await response.json();
+                if (!response.ok) {
+                    let errorMsg = `HTTP ${response.status}`;
+                    if (response.status === 401) errorMsg = 'Token invalide – contactez l’administrateur';
+                    else if (response.status === 403) errorMsg = 'Permission refusée';
+                    else if (response.status === 404) errorMsg = 'Fichier introuvable';
+                    else if (data.message) errorMsg = data.message;
+                    throw new Error(errorMsg);
+                }
+                return data;
+            }
+
+            async function loadAccounts() {
+                const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/${FILE_PATH}`;
+                try {
+                    const data = await githubApi('GET', apiPath);
+                    const content = atob(data.content);
+                    return JSON.parse(content);
+                } catch (e) {
+                    if (e.message.includes('404')) return [];
+                    throw e;
+                }
+            }
+
+            async function saveAccounts(accounts) {
+                const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/${FILE_PATH}`;
+                let sha = null;
+                try {
+                    const data = await githubApi('GET', apiPath);
+                    sha = data.sha;
+                } catch (e) {}
+                const content = btoa(unescape(encodeURIComponent(JSON.stringify(accounts, null, 2))));
+                const body = { message: 'Mise à jour comptes', content, branch: BRANCH };
+                if (sha) body.sha = sha;
+                await githubApi('PUT', apiPath, body);
+            }
+
+            async function triggerWorkflow(workflowId, inputs) {
+                const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${workflowId}/dispatches`;
+                const payload = { ref: BRANCH, inputs };
+                await githubApi('POST', apiPath, payload);
+            }
+
+            const modal = document.getElementById('modalOverlay');
+            const btnAdd = document.getElementById('btnAddAccount');
+            const btnCancel = document.getElementById('btnCancel');
+            const form = document.getElementById('accountForm');
+            const editIndex = document.getElementById('editIndex');
+            const emailInput = document.getElementById('email');
+            const passwordInput = document.getElementById('password');
+            const platformInput = document.getElementById('platform');
+            const timerInput = document.getElementById('initialTimer');
+            const modalTitle = document.getElementById('modalTitle');
+            const refreshBtn = document.getElementById('refreshBtn');
+            const toast = document.getElementById('toast');
+
+            let currentAccounts = [];
+            let countdownIntervals = [];
+
+            function showToast(message, type = '') {
+                toast.textContent = message;
+                toast.className = `toast ${type} show`;
+                setTimeout(() => { toast.className = 'toast'; }, 5000);
+            }
+
+            function openModal(title, account = null) {
+                modalTitle.textContent = title;
+                if (account) {
+                    editIndex.value = currentAccounts.indexOf(account);
+                    emailInput.value = account.email || '';
+                    passwordInput.value = account.password || '';
+                    platformInput.value = account.platform || 'tronpick';
+                    timerInput.value = minutesToTimeStr(account.timer || 60);
+                } else {
+                    editIndex.value = '-1';
+                    form.reset();
+                    platformInput.value = 'tronpick';
+                    timerInput.value = '60:00';
+                }
+                modal.classList.add('active');
+            }
+
+            function closeModal() {
+                modal.classList.remove('active');
+            }
+
+            btnAdd.addEventListener('click', () => openModal('➕ Ajouter un compte'));
+            btnCancel.addEventListener('click', closeModal);
+            modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+
+            function minutesToTimeStr(minutes) {
+                if (isNaN(minutes)) return '0:00';
+                const totalSeconds = Math.floor(minutes * 60);
+                const mins = Math.floor(totalSeconds / 60);
+                const secs = totalSeconds % 60;
+                return `${mins}:${secs.toString().padStart(2, '0')}`;
+            }
+
+            function timeStrToMinutes(str) {
+                if (!str || !str.includes(':')) return 60;
+                const [mins, secs] = str.split(':').map(Number);
+                return (mins || 0) + (secs || 0) / 60;
+            }
+
+            async function refreshAccounts() {
+                try {
+                    const previousAccounts = JSON.parse(JSON.stringify(currentAccounts));
+                    currentAccounts = await loadAccounts();
+                    renderAccounts();
+
+                    for (const acc of currentAccounts) {
+                        if (acc.claimResult) {
+                            const oldAcc = previousAccounts.find(a => a.email === acc.email && a.platform === acc.platform);
+                            if (!oldAcc || oldAcc.claimResult !== acc.claimResult) {
+                                const type = acc.claimResult.startsWith('✅') ? 'success' : 'error';
+                                showToast(`${acc.email} : ${acc.claimResult}`, type);
+                                acc.claimResult = null;
+                                await saveAccounts(currentAccounts);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    showToast(`Erreur chargement: ${e.message}`, 'error');
+                }
+            }
+
+            function renderAccounts() {
+                countdownIntervals.forEach(clearInterval);
+                countdownIntervals = [];
+                const container = document.getElementById('accountsContainer');
+                container.innerHTML = '';
+
+                const visibleAccounts = currentAccounts.filter(acc => acc.cookiesStatus !== 'failed');
+
+                if (!visibleAccounts.length) {
+                    container.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-secondary);">Aucun compte configuré.</div>';
+                    return;
+                }
+                visibleAccounts.forEach((acc, displayIdx) => {
+                    const now = Date.now();
+                    const last = acc.lastClaim || 0;
+                    const intervalMs = (acc.timer || 60) * 60 * 1000;
+                    const nextClaimTime = last + intervalMs;
+                    let remainingMs = Math.max(0, nextClaimTime - now);
+
+                    const formatTime = (ms) => {
+                        if (ms <= 0) return '0:00';
+                        const totalSeconds = Math.floor(ms / 1000);
+                        const mins = Math.floor(totalSeconds / 60);
+                        const secs = totalSeconds % 60;
+                        return `${mins}:${secs.toString().padStart(2, '0')}`;
+                    };
+
+                    const item = document.createElement('div');
+                    item.className = 'account-item';
+                    item.dataset.index = displayIdx;
+                    item.innerHTML = `
+                        <div class="account-info">
+                            <span class="account-email">${acc.email}</span>
+                            <span class="account-site">${acc.platform || 'tronpick'}</span>
+                            <span class="account-countdown" id="cd-${displayIdx}">${formatTime(remainingMs)}</span>
+                        </div>
+                        <button class="btn btn-outline btn-delete" title="Supprimer le compte">🗑️</button>
+                    `;
+                    container.appendChild(item);
+
+                    const interval = setInterval(() => {
+                        const n = Date.now();
+                        const r = Math.max(0, nextClaimTime - n);
+                        const sp = document.getElementById(`cd-${displayIdx}`);
+                        if (sp) {
+                            sp.textContent = formatTime(r);
+                            sp.className = 'account-countdown' + (r === 0 ? ' expired' : '');
+                        }
+                    }, 1000);
+                    countdownIntervals.push(interval);
+                });
+
+                document.querySelectorAll('.btn-delete').forEach(btn => {
+                    btn.addEventListener('click', async (e) => {
+                        const item = btn.closest('.account-item');
+                        const idx = parseInt(item.dataset.index);
+                        const acc = visibleAccounts[idx];
+                        if (!confirm(`Supprimer définitivement le compte ${acc.email} ?`)) return;
+                        showLoader(item);
+                        btn.disabled = true;
+                        showToast(`🗑️ Déconnexion de ${acc.email}...`, '');
+                        try {
+                            await triggerWorkflow(LOGOUT_WORKFLOW_ID, {
+                                email: acc.email,
+                                password: acc.password,
+                                platform: acc.platform,
+                                proxyIndex: String(acc.proxyIndex || 0)
+                            });
+                            showToast(`⏳ Déconnexion en cours (peut prendre 2 min)...`, '');
+                            let isDeleted = false;
+                            for (let attempt = 0; attempt < 12; attempt++) {
+                                await new Promise(r => setTimeout(r, 10000));
+                                currentAccounts = await loadAccounts();
+                                if (!currentAccounts.some(a => a.email === acc.email && a.platform === acc.platform)
