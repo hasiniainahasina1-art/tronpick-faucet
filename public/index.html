@@ -40,117 +40,52 @@
             text-align: center;
             margin-bottom: 24px;
         }
-        .logo-icon {
-            font-size: 2.5rem;
-            margin-bottom: 8px;
-            color: var(--primary);
-        }
-        .logo h1 {
-            font-size: 1.4rem;
-            font-weight: 700;
-            letter-spacing: -0.3px;
-        }
-        .logo p {
-            font-size: 0.85rem;
-            color: var(--text-light);
-            margin-top: 4px;
-        }
-        .form-group {
-            margin-bottom: 16px;
-            position: relative;
-        }
+        .logo-icon { font-size: 2.5rem; margin-bottom: 8px; color: var(--primary); }
+        .logo h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.3px; }
+        .logo p { font-size: 0.85rem; color: var(--text-light); margin-top: 4px; }
+        .form-group { margin-bottom: 16px; position: relative; }
         .form-group label {
-            display: block;
-            margin-bottom: 6px;
-            font-weight: 600;
-            font-size: 0.8rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: var(--text);
+            display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.8rem;
+            text-transform: uppercase; letter-spacing: 0.5px; color: var(--text);
         }
-        .input-wrapper {
-            position: relative;
-            display: flex;
-            align-items: center;
-        }
+        .input-wrapper { position: relative; display: flex; align-items: center; }
         .input-wrapper input {
-            width: 100%;
-            padding: 12px 44px 12px 14px;
-            border: 1.5px solid var(--border);
-            border-radius: 10px;
-            font-size: 0.95rem;
-            background: #fafbfc;
-            transition: border 0.2s, box-shadow 0.2s;
-            outline: none;
+            width: 100%; padding: 12px 44px 12px 14px; border: 1.5px solid var(--border);
+            border-radius: 10px; font-size: 0.95rem; background: #fafbfc;
+            transition: border 0.2s, box-shadow 0.2s; outline: none;
         }
         .input-wrapper input:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(37,99,235,0.15);
-            background: #fff;
+            border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.15); background: #fff;
         }
         .input-wrapper .icon {
-            position: absolute;
-            right: 12px;
-            font-size: 1.2rem;
-            color: var(--text-light);
-            background: none;
-            border: none;
-            cursor: pointer;
-            padding: 4px;
+            position: absolute; right: 12px; font-size: 1.2rem; color: var(--text-light);
+            background: none; border: none; cursor: pointer; padding: 4px;
         }
         .input-wrapper .icon:hover { color: var(--primary); }
-        .error-message {
-            color: var(--danger);
-            font-size: 0.75rem;
-            margin-top: 6px;
-            display: none;
-        }
+        .error-message { color: var(--danger); font-size: 0.75rem; margin-top: 6px; display: none; }
         .error-message.visible { display: block; }
         .btn-primary {
-            width: 100%;
-            padding: 13px;
-            border-radius: 10px;
-            border: none;
-            font-weight: 600;
-            cursor: pointer;
-            font-size: 0.95rem;
-            background: var(--primary);
-            color: white;
-            transition: background 0.2s, transform 0.2s;
-            letter-spacing: 0.3px;
+            width: 100%; padding: 13px; border-radius: 10px; border: none; font-weight: 600;
+            cursor: pointer; font-size: 0.95rem; background: var(--primary); color: white;
+            transition: background 0.2s, transform 0.2s; letter-spacing: 0.3px;
         }
         .btn-primary:hover { background: var(--primary-hover); transform: translateY(-1px); }
         .btn-primary:active { transform: translateY(0); }
         .btn-primary:disabled { background: #94a3b8; cursor: not-allowed; transform: none; }
-        .toggle-link {
-            text-align: center;
-            margin-top: 16px;
-            font-size: 0.85rem;
-        }
-        .toggle-link a {
-            color: var(--primary);
-            text-decoration: none;
-            font-weight: 600;
-        }
+        .toggle-link { text-align: center; margin-top: 16px; font-size: 0.85rem; }
+        .toggle-link a { color: var(--primary); text-decoration: none; font-weight: 600; }
         .toggle-link a:hover { text-decoration: underline; }
+        .forgot-password { text-align: right; margin-bottom: 4px; }
+        .forgot-password a { font-size: 0.8rem; color: var(--primary); text-decoration: none; }
+        .forgot-password a:hover { text-decoration: underline; }
         .spinner {
-            display: inline-block;
-            width: 16px;
-            height: 16px;
-            border: 2px solid rgba(255,255,255,0.3);
-            border-top-color: white;
-            border-radius: 50%;
-            animation: spin 0.6s linear infinite;
-            margin-right: 8px;
-            vertical-align: middle;
+            display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white; border-radius: 50%; animation: spin 0.6s linear infinite;
+            margin-right: 8px; vertical-align: middle;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
-        .version {
-            text-align: center;
-            margin-top: 24px;
-            font-size: 0.7rem;
-            color: var(--text-light);
-        }
+        .version { text-align: center; margin-top: 24px; font-size: 0.7rem; color: var(--text-light); }
+        .debug-info { margin-top: 10px; font-size: 0.75rem; color: green; text-align: center; }
     </style>
 </head>
 <body>
@@ -175,7 +110,10 @@
                 <label for="password">Mot de passe</label>
                 <div class="input-wrapper">
                     <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password">
-                    <button type="button" class="icon" id="togglePassword" tabindex="-1">👁️</button>
+                    <button type="button" class="icon" id="togglePassword">👁️</button>
+                </div>
+                <div class="forgot-password">
+                    <a href="#" id="forgotPasswordLink">Mot de passe oublié ?</a>
                 </div>
                 <div class="error-message" id="passwordError">Le mot de passe doit contenir au moins 6 caractères.</div>
             </div>
@@ -195,21 +133,52 @@
         </form>
 
         <div class="version">v2.0 · Interface sécurisée</div>
+        <div class="debug-info" id="debugStatus">Chargement…</div>
     </div>
 
     <!-- Bibliothèque Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
-        (function() {
-            // ✅ Initialisation Supabase avec TES clés
+        // Vérification immédiate que le script s'exécute
+        document.getElementById('debugStatus').textContent = 'Script démarré';
+
+        // Attendre que le DOM soit prêt
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('debugStatus').textContent = 'DOM prêt';
+            initAuth();
+        });
+
+        // Si le DOM est déjà prêt, on lance directement
+        if (document.readyState !== 'loading') {
+            initAuth();
+        }
+
+        function initAuth() {
+            const debug = document.getElementById('debugStatus');
+
+            // Vérifier que la bibliothèque Supabase est chargée
+            if (typeof window.supabase === 'undefined') {
+                debug.textContent = 'Erreur : Supabase non chargée';
+                debug.style.color = 'red';
+                return;
+            }
+
+            // Initialisation Supabase
             const supabaseUrl = 'https://xwmituhhszailaaxposg.supabase.co';
             const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3bWl0dWhoc3phaWxhYXhwb3NnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMjQ4MzQsImV4cCI6MjA5MjgwMDgzNH0.-LWoiKQVvgAhkkG1fF5067V-1ckA2aQ4UaUxfS95ukE';
-            const supabase = supabase.createClient(supabaseUrl, supabaseAnonKey);
 
-            // État : mode 'login' ou 'signup'
+            let supabase;
+            try {
+                supabase = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
+                debug.textContent = 'Supabase initialisée';
+            } catch (e) {
+                debug.textContent = 'Erreur Supabase : ' + e.message;
+                debug.style.color = 'red';
+                return;
+            }
+
             let mode = 'login';
 
-            // Éléments du DOM
             const form = document.getElementById('authForm');
             const emailInput = document.getElementById('email');
             const passwordInput = document.getElementById('password');
@@ -221,12 +190,17 @@
             const formDescription = document.getElementById('formDescription');
             const apiError = document.getElementById('apiError');
             const apiErrorGroup = document.getElementById('apiErrorGroup');
+            const forgotPasswordLink = document.getElementById('forgotPasswordLink');
+
+            debug.textContent = 'Prêt';
 
             // Bascule affichage mot de passe
-            toggleBtn.addEventListener('click', () => {
+            toggleBtn.addEventListener('click', function(e) {
+                e.preventDefault();
                 const isPassword = passwordInput.type === 'password';
                 passwordInput.type = isPassword ? 'text' : 'password';
                 toggleBtn.textContent = isPassword ? '🙈' : '👁️';
+                debug.textContent = passwordInput.type === 'password' ? 'Mot de passe caché' : 'Mot de passe visible';
             });
 
             // Bascule connexion / inscription
@@ -246,17 +220,16 @@
                 apiErrorGroup.style.display = 'none';
             }
 
-            toggleAuthLink.addEventListener('click', (e) => {
+            toggleAuthLink.addEventListener('click', function(e) {
                 e.preventDefault();
                 setMode(mode === 'login' ? 'signup' : 'login');
             });
 
-            // Validation simple
             function isValidEmail(email) {
                 return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
             }
 
-            form.addEventListener('submit', async (e) => {
+            form.addEventListener('submit', async function(e) {
                 e.preventDefault();
                 apiErrorGroup.style.display = 'none';
 
@@ -293,26 +266,29 @@
                     return;
                 }
 
-                // Succès
-                if (mode === 'signup') {
-                    if (result.data.user?.identities?.length === 0) {
-                        apiError.textContent = 'Un email de confirmation vous a été envoyé.';
-                        apiErrorGroup.style.display = 'block';
-                        return;
-                    }
+                if (mode === 'signup' && result.data.user?.identities?.length === 0) {
+                    apiError.textContent = 'Un email de confirmation vous a été envoyé.';
+                    apiErrorGroup.style.display = 'block';
+                    return;
                 }
 
-                // Stocker le token pour l'accès au dashboard
                 localStorage.setItem('auth_token', result.data.session.access_token);
                 window.location.href = '/dashboard.html';
             });
 
-            // Vérifier si déjà connecté
+            // Mot de passe oublié (placeholder)
+            forgotPasswordLink.addEventListener('click', function(e) {
+                e.preventDefault();
+                apiError.textContent = 'Fonctionnalité en cours de développement.';
+                apiErrorGroup.style.display = 'block';
+            });
+
+            // Redirection si déjà connecté
             const existingToken = localStorage.getItem('auth_token');
             if (existingToken) {
                 window.location.href = '/dashboard.html';
             }
-        })();
+        }
     </script>
 </body>
 </html>
