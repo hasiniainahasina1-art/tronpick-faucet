@@ -25,7 +25,6 @@ export default async function handler(req, res) {
 
     try {
         if (mode === 'signup') {
-            // Vérifier champs obligatoires
             if (!username) {
                 return res.status(400).json({ error: 'Le nom d\'utilisateur est requis' });
             }
@@ -33,7 +32,7 @@ export default async function handler(req, res) {
                 return res.status(400).json({ error: 'Les mots de passe ne correspondent pas' });
             }
 
-            // 1. Créer l'utilisateur via l'API Admin (contourne le rate limit)
+            // Créer l'utilisateur via l'API Admin (contourne le rate limit)
             const signupRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
                 method: 'POST',
                 headers: headers,
@@ -47,7 +46,6 @@ export default async function handler(req, res) {
 
             if (!signupRes.ok) {
                 const errData = await signupRes.json();
-                // Si l'utilisateur existe déjà, on renvoie un message clair
                 if (errData.msg?.includes('already been registered')) {
                     return res.status(400).json({ error: 'Cet email est déjà utilisé.' });
                 }
@@ -57,7 +55,7 @@ export default async function handler(req, res) {
             const userData = await signupRes.json();
             const userId = userData.id;
 
-            // 2. Créer le profil dans la table `profiles`
+            // Créer le profil dans la table `profiles`
             await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
                 method: 'POST',
                 headers: {
@@ -72,19 +70,8 @@ export default async function handler(req, res) {
                 })
             });
 
-            // 3. Authentifier l'utilisateur pour récupérer un token de session
-            const tokenRes = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-                method: 'POST',
-                headers: headers,
-                body: JSON.stringify({ email, password })
-            });
-
-            const tokenData = await tokenRes.json();
-            if (!tokenRes.ok) {
-                return res.status(500).json({ error: 'Compte créé mais impossible de générer la session.' });
-            }
-
-            return res.status(200).json({ token: tokenData.access_token });
+            // ✅ On ne connecte pas l'utilisateur, on renvoie juste un succès
+            return res.status(200).json({ success: true, message: 'Compte créé avec succès. Vous pouvez maintenant vous connecter.' });
         } 
         else if (mode === 'login') {
             const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
