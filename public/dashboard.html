@@ -82,23 +82,70 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
+        // --- 1. Attente du DOM et vérification de base ---
         window.addEventListener('DOMContentLoaded', function() {
-            // Éléments DOM
+            // Éléments
             const btnAdd = document.getElementById('btnAddAccount');
             const logoutBtn = document.getElementById('logoutBtn');
+            const refreshBtn = document.getElementById('refreshBtn');
             const modal = document.getElementById('modalOverlay');
             const btnCancel = document.getElementById('btnCancel');
             const form = document.getElementById('accountForm');
-            const refreshBtn = document.getElementById('refreshBtn');
             const toast = document.getElementById('toast');
             const accountsContainer = document.getElementById('accountsContainer');
 
-            let currentAccounts = [];
-            let currentUserId = null;
+            // Test élément existant
+            if (!btnAdd || !logoutBtn || !modal) {
+                alert('Erreur : boutons ou modale introuvables dans le HTML');
+                return;
+            }
 
-            // Authentification
+            // Fonction utilitaire toast
+            function showToast(msg, type = '') {
+                toast.textContent = msg;
+                toast.className = `toast ${type} show`;
+                setTimeout(() => { toast.className = 'toast'; }, 5000);
+            }
+
+            // --- 2. Tests immédiats des boutons (alertes) ---
+            btnAdd.addEventListener('click', function() {
+                alert('Ajouter cliqué');
+                try {
+                    document.getElementById('modalTitle').textContent = '➕ Ajouter un compte';
+                    document.getElementById('editIndex').value = '-1';
+                    form.reset();
+                    document.getElementById('platform').value = 'tronpick';
+                    document.getElementById('initialTimer').value = '60:00';
+                    modal.classList.add('active');
+                } catch (e) {
+                    alert('Erreur ouverture modale : ' + e.message);
+                }
+            });
+
+            logoutBtn.addEventListener('click', function() {
+                alert('Déconnexion cliquée');
+                localStorage.removeItem('auth_token');
+                window.location.href = '/index.html';
+            });
+
+            refreshBtn.addEventListener('click', function() {
+                alert('Rafraîchir cliqué');
+                if (typeof loadAndRenderAccounts === 'function') loadAndRenderAccounts();
+                else alert('Fonction loadAndRenderAccounts non définie');
+            });
+
+            btnCancel.addEventListener('click', function() {
+                modal.classList.remove('active');
+            });
+
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) modal.classList.remove('active');
+            });
+
+            // --- 3. Authentification et isolation ---
             const token = localStorage.getItem('auth_token');
             if (!token) {
+                alert('Non connecté, redirection...');
                 window.location.href = '/index.html';
                 return;
             }
@@ -113,12 +160,15 @@
                     if (error) throw error;
                     return user.id;
                 } catch (e) {
-                    alert('Session expirée. Veuillez vous reconnecter.');
+                    alert('Erreur authentification : ' + e.message + '. Redirection...');
                     localStorage.removeItem('auth_token');
                     window.location.href = '/index.html';
                     return null;
                 }
             }
+
+            let currentUserId = null;
+            let currentAccounts = [];
 
             const GH_USERNAME = 'hasiniainahasina1-art';
             const GH_REPO = 'tronpick-faucet';
@@ -136,8 +186,8 @@
             }
 
             async function loadAccounts() {
+                const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/accounts.json`;
                 try {
-                    const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/accounts.json`;
                     const data = await githubApi('GET', apiPath);
                     return JSON.parse(atob(data.content));
                 } catch (e) {
@@ -160,31 +210,6 @@
                 const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${workflowId}/dispatches`;
                 await githubApi('POST', apiPath, { ref: BRANCH, inputs });
             }
-
-            function showToast(msg, type = '') {
-                toast.textContent = msg;
-                toast.className = `toast ${type} show`;
-                setTimeout(() => { toast.className = 'toast'; }, 5000);
-            }
-
-            function openModal(title, account = null) {
-                document.getElementById('modalTitle').textContent = title;
-                if (account) {
-                    document.getElementById('editIndex').value = currentAccounts.indexOf(account);
-                    document.getElementById('email').value = account.email || '';
-                    document.getElementById('password').value = account.password || '';
-                    document.getElementById('platform').value = account.platform || 'tronpick';
-                    document.getElementById('initialTimer').value = minutesToTimeStr(account.timer || 60);
-                } else {
-                    document.getElementById('editIndex').value = '-1';
-                    form.reset();
-                    document.getElementById('platform').value = 'tronpick';
-                    document.getElementById('initialTimer').value = '60:00';
-                }
-                modal.classList.add('active');
-            }
-
-            function closeModal() { modal.classList.remove('active'); }
 
             function minutesToTimeStr(minutes) {
                 if (isNaN(minutes)) return '0:00';
@@ -239,14 +264,14 @@
                         const acc = visible[idx];
                         if (!confirm(`Supprimer ${acc.email} ?`)) return;
                         btn.disabled = true;
-                        showToast(`🗑️ Suppression de ${acc.email}...`);
+                        alert('Suppression déclenchée');
                         try {
                             await triggerWorkflow('logout.yml', {
                                 email: acc.email,
                                 password: acc.password,
                                 platform: acc.platform,
                                 proxyIndex: String(acc.proxyIndex||0),
-                                userId: currentUserId   // AJOUT
+                                userId: currentUserId
                             });
                             let deleted = false;
                             for (let i = 0; i < 12; i++) {
@@ -256,36 +281,29 @@
                                     deleted = true; break;
                                 }
                             }
-                            if (deleted) showToast('✅ Compte supprimé', 'success');
-                            else showToast('⚠️ Compte toujours présent après 2 min', 'error');
+                            if (deleted) alert('✅ Compte supprimé');
+                            else alert('⚠️ Compte toujours présent après 2 min');
                         } catch (err) {
-                            showToast('❌ Erreur : ' + err.message, 'error');
+                            alert('❌ Erreur suppression : ' + err.message);
                         } finally {
                             btn.disabled = false;
-                            await refreshAccounts();
+                            loadAndRenderAccounts();
                         }
                     });
                 });
             }
 
-            async function refreshAccounts() {
+            async function loadAndRenderAccounts() {
                 try {
                     currentAccounts = await loadAccounts();
                     renderAccounts();
-                } catch (e) { showToast('Erreur : ' + e.message, 'error'); }
+                } catch (e) {
+                    alert('Erreur chargement comptes : ' + e.message);
+                }
             }
 
-            // --- Événements ---
-            btnAdd.addEventListener('click', () => openModal('➕ Ajouter un compte'));
-            btnCancel.addEventListener('click', closeModal);
-            modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
-
-            logoutBtn.addEventListener('click', () => {
-                localStorage.removeItem('auth_token');
-                window.location.href = '/index.html';
-            });
-
-            form.addEventListener('submit', async (e) => {
+            // --- 4. Soumission du formulaire ---
+            form.addEventListener('submit', async function(e) {
                 e.preventDefault();
                 const email = document.getElementById('email').value.trim().toLowerCase();
                 const password = document.getElementById('password').value;
@@ -295,53 +313,57 @@
                 const editIdx = parseInt(document.getElementById('editIndex').value);
 
                 if (editIdx >= 0) {
-                    currentAccounts[editIdx] = { ...currentAccounts[editIdx], email, password, platform, timer: timerVal };
-                    await saveAccounts(currentAccounts);
-                    closeModal();
-                    showToast('✅ Compte mis à jour', 'success');
-                    refreshAccounts();
+                    try {
+                        currentAccounts[editIdx] = { ...currentAccounts[editIdx], email, password, platform, timer: timerVal };
+                        await saveAccounts(currentAccounts);
+                        alert('✅ Compte mis à jour');
+                    } catch (err) {
+                        alert('❌ Erreur modification : ' + err.message);
+                    }
                 } else {
                     if (currentAccounts.some(a => a.email===email && a.platform===platform && a.cookiesStatus!=='failed')) {
-                        showToast('❌ Ce compte existe déjà', 'error');
+                        alert('❌ Ce compte existe déjà');
                         return;
                     }
-                    closeModal();
-                    showToast('⏳ Ajout en cours...');
+                    alert('⏳ Ajout en cours (vérifiez l’onglet Actions)');
                     try {
                         await triggerWorkflow('test-account.yml', {
                             email, password, platform,
                             proxyIndex: String(currentAccounts.length % 2),
                             initialTimer: timerStr,
                             action: 'login',
-                            userId: currentUserId   // AJOUT
+                            userId: currentUserId
                         });
+                        // Attente
                         for (let i = 0; i < 24; i++) {
                             await new Promise(r => setTimeout(r, 5000));
                             const fresh = await loadAccounts();
                             const found = fresh.find(a => a.email===email && a.platform===platform);
                             if (found && found.cookiesStatus==='valid') {
-                                showToast('✅ Compte ajouté', 'success');
-                                return refreshAccounts();
+                                alert('✅ Compte ajouté avec succès');
+                                break;
                             } else if (found && found.cookiesStatus==='failed') {
-                                showToast('❌ ' + (found.errorMessage || 'Identifiants incorrects'), 'error');
+                                alert('❌ ' + (found.errorMessage || 'Identifiants incorrects'));
                                 const filtered = fresh.filter(a => a.email!==email || a.platform!==platform);
                                 await saveAccounts(filtered);
-                                return refreshAccounts();
+                                break;
                             }
                         }
-                        showToast('❌ Timeout', 'error');
-                    } catch (err) { showToast('❌ ' + err.message, 'error'); }
+                    } catch (err) {
+                        alert('❌ Erreur ajout : ' + err.message);
+                    }
                 }
+                modal.classList.remove('active');
+                loadAndRenderAccounts();
             });
 
-            refreshBtn.addEventListener('click', refreshAccounts);
-
-            // Démarrage
+            // --- 5. Démarrage final ---
             (async function init() {
                 currentUserId = await getUserId();
                 if (!currentUserId) return;
-                await refreshAccounts();
-                setInterval(refreshAccounts, 30000);
+                alert('✅ Connecté et prêt. UserId : ' + currentUserId);
+                await loadAndRenderAccounts();
+                setInterval(loadAndRenderAccounts, 30000);
             })();
         });
     </script>
