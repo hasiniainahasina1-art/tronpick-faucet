@@ -39,38 +39,33 @@
             const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3bWl0dWhoc3phaWxhYXhwb3NnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMjQ4MzQsImV4cCI6MjA5MjgwMDgzNH0.-LWoiKQVvgAhkkG1fF5067V-1ckA2aQ4UaUxfS95ukE';
             const supabase = supabase.createClient(supabaseUrl, supabaseAnonKey);
 
-            let currentUserId = null;
-
-            async function getUserId() {
+            async function initAuth() {
                 try {
                     const { data: { user }, error } = await supabase.auth.getUser(token);
                     if (error) throw error;
-                    return user.id;
+                    if (!user) throw new Error('Utilisateur non trouvé');
+                    statusDiv.textContent = '✅ Connecté. UserId : ' + user.id;
+                    window.currentUserId = user.id;
                 } catch (e) {
-                    statusDiv.textContent = 'Erreur authentification : ' + e.message;
+                    statusDiv.textContent = '❌ Erreur authentification : ' + e.message + '. Redirection...';
                     localStorage.removeItem('auth_token');
-                    setTimeout(() => { window.location.href = '/index.html'; }, 1500);
-                    return null;
+                    setTimeout(() => { window.location.href = '/index.html'; }, 2000);
                 }
             }
 
-            // Initialisation
-            getUserId().then(uid => {
-                if (uid) {
-                    currentUserId = uid;
-                    statusDiv.textContent = '✅ Connecté. UserId : ' + uid;
-                }
-            });
+            // Lancer l'authentification
+            initAuth();
 
             // Test dispatch
             testBtn.addEventListener('click', async () => {
-                if (!currentUserId) {
+                const uid = window.currentUserId;
+                if (!uid) {
                     resultDiv.innerHTML = '<div class="toast error">UserId non chargé.</div>';
                     return;
                 }
                 resultDiv.innerHTML = '<div class="toast">Envoi en cours...</div>';
                 try {
-                    const url = `/api/data?path=/repos/hasiniainahasina1-art/tronpick-faucet/actions/workflows/test-account.yml/dispatches&userId=${currentUserId}`;
+                    const url = `/api/data?path=/repos/hasiniainahasina1-art/tronpick-faucet/actions/workflows/test-account.yml/dispatches&userId=${uid}`;
                     const payload = {
                         ref: 'main',
                         inputs: {
@@ -80,7 +75,7 @@
                             proxyIndex: '0',
                             initialTimer: '60:00',
                             action: 'login',
-                            userId: currentUserId
+                            userId: uid
                         }
                     };
                     const res = await fetch(url, {
