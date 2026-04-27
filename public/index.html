@@ -10,6 +10,7 @@
             --card-bg: #ffffff;
             --primary: #2563eb;
             --primary-hover: #1d4ed8;
+            --success: #10b981;
             --danger: #ef4444;
             --text: #1e293b;
             --text-light: #64748b;
@@ -35,20 +36,27 @@
             padding: 40px 32px;
             width: 100%;
             max-width: 420px;
+            transition: all 0.3s ease;
         }
-        .logo {
-            text-align: center;
-            margin-bottom: 30px;
-        }
+        .logo { text-align: center; margin-bottom: 30px; }
         .logo-icon { font-size: 2.5rem; margin-bottom: 8px; color: var(--primary); }
         .logo h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.3px; }
         .logo p { font-size: 0.85rem; color: var(--text-light); margin-top: 4px; }
 
-        .form-group {
-            margin-bottom: 20px;
-            position: relative;
+        .form-group { margin-bottom: 20px; position: relative; }
+
+        /* Labels fixes par défaut (mode connexion) */
+        .form-group label.fixed-label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 600;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text);
         }
-        .form-group input {
+
+        input {
             width: 100%;
             padding: 14px 16px;
             border: 1.5px solid var(--border);
@@ -58,12 +66,15 @@
             transition: border 0.2s, box-shadow 0.2s;
             outline: none;
         }
-        .form-group input:focus {
+        input:focus {
             border-color: var(--primary);
             box-shadow: 0 0 0 3px rgba(37,99,235,0.15);
             background: #fff;
         }
-        .form-group label {
+
+        /* Floating labels : uniquement si le conteneur a la classe 'floating' */
+        .floating .form-group { position: relative; }
+        .floating .form-group label {
             position: absolute;
             left: 16px;
             top: 50%;
@@ -75,8 +86,8 @@
             pointer-events: none;
             transition: all 0.15s ease;
         }
-        .form-group input:focus + label,
-        .form-group input:not(:placeholder-shown) + label {
+        .floating .form-group input:focus + label,
+        .floating .form-group input:not(:placeholder-shown) + label {
             top: -8px;
             transform: translateY(0);
             font-size: 0.7rem;
@@ -85,71 +96,53 @@
             background: #ffffff;
             padding: 0 8px;
         }
-        .hidden-field { display: none; }
 
-        .error-message {
-            color: var(--danger);
-            font-size: 0.75rem;
-            margin-top: 6px;
-            display: none;
+        .password-wrapper { position: relative; }
+        .toggle-password {
+            position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+            background: none; border: none; cursor: pointer; font-size: 1.2rem;
+            color: var(--text-light);
         }
-        .error-message.visible { display: block; }
+
+        .error-message, .success-message {
+            font-size: 0.75rem; margin-top: 6px; display: none;
+        }
+        .error-message { color: var(--danger); }
+        .success-message { color: var(--success); }
+        .visible { display: block; }
 
         .btn-primary {
-            width: 100%;
-            padding: 14px;
-            border-radius: 10px;
-            border: none;
-            font-weight: 600;
-            cursor: pointer;
-            font-size: 1rem;
-            background: var(--primary);
-            color: white;
+            width: 100%; padding: 14px; border-radius: 10px; border: none;
+            font-weight: 600; cursor: pointer; font-size: 1rem;
+            background: var(--primary); color: white;
             transition: background 0.2s, transform 0.2s;
-            letter-spacing: 0.3px;
-            margin-top: 8px;
+            letter-spacing: 0.3px; margin-top: 8px;
         }
         .btn-primary:hover { background: var(--primary-hover); transform: translateY(-1px); }
         .btn-primary:active { transform: translateY(0); }
         .btn-primary:disabled { background: #94a3b8; cursor: not-allowed; transform: none; }
 
-        .toggle-link {
-            text-align: center;
-            margin-top: 18px;
-            font-size: 0.85rem;
-        }
+        .toggle-link { text-align: center; margin-top: 18px; font-size: 0.85rem; }
         .toggle-link a { color: var(--primary); text-decoration: none; font-weight: 600; }
         .toggle-link a:hover { text-decoration: underline; }
 
-        .forgot-password {
-            text-align: right;
-            margin-bottom: 4px;
-        }
-        .forgot-password a {
-            font-size: 0.8rem;
-            color: var(--primary);
-            text-decoration: none;
-        }
+        .forgot-password { text-align: right; margin-bottom: 4px; }
+        .forgot-password a { font-size: 0.8rem; color: var(--primary); text-decoration: none; }
         .forgot-password a:hover { text-decoration: underline; }
 
         .spinner {
-            display: inline-block;
-            width: 16px;
-            height: 16px;
-            border: 2px solid rgba(255,255,255,0.3);
-            border-top-color: white;
-            border-radius: 50%;
-            animation: spin 0.6s linear infinite;
-            margin-right: 8px;
-            vertical-align: middle;
+            display: inline-block; width: 16px; height: 16px;
+            border: 2px solid rgba(255,255,255,0.3); border-top-color: white;
+            border-radius: 50%; animation: spin 0.6s linear infinite;
+            margin-right: 8px; vertical-align: middle;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
-
         .version { text-align: center; margin-top: 24px; font-size: 0.7rem; color: var(--text-light); }
+        .hidden-field { display: none; }
     </style>
 </head>
 <body>
-    <div class="login-container">
+    <div class="login-container" id="mainContainer">
         <div class="logo">
             <div class="logo-icon">⚙️</div>
             <h1>Finoana Claim</h1>
@@ -159,36 +152,33 @@
         <form id="authForm" novalidate>
             <!-- Champ username (visible seulement en inscription) -->
             <div class="form-group hidden-field" id="usernameGroup">
-                <input type="text" id="username" placeholder=" " autocomplete="username">
                 <label for="username">Nom d'utilisateur</label>
-                <div class="error-message" id="usernameError">Le nom d'utilisateur est requis.</div>
+                <input type="text" id="username" placeholder=" " autocomplete="username">
             </div>
 
             <div class="form-group">
-                <input type="email" id="email" placeholder=" " required autocomplete="email">
                 <label for="email">Adresse email</label>
-                <div class="error-message" id="emailError">Veuillez entrer une adresse email valide.</div>
+                <input type="email" id="email" placeholder="vous@exemple.com" required autocomplete="email">
             </div>
 
             <div class="form-group">
-                <input type="password" id="password" placeholder=" " required autocomplete="current-password">
                 <label for="password">Mot de passe</label>
-                <button type="button" id="togglePassword" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--text-light);">👁️</button>
+                <div class="password-wrapper">
+                    <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password">
+                    <button type="button" class="toggle-password" id="togglePassword">👁️</button>
+                </div>
                 <div class="forgot-password">
                     <a href="#" id="forgotPasswordLink">Mot de passe oublié ?</a>
                 </div>
-                <div class="error-message" id="passwordError">Le mot de passe doit contenir au moins 6 caractères.</div>
             </div>
 
             <div class="form-group hidden-field" id="confirmPasswordGroup">
-                <input type="password" id="confirmPassword" placeholder=" " required autocomplete="new-password">
                 <label for="confirmPassword">Confirmer le mot de passe</label>
-                <div class="error-message" id="confirmPasswordError">Les mots de passe ne correspondent pas.</div>
+                <input type="password" id="confirmPassword" placeholder=" " required autocomplete="new-password">
             </div>
 
-            <div class="form-group" id="apiErrorGroup" style="display:none;">
-                <div class="error-message visible" id="apiError"></div>
-            </div>
+            <div class="success-message" id="successMessage"></div>
+            <div class="error-message" id="apiError"></div>
 
             <button type="submit" class="btn-primary" id="authBtn">
                 <span id="authBtnText">Se connecter</span>
@@ -207,7 +197,7 @@
         (function() {
             let mode = 'login';
 
-            const form = document.getElementById('authForm');
+            const container = document.getElementById('mainContainer');
             const usernameGroup = document.getElementById('usernameGroup');
             const usernameInput = document.getElementById('username');
             const emailInput = document.getElementById('email');
@@ -221,9 +211,10 @@
             const toggleText = document.getElementById('toggleText');
             const formDescription = document.getElementById('formDescription');
             const apiError = document.getElementById('apiError');
-            const apiErrorGroup = document.getElementById('apiErrorGroup');
+            const successMessage = document.getElementById('successMessage');
             const forgotPasswordLink = document.getElementById('forgotPasswordLink');
 
+            // Afficher/cacher le mot de passe
             toggleBtn.addEventListener('click', () => {
                 const isPass = passwordInput.type === 'password';
                 passwordInput.type = isPass ? 'text' : 'password';
@@ -232,6 +223,9 @@
 
             function setMode(newMode) {
                 mode = newMode;
+                successMessage.classList.remove('visible');
+                apiError.classList.remove('visible');
+
                 if (mode === 'login') {
                     formDescription.textContent = 'Connectez-vous à votre compte';
                     authBtnText.textContent = 'Se connecter';
@@ -239,6 +233,7 @@
                     toggleAuthLink.textContent = 'Créer un compte';
                     usernameGroup.classList.add('hidden-field');
                     confirmPasswordGroup.classList.add('hidden-field');
+                    container.classList.remove('floating');  // désactive les floating labels
                 } else {
                     formDescription.textContent = 'Créez votre compte';
                     authBtnText.textContent = 'Créer un compte';
@@ -246,8 +241,8 @@
                     toggleAuthLink.textContent = 'Se connecter';
                     usernameGroup.classList.remove('hidden-field');
                     confirmPasswordGroup.classList.remove('hidden-field');
+                    container.classList.add('floating');     // active les floating labels
                 }
-                apiErrorGroup.style.display = 'none';
             }
 
             toggleAuthLink.addEventListener('click', (e) => {
@@ -261,7 +256,8 @@
 
             form.addEventListener('submit', async (e) => {
                 e.preventDefault();
-                apiErrorGroup.style.display = 'none';
+                apiError.classList.remove('visible');
+                successMessage.classList.remove('visible');
 
                 const email = emailInput.value.trim();
                 const password = passwordInput.value;
@@ -269,18 +265,26 @@
                 const username = usernameInput.value.trim();
 
                 if (!isValidEmail(email)) {
-                    apiError.textContent = 'Adresse email invalide.'; apiErrorGroup.style.display = 'block'; return;
+                    apiError.textContent = 'Adresse email invalide.';
+                    apiError.classList.add('visible');
+                    return;
                 }
                 if (password.length < 6) {
-                    apiError.textContent = 'Le mot de passe doit contenir au moins 6 caractères.'; apiErrorGroup.style.display = 'block'; return;
+                    apiError.textContent = 'Le mot de passe doit contenir au moins 6 caractères.';
+                    apiError.classList.add('visible');
+                    return;
                 }
 
                 if (mode === 'signup') {
                     if (!username) {
-                        apiError.textContent = 'Le nom d\'utilisateur est requis.'; apiErrorGroup.style.display = 'block'; return;
+                        apiError.textContent = 'Le nom d\'utilisateur est requis.';
+                        apiError.classList.add('visible');
+                        return;
                     }
                     if (password !== confirmPassword) {
-                        apiError.textContent = 'Les mots de passe ne correspondent pas.'; apiErrorGroup.style.display = 'block'; return;
+                        apiError.textContent = 'Les mots de passe ne correspondent pas.';
+                        apiError.classList.add('visible');
+                        return;
                     }
                 }
 
@@ -302,19 +306,34 @@
 
                     const data = await response.json();
 
+                    authBtn.disabled = false;
+                    authBtnText.textContent = mode === 'login' ? 'Se connecter' : 'Créer un compte';
+
                     if (!response.ok) {
                         apiError.textContent = data.error || 'Erreur inconnue';
-                        apiErrorGroup.style.display = 'block';
-                        authBtn.disabled = false;
-                        authBtnText.textContent = mode === 'login' ? 'Se connecter' : 'Créer un compte';
+                        apiError.classList.add('visible');
                         return;
                     }
 
+                    // Succès inscription
+                    if (mode === 'signup') {
+                        successMessage.textContent = data.message || 'Compte créé avec succès. Vous pouvez maintenant vous connecter.';
+                        successMessage.classList.add('visible');
+                        setMode('login');   // repasse en mode connexion
+                        // vide les champs
+                        usernameInput.value = '';
+                        emailInput.value = '';
+                        passwordInput.value = '';
+                        confirmPasswordInput.value = '';
+                        return;
+                    }
+
+                    // Succès connexion
                     localStorage.setItem('auth_token', data.token);
                     window.location.href = '/dashboard.html';
                 } catch (err) {
                     apiError.textContent = 'Erreur réseau.';
-                    apiErrorGroup.style.display = 'block';
+                    apiError.classList.add('visible');
                     authBtn.disabled = false;
                     authBtnText.textContent = mode === 'login' ? 'Se connecter' : 'Créer un compte';
                 }
@@ -323,9 +342,10 @@
             forgotPasswordLink.addEventListener('click', (e) => {
                 e.preventDefault();
                 apiError.textContent = 'Fonctionnalité à venir.';
-                apiErrorGroup.style.display = 'block';
+                apiError.classList.add('visible');
             });
 
+            // Redirection si déjà connecté
             const existingToken = localStorage.getItem('auth_token');
             if (existingToken) {
                 window.location.href = '/dashboard.html';
