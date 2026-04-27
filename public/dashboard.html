@@ -19,30 +19,191 @@
             --radius: 8px;
             --shadow: 0 2px 8px rgba(0,0,0,0.04);
         }
-        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); font-size: 0.85rem; line-height: 1.4; min-height: 100vh; }
-        .header { background: var(--card-bg); padding: 12px 24px; box-shadow: var(--shadow); display: flex; align-items: center; justify-content: space-between; }
-        .header h1 { font-size: 1.2rem; }
-        .btn { padding: 6px 14px; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; font-size: 0.8rem; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 0.85rem;
+            line-height: 1.4;
+            min-height: 100vh;
+        }
+        .header {
+            background: var(--card-bg);
+            padding: 12px 24px;
+            box-shadow: var(--shadow);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .header h1 {
+            font-size: 1.2rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn {
+            padding: 6px 14px;
+            border-radius: 6px;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 0.8rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.2s;
+            text-decoration: none;
+            white-space: nowrap;
+        }
         .btn-primary { background: var(--primary); color: white; }
-        .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-secondary); }
-        .container { max-width: 800px; margin: 20px auto; padding: 0 16px; }
-        .card { background: var(--card-bg); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; margin-bottom: 16px; }
-        .accounts-list { display: flex; flex-direction: column; gap: 8px; }
-        .account-item { display: flex; justify-content: space-between; padding: 10px; background: #f8fafc; border-radius: 6px; border: 1px solid var(--border); }
-        .account-info { display: flex; gap: 15px; flex: 1; align-items: center; }
-        .account-email { font-weight: 600; }
-        .account-site { background: #e2e8f0; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; }
-        .account-countdown { font-weight: 700; color: var(--primary); }
-        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); align-items: center; justify-content: center; z-index: 1000; }
-        .modal-overlay.active { display: flex; }
-        .modal { background: var(--card-bg); border-radius: var(--radius); padding: 20px; width: 90%; max-width: 420px; }
-        .form-group { margin-bottom: 12px; }
-        .form-group label { display: block; margin-bottom: 4px; font-weight: 500; }
-        .form-group input, .form-group select { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; }
-        .toast { position: fixed; bottom: 24px; right: 24px; background: var(--text); color: white; padding: 10px 20px; border-radius: 6px; z-index: 2000; opacity: 0; }
-        .toast.show { opacity: 1; }
+        .btn-primary:hover { background: var(--primary-hover); }
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            padding: 4px 10px;
+        }
+        .btn-outline:hover { background: #f1f5f9; }
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 0 16px;
+        }
+        .card {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .card h2 {
+            font-size: 1rem;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .accounts-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .account-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            background: #f8fafc;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .account-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+            flex: 1;
+        }
+        .account-email { font-weight: 600; font-size: 0.9rem; min-width: 150px; }
+        .account-site {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            background: #e2e8f0;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+        .account-countdown {
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            color: var(--primary);
+            font-size: 0.85rem;
+            min-width: 60px;
+        }
+        .account-countdown.expired { color: var(--danger); }
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            margin-right: 8px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: var(--text);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-weight: 500;
+            font-size: 0.8rem;
+            z-index: 2000;
+            opacity: 0;
+            transform: translateX(80px);
+            transition: all 0.3s ease;
+            max-width: 300px;
+        }
+        .toast.show { opacity: 1; transform: translateX(0); }
         .toast.success { background: var(--success); }
         .toast.error { background: var(--danger); }
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            padding: 20px;
+            width: 90%;
+            max-width: 420px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+            animation: fadeSlide 0.2s ease;
+        }
+        @keyframes fadeSlide {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .modal h3 { font-size: 1rem; margin-bottom: 16px; }
+        .form-group { margin-bottom: 12px; }
+        .form-group label {
+            display: block;
+            margin-bottom: 4px;
+            font-weight: 500;
+            font-size: 0.8rem;
+            color: var(--text);
+        }
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.8rem;
+            transition: border 0.15s;
+        }
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+        }
     </style>
 </head>
 <body>
@@ -53,6 +214,7 @@
             <button class="btn btn-outline" id="logoutBtn" style="margin-left:8px;">🚪 Déconnexion</button>
         </div>
     </header>
+
     <div class="container">
         <div class="card">
             <h2>📋 Mes comptes</h2>
@@ -62,55 +224,71 @@
             </div>
         </div>
     </div>
+
+    <!-- Modale Ajout -->
     <div class="modal-overlay" id="modalOverlay">
         <div class="modal">
             <h3>➕ Nouveau compte</h3>
             <form id="accountForm">
                 <input type="hidden" id="editIndex" value="-1">
-                <div class="form-group"><label>Email</label><input type="email" id="email" required></div>
-                <div class="form-group"><label>Mot de passe</label><input type="password" id="password" required></div>
-                <div class="form-group"><label>Plateforme</label><select id="platform">
-                    <option value="tronpick">TronPick</option><option value="litepick">LitePick</option><option value="dogepick">DogePick</option><option value="solpick">SolPick</option><option value="binpick">BinPick</option>
-                </select></div>
-                <div class="form-group"><label>Timer (mm:ss)</label><input type="text" id="initialTimer" value="60:00"></div>
-                <button type="submit" class="btn btn-primary" style="margin-top:10px;">💾 Enregistrer</button>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="email" required placeholder="exemple@mail.com">
+                </div>
+                <div class="form-group">
+                    <label>Mot de passe</label>
+                    <input type="password" id="password" required placeholder="••••••••">
+                </div>
+                <div class="form-group">
+                    <label>Plateforme</label>
+                    <select id="platform">
+                        <option value="tronpick">TronPick</option>
+                        <option value="litepick">LitePick</option>
+                        <option value="dogepick">DogePick</option>
+                        <option value="solpick">SolPick</option>
+                        <option value="binpick">BinPick</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Timer initial (mm:ss)</label>
+                    <input type="text" id="initialTimer" placeholder="60:00" pattern="[0-9]{1,2}:[0-5][0-9]">
+                </div>
+                <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
+                    <button type="button" class="btn btn-outline" id="btnCancel">Annuler</button>
+                    <button type="submit" class="btn btn-primary" id="btnSubmit">💾 Enregistrer</button>
+                </div>
             </form>
         </div>
     </div>
+
     <div class="toast" id="toast"></div>
 
+    <!-- Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
-        // Protection renforcée : attendre explicitement que Supabase soit prêt
+        // Protection : attendre que Supabase soit chargé
         function initWhenSupabaseReady() {
             if (typeof window.supabase === 'undefined') {
-                alert('Chargement de Supabase...');
                 setTimeout(initWhenSupabaseReady, 500);
                 return;
             }
 
-            // Éléments DOM
+            // ---------- DOM ----------
             const btnAdd = document.getElementById('btnAddAccount');
             const logoutBtn = document.getElementById('logoutBtn');
             const refreshBtn = document.getElementById('refreshBtn');
             const modal = document.getElementById('modalOverlay');
+            const btnCancel = document.getElementById('btnCancel');
             const form = document.getElementById('accountForm');
             const toast = document.getElementById('toast');
             const accountsContainer = document.getElementById('accountsContainer');
 
-            // État
+            // ---------- Globals ----------
             let currentUserId = null;
             let currentAccounts = [];
             let countdownIntervals = [];
 
-            // Utilitaires
-            function showToast(msg, type = '') {
-                toast.textContent = msg;
-                toast.className = `toast ${type} show`;
-                setTimeout(() => { toast.className = 'toast'; }, 5000);
-            }
-
-            // Supabase
+            // ---------- Supabase ----------
             const SUPABASE_URL = 'https://xwmituhhszailaaxposg.supabase.co';
             const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3bWl0dWhoc3phaWxhYXhwb3NnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMjQ4MzQsImV4cCI6MjA5MjgwMDgzNH0.-LWoiKQVvgAhkkG1fF5067V-1ckA2aQ4UaUxfS95ukE';
             const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -124,16 +302,50 @@
                 try {
                     const { data: { user }, error } = await supabase.auth.getUser(token);
                     if (error) throw error;
+                    if (!user) throw new Error('Utilisateur introuvable');
                     return user.id;
                 } catch (e) {
-                    showToast('Session invalide', 'error');
+                    showToast('Session expirée', 'error');
                     localStorage.removeItem('auth_token');
                     window.location.href = '/index.html';
                     return null;
                 }
             }
 
-            // API GitHub
+            // ---------- Utilitaires ----------
+            function showToast(msg, type = '') {
+                toast.textContent = msg;
+                toast.className = `toast ${type} show`;
+                setTimeout(() => { toast.className = 'toast'; }, 5000);
+            }
+
+            function minutesToTimeStr(minutes) {
+                if (isNaN(minutes)) return '0:00';
+                const secs = Math.floor(minutes * 60);
+                return `${Math.floor(secs/60)}:${(secs%60).toString().padStart(2, '0')}`;
+            }
+
+            function timeStrToMinutes(str) {
+                if (!str || !str.includes(':')) return 60;
+                const [m, s] = str.split(':').map(Number);
+                return (m||0) + (s||0)/60;
+            }
+
+            function showLoader(el) {
+                const info = el.querySelector('.account-info');
+                if (info && !info.querySelector('.spinner')) {
+                    const spinner = document.createElement('span');
+                    spinner.className = 'spinner';
+                    info.prepend(spinner);
+                }
+            }
+
+            function hideLoader(el) {
+                const sp = el.querySelector('.spinner');
+                if (sp) sp.remove();
+            }
+
+            // ---------- API ----------
             const GH_USERNAME = 'hasiniainahasina1-art';
             const GH_REPO = 'tronpick-faucet';
             const BRANCH = 'main';
@@ -160,19 +372,31 @@
                 }
             }
 
+            async function saveAccounts(accs) {
+                const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/accounts.json`;
+                let sha = null;
+                try { const d = await githubApi('GET', apiPath); sha = d.sha; } catch (e) {}
+                const content = btoa(unescape(encodeURIComponent(JSON.stringify(accs, null, 2))));
+                const body = { message: 'Mise à jour comptes', content, branch: BRANCH };
+                if (sha) body.sha = sha;
+                await githubApi('PUT', apiPath, body);
+            }
+
             async function triggerWorkflow(workflowId, inputs) {
                 const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${workflowId}/dispatches`;
                 const payload = { ref: BRANCH, inputs };
                 await githubApi('POST', apiPath, payload);
             }
 
+            // ---------- Rendu ----------
             function renderAccounts() {
                 countdownIntervals.forEach(clearInterval);
                 countdownIntervals = [];
                 accountsContainer.innerHTML = '';
+
                 const visible = currentAccounts.filter(a => a.cookiesStatus !== 'failed');
                 if (!visible.length) {
-                    accountsContainer.innerHTML = '<p style="text-align:center; padding:20px;">Aucun compte configuré.</p>';
+                    accountsContainer.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-secondary);">Aucun compte configuré.</div>';
                     return;
                 }
                 visible.forEach((acc, idx) => {
@@ -180,13 +404,15 @@
                     const last = acc.lastClaim || 0;
                     const intervalMs = (acc.timer || 60) * 60 * 1000;
                     const nextClaim = last + intervalMs;
-                    const remain = Math.max(0, nextClaim - now);
+                    let remain = Math.max(0, nextClaim - now);
                     const fmt = ms => {
                         const s = Math.floor(ms/1000);
                         return `${Math.floor(s/60)}:${(s%60).toString().padStart(2,'0')}`;
                     };
+
                     const item = document.createElement('div');
                     item.className = 'account-item';
+                    item.dataset.index = idx;
                     item.innerHTML = `
                         <div class="account-info">
                             <span class="account-email">${acc.email}</span>
@@ -196,66 +422,154 @@
                         <button class="btn btn-outline btn-delete">🗑️</button>
                     `;
                     accountsContainer.appendChild(item);
+
                     const interval = setInterval(() => {
-                        const r = Math.max(0, nextClaim - Date.now());
+                        remain = Math.max(0, nextClaim - Date.now());
                         const el = document.getElementById(`cd-${idx}`);
-                        if (el) el.textContent = fmt(r);
+                        if (el) {
+                            el.textContent = fmt(remain);
+                            el.className = 'account-countdown' + (remain <= 0 ? ' expired' : '');
+                        }
                     }, 1000);
                     countdownIntervals.push(interval);
                 });
 
+                // Suppression
                 document.querySelectorAll('.btn-delete').forEach(btn => {
                     btn.addEventListener('click', async (e) => {
-                        const idx = Array.from(btn.parentElement.parentElement.children).indexOf(btn.parentElement);
+                        const item = btn.closest('.account-item');
+                        const idx = parseInt(item.dataset.index);
                         const acc = visible[idx];
-                        if (!confirm(`Supprimer ${acc.email} ?`)) return;
+                        if (!confirm(`Supprimer définitivement le compte ${acc.email} ?`)) return;
+
+                        showLoader(item);
                         btn.disabled = true;
+                        showToast(`🗑️ Déconnexion de ${acc.email}...`);
+
                         try {
-                            await triggerWorkflow('logout.yml', { email: acc.email, password: acc.password, platform: acc.platform, proxyIndex: String(acc.proxyIndex||0), userId: currentUserId });
-                            showToast('Suppression lancée', 'success');
-                            setTimeout(async () => { currentAccounts = await loadAccounts(); renderAccounts(); }, 15000);
-                        } catch (err) { showToast('Erreur: ' + err.message, 'error'); }
-                        btn.disabled = false;
+                            await triggerWorkflow('logout.yml', {
+                                email: acc.email,
+                                password: acc.password,
+                                platform: acc.platform,
+                                proxyIndex: String(acc.proxyIndex || 0),
+                                userId: currentUserId
+                            });
+
+                            showToast('⏳ Déconnexion en cours...');
+                            let deleted = false;
+                            for (let i = 0; i < 12; i++) {
+                                await new Promise(r => setTimeout(r, 10000));
+                                currentAccounts = await loadAccounts();
+                                if (!currentAccounts.some(a => a.email === acc.email && a.platform === acc.platform)) {
+                                    deleted = true;
+                                    break;
+                                }
+                            }
+                            if (deleted) showToast('✅ Compte supprimé', 'success');
+                            else showToast('⚠️ Compte toujours présent après 2 min', 'error');
+                        } catch (err) {
+                            showToast('❌ Erreur: ' + err.message, 'error');
+                        } finally {
+                            hideLoader(item);
+                            btn.disabled = false;
+                            refreshAccounts();
+                        }
                     });
                 });
             }
 
-            // Initialisation
-            (async function start() {
-                currentUserId = await getUserId();
-                if (!currentUserId) return;
-                showToast('✅ Connecté', 'success');
+            async function refreshAccounts() {
                 try {
                     currentAccounts = await loadAccounts();
                     renderAccounts();
-                } catch (e) { showToast('Erreur chargement: ' + e.message, 'error'); }
-                setInterval(async () => {
-                    try { currentAccounts = await loadAccounts(); renderAccounts(); } catch (e) {}
-                }, 30000);
-            })();
+                } catch (e) {
+                    showToast('Erreur chargement: ' + e.message, 'error');
+                }
+            }
 
-            // Événements
+            // ---------- Events ----------
             btnAdd.addEventListener('click', () => modal.classList.add('active'));
-            logoutBtn.addEventListener('click', () => { localStorage.removeItem('auth_token'); window.location.href = '/index.html'; });
-            refreshBtn.addEventListener('click', async () => {
-                try { currentAccounts = await loadAccounts(); renderAccounts(); } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+            btnCancel.addEventListener('click', () => modal.classList.remove('active'));
+            modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('active'); });
+            logoutBtn.addEventListener('click', () => {
+                localStorage.removeItem('auth_token');
+                window.location.href = '/index.html';
             });
+            refreshBtn.addEventListener('click', refreshAccounts);
+
             form.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const email = document.getElementById('email').value.trim().toLowerCase();
                 const password = document.getElementById('password').value;
                 const platform = document.getElementById('platform').value;
-                const timerStr = document.getElementById('initialTimer').value;
+                const timerStr = document.getElementById('initialTimer').value.trim();
+                const timerVal = timeStrToMinutes(timerStr);
+                const proxyIndex = currentAccounts.length % 2;
+                const editIdx = parseInt(document.getElementById('editIndex').value);
+
+                if (editIdx >= 0) {
+                    // Modification (non utilisée dans cette version simplifiée)
+                    try {
+                        currentAccounts[editIdx] = { ...currentAccounts[editIdx], email, password, platform, timer: timerVal };
+                        await saveAccounts(currentAccounts);
+                        showToast('✅ Compte mis à jour', 'success');
+                    } catch (err) { showToast('❌ ' + err.message, 'error'); }
+                } else {
+                    // Ajout
+                    if (currentAccounts.some(a => a.email === email && a.platform === platform && a.cookiesStatus !== 'failed')) {
+                        showToast('❌ Ce compte existe déjà', 'error');
+                        return;
+                    }
+                    try {
+                        await triggerWorkflow('test-account.yml', {
+                            email, password, platform,
+                            proxyIndex: String(proxyIndex),
+                            initialTimer: timerStr,
+                            action: 'login',
+                            userId: currentUserId
+                        });
+                        showToast('✅ Ajout lancé ! Patientez...', 'success');
+                        // Polling
+                        let attempts = 0;
+                        const check = setInterval(async () => {
+                            try {
+                                currentAccounts = await loadAccounts();
+                                const found = currentAccounts.find(a => a.email === email && a.platform === platform);
+                                if (found && found.cookiesStatus === 'valid') {
+                                    clearInterval(check);
+                                    showToast('✅ Compte ajouté avec succès', 'success');
+                                    refreshAccounts();
+                                } else if (found && found.cookiesStatus === 'failed') {
+                                    clearInterval(check);
+                                    showToast('❌ ' + (found.errorMessage || 'Identifiants incorrects'), 'error');
+                                    const filtered = currentAccounts.filter(a => a.email !== email || a.platform !== platform);
+                                    await saveAccounts(filtered);
+                                    refreshAccounts();
+                                }
+                                if (attempts++ > 24) {
+                                    clearInterval(check);
+                                    showToast('⚠️ Aucune réponse après 2 minutes', 'error');
+                                    refreshAccounts();
+                                }
+                            } catch { clearInterval(check); }
+                        }, 5000);
+                    } catch (err) {
+                        showToast('❌ Erreur: ' + err.message, 'error');
+                    }
+                }
                 modal.classList.remove('active');
-                try {
-                    await triggerWorkflow('test-account.yml', { email, password, platform, proxyIndex: '0', initialTimer: timerStr, action: 'login', userId: currentUserId });
-                    showToast('Ajout lancé', 'success');
-                    setTimeout(async () => { currentAccounts = await loadAccounts(); renderAccounts(); }, 15000);
-                } catch (err) { showToast('Erreur: ' + err.message, 'error'); }
             });
+
+            // ---------- Start ----------
+            (async function start() {
+                currentUserId = await getUserId();
+                if (!currentUserId) return;
+                showToast('✅ Connecté', 'success');
+                await refreshAccounts();
+                setInterval(refreshAccounts, 30000);
+            })();
         }
 
-        // Démarrer seulement si Supabase est prêt
         initWhenSupabaseReady();
     </script>
 </body>
