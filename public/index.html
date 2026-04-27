@@ -44,7 +44,6 @@
         .logo h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.3px; }
         .logo p { font-size: 0.85rem; color: var(--text-light); margin-top: 4px; }
 
-        /* Floating label */
         .form-group {
             margin-bottom: 20px;
             position: relative;
@@ -86,10 +85,7 @@
             background: #ffffff;
             padding: 0 8px;
         }
-        /* Pour le champ confirmPassword, on masque par défaut, affiché seulement en mode signup */
-        .hidden-field {
-            display: none;
-        }
+        .hidden-field { display: none; }
 
         .error-message {
             color: var(--danger);
@@ -161,6 +157,13 @@
         </div>
 
         <form id="authForm" novalidate>
+            <!-- Champ username (visible seulement en inscription) -->
+            <div class="form-group hidden-field" id="usernameGroup">
+                <input type="text" id="username" placeholder=" " autocomplete="username">
+                <label for="username">Nom d'utilisateur</label>
+                <div class="error-message" id="usernameError">Le nom d'utilisateur est requis.</div>
+            </div>
+
             <div class="form-group">
                 <input type="email" id="email" placeholder=" " required autocomplete="email">
                 <label for="email">Adresse email</label>
@@ -170,7 +173,7 @@
             <div class="form-group">
                 <input type="password" id="password" placeholder=" " required autocomplete="current-password">
                 <label for="password">Mot de passe</label>
-                <button type="button" class="icon" id="togglePassword" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--text-light);">👁️</button>
+                <button type="button" id="togglePassword" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--text-light);">👁️</button>
                 <div class="forgot-password">
                     <a href="#" id="forgotPasswordLink">Mot de passe oublié ?</a>
                 </div>
@@ -202,15 +205,15 @@
 
     <script>
         (function() {
-            // État : 'login' ou 'signup'
             let mode = 'login';
 
-            // Éléments du DOM
             const form = document.getElementById('authForm');
+            const usernameGroup = document.getElementById('usernameGroup');
+            const usernameInput = document.getElementById('username');
             const emailInput = document.getElementById('email');
             const passwordInput = document.getElementById('password');
-            const confirmPasswordInput = document.getElementById('confirmPassword');
             const confirmPasswordGroup = document.getElementById('confirmPasswordGroup');
+            const confirmPasswordInput = document.getElementById('confirmPassword');
             const toggleBtn = document.getElementById('togglePassword');
             const authBtn = document.getElementById('authBtn');
             const authBtnText = document.getElementById('authBtnText');
@@ -221,14 +224,12 @@
             const apiErrorGroup = document.getElementById('apiErrorGroup');
             const forgotPasswordLink = document.getElementById('forgotPasswordLink');
 
-            // Bascule affichage mot de passe
             toggleBtn.addEventListener('click', () => {
-                const isPassword = passwordInput.type === 'password';
-                passwordInput.type = isPassword ? 'text' : 'password';
-                toggleBtn.textContent = isPassword ? '🙈' : '👁️';
+                const isPass = passwordInput.type === 'password';
+                passwordInput.type = isPass ? 'text' : 'password';
+                toggleBtn.textContent = isPass ? '🙈' : '👁️';
             });
 
-            // Bascule connexion / inscription
             function setMode(newMode) {
                 mode = newMode;
                 if (mode === 'login') {
@@ -236,12 +237,14 @@
                     authBtnText.textContent = 'Se connecter';
                     toggleText.textContent = 'Pas encore de compte ?';
                     toggleAuthLink.textContent = 'Créer un compte';
+                    usernameGroup.classList.add('hidden-field');
                     confirmPasswordGroup.classList.add('hidden-field');
                 } else {
                     formDescription.textContent = 'Créez votre compte';
                     authBtnText.textContent = 'Créer un compte';
                     toggleText.textContent = 'Déjà un compte ?';
                     toggleAuthLink.textContent = 'Se connecter';
+                    usernameGroup.classList.remove('hidden-field');
                     confirmPasswordGroup.classList.remove('hidden-field');
                 }
                 apiErrorGroup.style.display = 'none';
@@ -252,7 +255,6 @@
                 setMode(mode === 'login' ? 'signup' : 'login');
             });
 
-            // Validation simple
             function isValidEmail(email) {
                 return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
             }
@@ -264,23 +266,21 @@
                 const email = emailInput.value.trim();
                 const password = passwordInput.value;
                 const confirmPassword = confirmPasswordInput.value;
+                const username = usernameInput.value.trim();
 
                 if (!isValidEmail(email)) {
-                    apiError.textContent = 'Adresse email invalide.';
-                    apiErrorGroup.style.display = 'block';
-                    return;
+                    apiError.textContent = 'Adresse email invalide.'; apiErrorGroup.style.display = 'block'; return;
                 }
                 if (password.length < 6) {
-                    apiError.textContent = 'Le mot de passe doit contenir au moins 6 caractères.';
-                    apiErrorGroup.style.display = 'block';
-                    return;
+                    apiError.textContent = 'Le mot de passe doit contenir au moins 6 caractères.'; apiErrorGroup.style.display = 'block'; return;
                 }
 
                 if (mode === 'signup') {
+                    if (!username) {
+                        apiError.textContent = 'Le nom d\'utilisateur est requis.'; apiErrorGroup.style.display = 'block'; return;
+                    }
                     if (password !== confirmPassword) {
-                        apiError.textContent = 'Les mots de passe ne correspondent pas.';
-                        apiErrorGroup.style.display = 'block';
-                        return;
+                        apiError.textContent = 'Les mots de passe ne correspondent pas.'; apiErrorGroup.style.display = 'block'; return;
                     }
                 }
 
@@ -295,6 +295,7 @@
                             email,
                             password,
                             confirmPassword: mode === 'signup' ? confirmPassword : undefined,
+                            username: mode === 'signup' ? username : undefined,
                             mode
                         })
                     });
@@ -309,25 +310,22 @@
                         return;
                     }
 
-                    // Succès
                     localStorage.setItem('auth_token', data.token);
                     window.location.href = '/dashboard.html';
                 } catch (err) {
-                    apiError.textContent = 'Erreur réseau, veuillez réessayer.';
+                    apiError.textContent = 'Erreur réseau.';
                     apiErrorGroup.style.display = 'block';
                     authBtn.disabled = false;
                     authBtnText.textContent = mode === 'login' ? 'Se connecter' : 'Créer un compte';
                 }
             });
 
-            // Mot de passe oublié
             forgotPasswordLink.addEventListener('click', (e) => {
                 e.preventDefault();
                 apiError.textContent = 'Fonctionnalité à venir.';
                 apiErrorGroup.style.display = 'block';
             });
 
-            // Redirection si déjà connecté
             const existingToken = localStorage.getItem('auth_token');
             if (existingToken) {
                 window.location.href = '/dashboard.html';
