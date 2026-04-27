@@ -160,6 +160,52 @@ async function performLogin(page, email, password) {
     }
 }
 
+async function addToGlobalList(email, platform, normalizedEmail) {
+    if (!GH_TOKEN || !GH_USERNAME || !GH_REPO) {
+        console.warn('⚠️ Impossible d\'ajouter à la liste globale (variables manquantes)');
+        return;
+    }
+    const octokit = new Octokit({ auth: GH_TOKEN });
+    const GLOBAL_FILE = 'global_accounts.json';
+    try {
+        let entries = [];
+        let sha = null;
+        try {
+            const res = await octokit.repos.getContent({
+                owner: GH_USERNAME,
+                repo: GH_REPO,
+                path: GLOBAL_FILE,
+                ref: GH_BRANCH
+            });
+            entries = JSON.parse(Buffer.from(res.data.content, 'base64').toString('utf8'));
+            sha = res.data.sha;
+        } catch (e) {}
+
+        if (entries.some(e => e.email === email && e.platform === platform)) {
+            console.log('ℹ️ Déjà présent dans la liste globale.');
+            return;
+        }
+
+        entries.push({ email: normalizedEmail, platform });
+
+        const content = Buffer.from(JSON.stringify(entries, null, 2)).toString('base64');
+        const message = `Ajout de ${normalizedEmail} (${platform}) à la liste globale`;
+
+        await octokit.repos.createOrUpdateFileContents({
+            owner: GH_USERNAME,
+            repo: GH_REPO,
+            path: GLOBAL_FILE,
+            message,
+            content,
+            branch: GH_BRANCH,
+            sha
+        });
+        console.log('✅ Compte ajouté à la liste globale.');
+    } catch (error) {
+        console.error('❌ Erreur lors de l\'ajout global :', error.message);
+    }
+}
+
 async function run() {
     let browser;
     try {
@@ -258,6 +304,7 @@ async function run() {
             };
             if (existingIndex !== -1) accounts[existingIndex] = newAccount;
             else accounts.push(newAccount);
+
             const content = Buffer.from(JSON.stringify(accounts, null, 2)).toString('base64');
             let sha = null;
             try {
@@ -274,6 +321,10 @@ async function run() {
                 sha
             });
             console.log(`✅ Compte ${normalizedEmail} enregistré avec succès (timer initial = ${initialTimerStr})`);
+
+            // Enregistrement dans la liste globale
+            await addToGlobalList(email, platform, normalizedEmail);
+
             process.exit(0);
         } else {
             throw new Error('Aucun cookie récupéré');
