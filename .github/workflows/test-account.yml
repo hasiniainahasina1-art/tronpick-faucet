@@ -23,6 +23,9 @@ on:
         required: false
         type: string
         default: "login"
+      userId:
+        required: true
+        type: string
 
 jobs:
   test:
@@ -42,10 +45,12 @@ jobs:
           TEST_PROXY_INDEX: ${{ github.event.inputs.proxyIndex }}
           TEST_INITIAL_TIMER: ${{ github.event.inputs.initialTimer }}
           TEST_ACTION: ${{ github.event.inputs.action }}
+          USER_ID: ${{ github.event.inputs.userId }}
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GH_USERNAME: ${{ secrets.GH_USERNAME }}
           GH_REPO: ${{ secrets.GH_REPO }}
           GH_BRANCH: ${{ secrets.GH_BRANCH || 'main' }}
           GH_FILE_PATH: ${{ secrets.GH_FILE_PATH || 'accounts.json' }}
           JP_PROXY_LIST: ${{ secrets.JP_PROXY_LIST }}
+          CRYPTO_SECRET: ${{ secrets.CRYPTO_SECRET }}
         run: xvfb-run --auto-servernum node test-login-workflow.js
