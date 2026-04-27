@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Finoana Auto Claim – Gestionnaire</title>
+    <title>Dashboard – Finoana Auto Claim</title>
     <style>
         :root {
             --bg: #f5f7fa;
@@ -114,11 +114,7 @@
             flex-wrap: wrap;
             flex: 1;
         }
-        .account-email {
-            font-weight: 600;
-            font-size: 0.9rem;
-            min-width: 150px;
-        }
+        .account-email { font-weight: 600; font-size: 0.9rem; min-width: 150px; }
         .account-site {
             color: var(--text-secondary);
             font-size: 0.8rem;
@@ -217,19 +213,23 @@
 <body>
     <header class="header">
         <h1>⚙️ Finoana Auto Claim</h1>
-        <button class="btn btn-primary" id="btnAddAccount">➕ Ajouter un compte</button>
+        <div style="display:flex; gap:8px;">
+            <button class="btn btn-primary" id="btnAddAccount">➕ Ajouter un compte</button>
+            <button class="btn btn-outline" id="logoutBtn">🚪 Déconnexion</button>
+        </div>
     </header>
 
     <div class="container">
         <div class="card">
-            <h2>📋 Comptes configurés</h2>
+            <h2>📋 Mes comptes</h2>
             <div id="accountsContainer" class="accounts-list"></div>
             <div style="text-align:center; margin-top:10px;">
-                <button class="btn btn-outline" id="refreshBtn">🔄 Rafraîchir la liste</button>
+                <button class="btn btn-outline" id="refreshBtn">🔄 Rafraîchir</button>
             </div>
         </div>
     </div>
 
+    <!-- Modale Ajout / Modification -->
     <div class="modal-overlay" id="modalOverlay">
         <div class="modal">
             <h3 id="modalTitle">➕ Nouveau compte</h3>
@@ -267,18 +267,44 @@
 
     <div class="toast" id="toast"></div>
 
+    <!-- Bibliothèque Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
         (function() {
+            // --- Authentification et isolation utilisateur ---
+            const token = localStorage.getItem('auth_token');
+            if (!token) {
+                window.location.href = '/index.html';
+                return;
+            }
+
+            const supabaseUrl = 'https://xwmituhhszailaaxposg.supabase.co';
+            const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3bWl0dWhoc3phaWxhYXhwb3NnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMjQ4MzQsImV4cCI6MjA5MjgwMDgzNH0.-LWoiKQVvgAhkkG1fF5067V-1ckA2aQ4UaUxfS95ukE';
+            const supabase = supabase.createClient(supabaseUrl, supabaseAnonKey);
+
+            let currentUserId = null;
+
+            async function getUserId() {
+                const { data: { user }, error } = await supabase.auth.getUser(token);
+                if (error || !user) {
+                    localStorage.removeItem('auth_token');
+                    window.location.href = '/index.html';
+                    return null;
+                }
+                return user.id;
+            }
+
+            // --- Configuration GitHub ---
             const GH_USERNAME = 'hasiniainahasina1-art';
             const GH_REPO = 'tronpick-faucet';
             const LOGIN_WORKFLOW_ID = 'test-account.yml';
             const LOGOUT_WORKFLOW_ID = 'logout.yml';
             const BRANCH = 'main';
-            const FILE_PATH = 'accounts.json';
+            const BASE_FILE_PATH = 'accounts.json'; // sera remplacé dynamiquement
 
-            // ✅ Appel via /api/data (masque l'utilisation de GitHub)
+            // --- Proxy API /api/data avec userId ---
             async function githubApi(method, path, body = null) {
-                const url = `/api/data?path=${encodeURIComponent(path)}`;
+                const url = `/api/data?path=${encodeURIComponent(path)}&userId=${currentUserId}`;
                 const options = { method, headers: { 'Content-Type': 'application/json' } };
                 if (body) options.body = JSON.stringify(body);
                 const response = await fetch(url, options);
@@ -286,7 +312,7 @@
                 const data = await response.json();
                 if (!response.ok) {
                     let errorMsg = `HTTP ${response.status}`;
-                    if (response.status === 401) errorMsg = 'Token invalide – contactez l’administrateur';
+                    if (response.status === 401) errorMsg = 'Token invalide';
                     else if (response.status === 403) errorMsg = 'Permission refusée';
                     else if (response.status === 404) errorMsg = 'Fichier introuvable';
                     else if (data.message) errorMsg = data.message;
@@ -296,7 +322,7 @@
             }
 
             async function loadAccounts() {
-                const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/${FILE_PATH}`;
+                const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/${BASE_FILE_PATH}`;
                 try {
                     const data = await githubApi('GET', apiPath);
                     const content = atob(data.content);
@@ -308,7 +334,7 @@
             }
 
             async function saveAccounts(accounts) {
-                const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/${FILE_PATH}`;
+                const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/${BASE_FILE_PATH}`;
                 let sha = null;
                 try {
                     const data = await githubApi('GET', apiPath);
@@ -326,6 +352,7 @@
                 await githubApi('POST', apiPath, payload);
             }
 
+            // --- Interface ---
             const modal = document.getElementById('modalOverlay');
             const btnAdd = document.getElementById('btnAddAccount');
             const btnCancel = document.getElementById('btnCancel');
@@ -338,6 +365,7 @@
             const modalTitle = document.getElementById('modalTitle');
             const refreshBtn = document.getElementById('refreshBtn');
             const toast = document.getElementById('toast');
+            const logoutBtn = document.getElementById('logoutBtn');
 
             let currentAccounts = [];
             let countdownIntervals = [];
@@ -387,23 +415,24 @@
                 return (mins || 0) + (secs || 0) / 60;
             }
 
+            function showLoader(accountElement) {
+                const info = accountElement.querySelector('.account-info');
+                if (info && !info.querySelector('.spinner')) {
+                    const spinner = document.createElement('span');
+                    spinner.className = 'spinner';
+                    info.prepend(spinner);
+                }
+            }
+
+            function hideLoader(accountElement) {
+                const spinner = accountElement.querySelector('.spinner');
+                if (spinner) spinner.remove();
+            }
+
             async function refreshAccounts() {
                 try {
-                    const previousAccounts = JSON.parse(JSON.stringify(currentAccounts));
                     currentAccounts = await loadAccounts();
                     renderAccounts();
-
-                    for (const acc of currentAccounts) {
-                        if (acc.claimResult) {
-                            const oldAcc = previousAccounts.find(a => a.email === acc.email && a.platform === acc.platform);
-                            if (!oldAcc || oldAcc.claimResult !== acc.claimResult) {
-                                const type = acc.claimResult.startsWith('✅') ? 'success' : 'error';
-                                showToast(`${acc.email} : ${acc.claimResult}`, type);
-                                acc.claimResult = null;
-                                await saveAccounts(currentAccounts);
-                            }
-                        }
-                    }
                 } catch (e) {
                     showToast(`Erreur chargement: ${e.message}`, 'error');
                 }
@@ -461,6 +490,7 @@
                     countdownIntervals.push(interval);
                 });
 
+                // Suppression
                 document.querySelectorAll('.btn-delete').forEach(btn => {
                     btn.addEventListener('click', async (e) => {
                         const item = btn.closest('.account-item');
@@ -482,4 +512,108 @@
                             for (let attempt = 0; attempt < 12; attempt++) {
                                 await new Promise(r => setTimeout(r, 10000));
                                 currentAccounts = await loadAccounts();
-                                if (!currentAccounts.some(a => a.email === acc.email && a.platform === acc.platform)
+                                if (!currentAccounts.some(a => a.email === acc.email && a.platform === acc.platform)) {
+                                    isDeleted = true;
+                                    break;
+                                }
+                            }
+                            if (isDeleted) {
+                                showToast(`✅ Compte ${acc.email} supprimé.`, 'success');
+                            } else {
+                                showToast(`⚠️ Le compte existe toujours après 2 min.`, 'error');
+                            }
+                        } catch (err) {
+                            showToast(`❌ Erreur: ${err.message}`, 'error');
+                        } finally {
+                            hideLoader(item);
+                            btn.disabled = false;
+                            await refreshAccounts();
+                        }
+                    });
+                });
+            }
+
+            // Formulaire d'ajout / modification
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const email = emailInput.value.trim().toLowerCase();
+                const password = passwordInput.value;
+                const platform = platformInput.value;
+                const timerStr = timerInput.value.trim();
+                const timerValue = timeStrToMinutes(timerStr);
+                const proxyIndex = currentAccounts.length % 2;
+
+                const idx = parseInt(editIndex.value);
+                if (idx >= 0) {
+                    currentAccounts[idx].email = email;
+                    currentAccounts[idx].password = password;
+                    currentAccounts[idx].platform = platform;
+                    currentAccounts[idx].timer = timerValue;
+                    await saveAccounts(currentAccounts);
+                    closeModal();
+                    await refreshAccounts();
+                    showToast('✅ Compte mis à jour.', 'success');
+                } else {
+                    if (currentAccounts.some(a => a.email === email && a.platform === platform && a.cookiesStatus !== 'failed')) {
+                        showToast('❌ Ce compte existe déjà.', 'error');
+                        return;
+                    }
+                    closeModal();
+                    showToast(`⏳ Ajout de ${email} en cours...`, '');
+                    try {
+                        await triggerWorkflow(LOGIN_WORKFLOW_ID, {
+                            email, password, platform,
+                            proxyIndex: String(proxyIndex),
+                            initialTimer: timerStr,
+                            action: 'login'
+                        });
+                        let attempts = 0;
+                        const checkInterval = setInterval(async () => {
+                            try {
+                                currentAccounts = await loadAccounts();
+                                const found = currentAccounts.find(a => a.email === email && a.platform === platform);
+                                if (found) {
+                                    clearInterval(checkInterval);
+                                    if (found.cookies && found.cookies.length > 0 && found.cookiesStatus === 'valid') {
+                                        showToast(`✅ Compte ${email} ajouté.`, 'success');
+                                    } else if (found.cookiesStatus === 'failed') {
+                                        showToast(`❌ ${found.errorMessage || 'Identifiants incorrects'}`, 'error');
+                                        const filtered = currentAccounts.filter(a => !(a.email === email && a.platform === platform));
+                                        await saveAccounts(filtered);
+                                    }
+                                    await refreshAccounts();
+                                }
+                                if (attempts++ > 24) {
+                                    clearInterval(checkInterval);
+                                    showToast(`❌ Échec de l'ajout (timeout).`, 'error');
+                                    await refreshAccounts();
+                                }
+                            } catch {
+                                clearInterval(checkInterval);
+                            }
+                        }, 5000);
+                    } catch (err) {
+                        showToast(`❌ Erreur: ${err.message}`, 'error');
+                    }
+                }
+            });
+
+            // Déconnexion
+            logoutBtn.addEventListener('click', () => {
+                localStorage.removeItem('auth_token');
+                window.location.href = '/index.html';
+            });
+
+            // Initialisation
+            (async function init() {
+                currentUserId = await getUserId();
+                if (!currentUserId) return;
+
+                await refreshAccounts();
+                refreshBtn.addEventListener('click', refreshAccounts);
+                setInterval(refreshAccounts, 30000);
+            })();
+        })();
+    </script>
+</body>
+</html>
