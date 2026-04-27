@@ -1,11 +1,11 @@
 [
   {
     "email": "test@example.com",
-    "password": "de248cf511768dff1fe02728e719d5fc:d401f0e11399f18ab7b2631c366e8a8d",
+    "password": "a930c9090a8e2ea15199f3b95f45cf53:c39dd63bf853624e3a339fedd4ec2502",
     "platform": "tronpick",
     "proxyIndex": 0,
     "enabled": false,
-    "cookies": "6b80a3d1cfe2fd7fee2359607b333576:97161f1bd232ee7895046d0617fb75ab",
+    "cookies": "c2505c472abf218e0d8ac58cce7475d6:eb9a7dec2780c7cec1e44f3ce83b265b",
     "cookiesStatus": "failed",
     "errorMessage": "Échec connexion",
     "lastClaim": 0,
