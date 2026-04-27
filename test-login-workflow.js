@@ -160,6 +160,24 @@ async function performLogin(page, email, password) {
     }
 }
 
+// --- Vérification globale atomique ---
+async function isAccountAlreadyTaken(email, platform, octokit) {
+    const GLOBAL_FILE = 'global_accounts.json';
+    try {
+        const res = await octokit.repos.getContent({
+            owner: GH_USERNAME,
+            repo: GH_REPO,
+            path: GLOBAL_FILE,
+            ref: GH_BRANCH
+        });
+        const entries = JSON.parse(Buffer.from(res.data.content, 'base64').toString('utf8'));
+        return entries.some(e => e.email === email && e.platform === platform);
+    } catch (e) {
+        // si le fichier n'existe pas encore, le compte est libre
+        return false;
+    }
+}
+
 async function addToGlobalList(email, platform, normalizedEmail) {
     if (!GH_TOKEN || !GH_USERNAME || !GH_REPO) {
         console.warn('⚠️ Impossible d\'ajouter à la liste globale (variables manquantes)');
@@ -234,6 +252,7 @@ async function run() {
             await performLogin(page, email, password);
         } catch (err) {
             console.error(`❌ Échec login : ${err.message}`);
+            // Sauvegarde de l'échec dans le fichier utilisateur (inchangé)
             const octokit = new Octokit({ auth: GH_TOKEN });
             let accounts = [];
             try {
@@ -283,13 +302,22 @@ async function run() {
 
         if (freshCookies.length > 0) {
             const octokit = new Octokit({ auth: GH_TOKEN });
+            const normalizedEmail = email.trim().toLowerCase();
+
+            // 🔒 Vérification globale AVANT de modifier le fichier utilisateur
+            const alreadyTaken = await isAccountAlreadyTaken(email, platform, octokit);
+            if (alreadyTaken) {
+                console.error(`❌ Le compte ${normalizedEmail} (${platform}) est déjà utilisé globalement. Annulation.`);
+                // On ne sauvegarde rien dans le fichier utilisateur
+                process.exit(1);
+            }
+
             let accounts = [];
             try {
                 const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: USER_FILE, ref: GH_BRANCH });
                 accounts = JSON.parse(Buffer.from(res.data.content, 'base64').toString());
             } catch (e) {}
             const timerValue = timeStrToMinutes(initialTimerStr);
-            const normalizedEmail = email.trim().toLowerCase();
             const existingIndex = accounts.findIndex(a => a.email.toLowerCase() === normalizedEmail && a.platform === platform);
             const newAccount = {
                 email: normalizedEmail,
@@ -322,7 +350,7 @@ async function run() {
             });
             console.log(`✅ Compte ${normalizedEmail} enregistré avec succès (timer initial = ${initialTimerStr})`);
 
-            // Enregistrement dans la liste globale
+            // Enregistrement dans la liste globale (après succès)
             await addToGlobalList(email, platform, normalizedEmail);
 
             process.exit(0);
