@@ -15,35 +15,63 @@
             --text: #1e293b;
             --text-light: #64748b;
             --border: #e2e8f0;
-            --radius: 16px;
-            --shadow: 0 10px 25px rgba(0,0,0,0.06);
+            --radius: 12px;
+            --shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+            --transition: 0.2s ease;
         }
+
         * { box-sizing: border-box; margin: 0; padding: 0; }
+
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: linear-gradient(135deg, #e0e7ff 0%, #f0f4f8 100%);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #eef2ff 0%, #f4f6f9 100%);
             color: var(--text);
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
             padding: 20px;
+            -webkit-font-smoothing: antialiased;
         }
+
         .login-container {
             background: var(--card-bg);
             border-radius: var(--radius);
             box-shadow: var(--shadow);
-            padding: 40px 32px;
+            padding: 40px 36px;
             width: 100%;
             max-width: 420px;
-            transition: all 0.3s ease;
+            transition: all var(--transition);
         }
-        .logo { text-align: center; margin-bottom: 30px; }
-        .logo-icon { font-size: 2.5rem; margin-bottom: 8px; color: var(--primary); }
-        .logo h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.3px; }
-        .logo p { font-size: 0.85rem; color: var(--text-light); margin-top: 4px; }
 
-        .form-group { margin-bottom: 20px; position: relative; }
+        .logo {
+            text-align: center;
+            margin-bottom: 28px;
+        }
+
+        .logo-icon {
+            font-size: 2.2rem;
+            margin-bottom: 6px;
+            color: var(--primary);
+        }
+
+        .logo h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+            color: var(--text);
+        }
+
+        .logo p {
+            font-size: 0.85rem;
+            color: var(--text-light);
+            margin-top: 4px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+            position: relative;
+        }
 
         /* Labels fixes par défaut (mode connexion) */
         .form-group label.fixed-label {
@@ -56,89 +84,205 @@
             color: var(--text);
         }
 
-        input {
+        /* Inputs */
+        .form-group input {
             width: 100%;
             padding: 14px 16px;
             border: 1.5px solid var(--border);
             border-radius: 10px;
             font-size: 0.95rem;
             background: #fafbfc;
-            transition: border 0.2s, box-shadow 0.2s;
+            transition: border var(--transition), box-shadow var(--transition), background var(--transition);
             outline: none;
+            color: var(--text);
         }
-        input:focus {
+
+        .form-group input:focus {
             border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(37,99,235,0.15);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
             background: #fff;
         }
 
-        /* Floating labels : uniquement si le conteneur a la classe 'floating' */
-        .floating .form-group { position: relative; }
+        .password-wrapper {
+            position: relative;
+        }
+
+        .toggle-password {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 1.2rem;
+            color: var(--text-light);
+            padding: 4px;
+            transition: color var(--transition);
+        }
+
+        .toggle-password:hover {
+            color: var(--primary);
+        }
+
+        /* ---------- Floating labels (uniquement quand le conteneur a la classe .floating) ---------- */
+        .floating .form-group {
+            margin-bottom: 24px;
+        }
+
         .floating .form-group label {
             position: absolute;
             left: 16px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: #fafbfc;
-            padding: 0 6px;
-            font-size: 0.85rem;
+            top: 16px;
+            font-size: 0.9rem;
             color: var(--text-light);
             pointer-events: none;
-            transition: all 0.15s ease;
+            transition: all 0.2s ease;
+            background: transparent;
+            padding: 0 4px;
+            transform-origin: left top;
         }
+
+        .floating .form-group input {
+            padding: 18px 16px 10px 16px; /* plus d'espace pour que le label ne cache pas */
+            background: #fafbfc;
+        }
+
+        .floating .form-group input:focus {
+            background: #fff;
+        }
+
+        /* Quand l'input a du contenu ou est focus, le label remonte */
         .floating .form-group input:focus + label,
         .floating .form-group input:not(:placeholder-shown) + label {
-            top: -8px;
-            transform: translateY(0);
+            top: -10px;
+            left: 12px;
             font-size: 0.7rem;
             font-weight: 600;
             color: var(--primary);
-            background: #ffffff;
-            padding: 0 8px;
+            background: #fff;
+            padding: 0 6px;
+            border-radius: 4px;
         }
 
-        .password-wrapper { position: relative; }
-        .toggle-password {
-            position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
-            background: none; border: none; cursor: pointer; font-size: 1.2rem;
+        /* En mode floating, le placeholder est transparent pour laisser la place au label */
+        .floating .form-group input::placeholder {
+            color: transparent;
+        }
+
+        .error-message,
+        .success-message {
+            font-size: 0.8rem;
+            margin-top: 6px;
+            display: none;
+            line-height: 1.4;
+        }
+
+        .error-message {
+            color: var(--danger);
+        }
+
+        .success-message {
+            color: var(--success);
+            font-weight: 500;
+        }
+
+        .visible {
+            display: block;
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 14px;
+            border-radius: 10px;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 1rem;
+            background: var(--primary);
+            color: white;
+            transition: background var(--transition), transform var(--transition);
+            letter-spacing: 0.3px;
+            margin-top: 12px;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .btn-primary:disabled {
+            background: #94a3b8;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .toggle-link {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.9rem;
             color: var(--text-light);
         }
 
-        .error-message, .success-message {
-            font-size: 0.75rem; margin-top: 6px; display: none;
+        .toggle-link a {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 600;
         }
-        .error-message { color: var(--danger); }
-        .success-message { color: var(--success); }
-        .visible { display: block; }
 
-        .btn-primary {
-            width: 100%; padding: 14px; border-radius: 10px; border: none;
-            font-weight: 600; cursor: pointer; font-size: 1rem;
-            background: var(--primary); color: white;
-            transition: background 0.2s, transform 0.2s;
-            letter-spacing: 0.3px; margin-top: 8px;
+        .toggle-link a:hover {
+            text-decoration: underline;
         }
-        .btn-primary:hover { background: var(--primary-hover); transform: translateY(-1px); }
-        .btn-primary:active { transform: translateY(0); }
-        .btn-primary:disabled { background: #94a3b8; cursor: not-allowed; transform: none; }
 
-        .toggle-link { text-align: center; margin-top: 18px; font-size: 0.85rem; }
-        .toggle-link a { color: var(--primary); text-decoration: none; font-weight: 600; }
-        .toggle-link a:hover { text-decoration: underline; }
+        .forgot-password {
+            text-align: right;
+            margin-bottom: 6px;
+        }
 
-        .forgot-password { text-align: right; margin-bottom: 4px; }
-        .forgot-password a { font-size: 0.8rem; color: var(--primary); text-decoration: none; }
-        .forgot-password a:hover { text-decoration: underline; }
+        .forgot-password a {
+            font-size: 0.8rem;
+            color: var(--primary);
+            text-decoration: none;
+        }
+
+        .forgot-password a:hover {
+            text-decoration: underline;
+        }
 
         .spinner {
-            display: inline-block; width: 16px; height: 16px;
-            border: 2px solid rgba(255,255,255,0.3); border-top-color: white;
-            border-radius: 50%; animation: spin 0.6s linear infinite;
-            margin-right: 8px; vertical-align: middle;
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
         }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .version { text-align: center; margin-top: 24px; font-size: 0.7rem; color: var(--text-light); }
-        .hidden-field { display: none; }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .version {
+            text-align: center;
+            margin-top: 24px;
+            font-size: 0.7rem;
+            color: var(--text-light);
+        }
+
+        .hidden-field {
+            display: none;
+        }
+
+        .form-group input:-webkit-autofill {
+            -webkit-box-shadow: 0 0 0 30px white inset !important;
+        }
     </style>
 </head>
 <body>
@@ -150,17 +294,19 @@
         </div>
 
         <form id="authForm" novalidate>
-            <!-- Champ username (visible seulement en inscription) -->
+            <!-- Nom d'utilisateur (seulement inscription) -->
             <div class="form-group hidden-field" id="usernameGroup">
                 <label for="username">Nom d'utilisateur</label>
                 <input type="text" id="username" placeholder=" " autocomplete="username">
             </div>
 
+            <!-- Email -->
             <div class="form-group">
                 <label for="email">Adresse email</label>
                 <input type="email" id="email" placeholder="vous@exemple.com" required autocomplete="email">
             </div>
 
+            <!-- Mot de passe -->
             <div class="form-group">
                 <label for="password">Mot de passe</label>
                 <div class="password-wrapper">
@@ -172,6 +318,7 @@
                 </div>
             </div>
 
+            <!-- Confirmation mot de passe (inscription) -->
             <div class="form-group hidden-field" id="confirmPasswordGroup">
                 <label for="confirmPassword">Confirmer le mot de passe</label>
                 <input type="password" id="confirmPassword" placeholder=" " required autocomplete="new-password">
@@ -233,7 +380,7 @@
                     toggleAuthLink.textContent = 'Créer un compte';
                     usernameGroup.classList.add('hidden-field');
                     confirmPasswordGroup.classList.add('hidden-field');
-                    container.classList.remove('floating');  // désactive les floating labels
+                    container.classList.remove('floating');
                 } else {
                     formDescription.textContent = 'Créez votre compte';
                     authBtnText.textContent = 'Créer un compte';
@@ -241,7 +388,7 @@
                     toggleAuthLink.textContent = 'Se connecter';
                     usernameGroup.classList.remove('hidden-field');
                     confirmPasswordGroup.classList.remove('hidden-field');
-                    container.classList.add('floating');     // active les floating labels
+                    container.classList.add('floating');
                 }
             }
 
@@ -315,12 +462,10 @@
                         return;
                     }
 
-                    // Succès inscription
                     if (mode === 'signup') {
                         successMessage.textContent = data.message || 'Compte créé avec succès. Vous pouvez maintenant vous connecter.';
                         successMessage.classList.add('visible');
-                        setMode('login');   // repasse en mode connexion
-                        // vide les champs
+                        setMode('login');
                         usernameInput.value = '';
                         emailInput.value = '';
                         passwordInput.value = '';
@@ -328,7 +473,6 @@
                         return;
                     }
 
-                    // Succès connexion
                     localStorage.setItem('auth_token', data.token);
                     window.location.href = '/dashboard.html';
                 } catch (err) {
@@ -345,7 +489,6 @@
                 apiError.classList.add('visible');
             });
 
-            // Redirection si déjà connecté
             const existingToken = localStorage.getItem('auth_token');
             if (existingToken) {
                 window.location.href = '/dashboard.html';
