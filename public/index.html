@@ -19,9 +19,7 @@
             --shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
             --transition: 0.2s ease;
         }
-
         * { box-sizing: border-box; margin: 0; padding: 0; }
-
         body {
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
             background: linear-gradient(135deg, #eef2ff 0%, #f4f6f9 100%);
@@ -33,7 +31,6 @@
             padding: 20px;
             -webkit-font-smoothing: antialiased;
         }
-
         .login-container {
             background: var(--card-bg);
             border-radius: var(--radius);
@@ -42,39 +39,52 @@
             width: 100%;
             max-width: 420px;
             transition: all var(--transition);
+            position: relative;
+            overflow: hidden;
         }
-
         .logo {
             text-align: center;
             margin-bottom: 28px;
         }
+        .logo-icon { font-size: 2.2rem; margin-bottom: 6px; color: var(--primary); }
+        .logo h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.3px; color: var(--text); }
+        .logo p { font-size: 0.85rem; color: var(--text-light); margin-top: 4px; }
 
-        .logo-icon {
-            font-size: 2.2rem;
-            margin-bottom: 6px;
-            color: var(--primary);
+        /* Panneaux coulissants */
+        .panel {
+            transition: transform 0.4s ease, opacity 0.3s ease;
+            width: 100%;
         }
-
-        .logo h1 {
-            font-size: 1.5rem;
-            font-weight: 700;
-            letter-spacing: -0.3px;
-            color: var(--text);
+        .panel.login-panel {
+            transform: translateX(0);
+            opacity: 1;
         }
-
-        .logo p {
-            font-size: 0.85rem;
-            color: var(--text-light);
-            margin-top: 4px;
+        .panel.signup-panel {
+            position: absolute;
+            top: 120px; /* laisser la place au logo */
+            left: 36px;
+            right: 36px;
+            transform: translateX(120%);
+            opacity: 0;
+            pointer-events: none;
         }
-
-        .form-group {
-            margin-bottom: 20px;
+        .container.signup-active .login-panel {
+            transform: translateX(-120%);
+            opacity: 0;
+            pointer-events: none;
+        }
+        .container.signup-active .signup-panel {
+            transform: translateX(0);
+            opacity: 1;
+            pointer-events: auto;
             position: relative;
+            top: 0;
         }
 
-        /* Labels fixes par défaut (mode connexion) */
-        .form-group label.fixed-label {
+        .form-group { margin-bottom: 20px; position: relative; }
+
+        /* Connexion : labels fixes */
+        .login-panel .form-group label {
             display: block;
             margin-bottom: 6px;
             font-weight: 600;
@@ -83,9 +93,7 @@
             letter-spacing: 0.5px;
             color: var(--text);
         }
-
-        /* Inputs */
-        .form-group input {
+        .login-panel .form-group input {
             width: 100%;
             padding: 14px 16px;
             border: 1.5px solid var(--border);
@@ -96,17 +104,60 @@
             outline: none;
             color: var(--text);
         }
-
-        .form-group input:focus {
+        .login-panel .form-group input:focus {
             border-color: var(--primary);
             box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
             background: #fff;
         }
 
-        .password-wrapper {
-            position: relative;
+        /* Inscription : labels flottants propres */
+        .signup-panel .form-group {
+            margin-bottom: 24px;
+        }
+        .signup-panel .form-group label {
+            position: absolute;
+            left: 16px;
+            top: 16px;
+            font-size: 0.9rem;
+            color: var(--text-light);
+            pointer-events: none;
+            transition: all 0.2s ease;
+            background: transparent;
+            padding: 0 4px;
+            transform-origin: left top;
+        }
+        .signup-panel .form-group input {
+            width: 100%;
+            padding: 18px 16px 10px 16px;
+            border: 1.5px solid var(--border);
+            border-radius: 10px;
+            font-size: 0.95rem;
+            background: #fafbfc;
+            transition: border var(--transition), box-shadow var(--transition), background var(--transition);
+            outline: none;
+            color: var(--text);
+        }
+        .signup-panel .form-group input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+            background: #fff;
+        }
+        .signup-panel .form-group input:focus + label,
+        .signup-panel .form-group input:not(:placeholder-shown) + label {
+            top: -10px;
+            left: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--primary);
+            background: #fff;
+            padding: 0 6px;
+            border-radius: 4px;
+        }
+        .signup-panel .form-group input::placeholder {
+            color: transparent;
         }
 
+        .password-wrapper { position: relative; }
         .toggle-password {
             position: absolute;
             right: 12px;
@@ -120,76 +171,17 @@
             padding: 4px;
             transition: color var(--transition);
         }
+        .toggle-password:hover { color: var(--primary); }
 
-        .toggle-password:hover {
-            color: var(--primary);
-        }
-
-        /* ---------- Floating labels (uniquement quand le conteneur a la classe .floating) ---------- */
-        .floating .form-group {
-            margin-bottom: 24px;
-        }
-
-        .floating .form-group label {
-            position: absolute;
-            left: 16px;
-            top: 16px;
-            font-size: 0.9rem;
-            color: var(--text-light);
-            pointer-events: none;
-            transition: all 0.2s ease;
-            background: transparent;
-            padding: 0 4px;
-            transform-origin: left top;
-        }
-
-        .floating .form-group input {
-            padding: 18px 16px 10px 16px; /* plus d'espace pour que le label ne cache pas */
-            background: #fafbfc;
-        }
-
-        .floating .form-group input:focus {
-            background: #fff;
-        }
-
-        /* Quand l'input a du contenu ou est focus, le label remonte */
-        .floating .form-group input:focus + label,
-        .floating .form-group input:not(:placeholder-shown) + label {
-            top: -10px;
-            left: 12px;
-            font-size: 0.7rem;
-            font-weight: 600;
-            color: var(--primary);
-            background: #fff;
-            padding: 0 6px;
-            border-radius: 4px;
-        }
-
-        /* En mode floating, le placeholder est transparent pour laisser la place au label */
-        .floating .form-group input::placeholder {
-            color: transparent;
-        }
-
-        .error-message,
-        .success-message {
+        .error-message, .success-message {
             font-size: 0.8rem;
             margin-top: 6px;
             display: none;
             line-height: 1.4;
         }
-
-        .error-message {
-            color: var(--danger);
-        }
-
-        .success-message {
-            color: var(--success);
-            font-weight: 500;
-        }
-
-        .visible {
-            display: block;
-        }
+        .error-message { color: var(--danger); }
+        .success-message { color: var(--success); font-weight: 500; }
+        .visible { display: block; }
 
         .btn-primary {
             width: 100%;
@@ -205,53 +197,17 @@
             letter-spacing: 0.3px;
             margin-top: 12px;
         }
+        .btn-primary:hover { background: var(--primary-hover); transform: translateY(-1px); }
+        .btn-primary:active { transform: translateY(0); }
+        .btn-primary:disabled { background: #94a3b8; cursor: not-allowed; transform: none; }
 
-        .btn-primary:hover {
-            background: var(--primary-hover);
-            transform: translateY(-1px);
-        }
+        .toggle-link { text-align: center; margin-top: 20px; font-size: 0.9rem; color: var(--text-light); }
+        .toggle-link a { color: var(--primary); text-decoration: none; font-weight: 600; }
+        .toggle-link a:hover { text-decoration: underline; }
 
-        .btn-primary:active {
-            transform: translateY(0);
-        }
-
-        .btn-primary:disabled {
-            background: #94a3b8;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .toggle-link {
-            text-align: center;
-            margin-top: 20px;
-            font-size: 0.9rem;
-            color: var(--text-light);
-        }
-
-        .toggle-link a {
-            color: var(--primary);
-            text-decoration: none;
-            font-weight: 600;
-        }
-
-        .toggle-link a:hover {
-            text-decoration: underline;
-        }
-
-        .forgot-password {
-            text-align: right;
-            margin-bottom: 6px;
-        }
-
-        .forgot-password a {
-            font-size: 0.8rem;
-            color: var(--primary);
-            text-decoration: none;
-        }
-
-        .forgot-password a:hover {
-            text-decoration: underline;
-        }
+        .forgot-password { text-align: right; margin-bottom: 6px; }
+        .forgot-password a { font-size: 0.8rem; color: var(--primary); text-decoration: none; }
+        .forgot-password a:hover { text-decoration: underline; }
 
         .spinner {
             display: inline-block;
@@ -264,78 +220,78 @@
             margin-right: 8px;
             vertical-align: middle;
         }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        .version {
-            text-align: center;
-            margin-top: 24px;
-            font-size: 0.7rem;
-            color: var(--text-light);
-        }
-
-        .hidden-field {
-            display: none;
-        }
-
-        .form-group input:-webkit-autofill {
-            -webkit-box-shadow: 0 0 0 30px white inset !important;
-        }
+        .version { text-align: center; margin-top: 24px; font-size: 0.7rem; color: var(--text-light); }
+        .hidden { display: none; }
     </style>
 </head>
 <body>
-    <div class="login-container" id="mainContainer">
+    <div class="login-container container" id="mainContainer">
         <div class="logo">
             <div class="logo-icon">⚙️</div>
             <h1>Finoana Claim</h1>
             <p id="formDescription">Connectez-vous à votre compte</p>
         </div>
 
-        <form id="authForm" novalidate>
-            <!-- Nom d'utilisateur (seulement inscription) -->
-            <div class="form-group hidden-field" id="usernameGroup">
-                <label for="username">Nom d'utilisateur</label>
-                <input type="text" id="username" placeholder=" " autocomplete="username">
-            </div>
-
-            <!-- Email -->
-            <div class="form-group">
-                <label for="email">Adresse email</label>
-                <input type="email" id="email" placeholder="vous@exemple.com" required autocomplete="email">
-            </div>
-
-            <!-- Mot de passe -->
-            <div class="form-group">
-                <label for="password">Mot de passe</label>
-                <div class="password-wrapper">
-                    <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password">
-                    <button type="button" class="toggle-password" id="togglePassword">👁️</button>
+        <!-- Panneau Connexion -->
+        <div class="panel login-panel" id="loginPanel">
+            <form id="loginForm" novalidate>
+                <div class="form-group">
+                    <label for="loginEmail">Adresse email</label>
+                    <input type="email" id="loginEmail" placeholder="vous@exemple.com" required autocomplete="email">
                 </div>
-                <div class="forgot-password">
-                    <a href="#" id="forgotPasswordLink">Mot de passe oublié ?</a>
+                <div class="form-group">
+                    <label for="loginPassword">Mot de passe</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="loginPassword" placeholder="••••••••" required autocomplete="current-password">
+                        <button type="button" class="toggle-password" data-target="loginPassword">👁️</button>
+                    </div>
+                    <div class="forgot-password">
+                        <a href="#" id="forgotPasswordLink">Mot de passe oublié ?</a>
+                    </div>
                 </div>
-            </div>
+                <div class="error-message" id="loginError"></div>
+                <button type="submit" class="btn-primary" id="loginBtn">
+                    <span id="loginBtnText">Se connecter</span>
+                </button>
+            </form>
+        </div>
 
-            <!-- Confirmation mot de passe (inscription) -->
-            <div class="form-group hidden-field" id="confirmPasswordGroup">
-                <label for="confirmPassword">Confirmer le mot de passe</label>
-                <input type="password" id="confirmPassword" placeholder=" " required autocomplete="new-password">
-            </div>
+        <!-- Panneau Inscription -->
+        <div class="panel signup-panel" id="signupPanel">
+            <form id="signupForm" novalidate>
+                <div class="form-group">
+                    <label for="signupUsername">Nom d'utilisateur</label>
+                    <input type="text" id="signupUsername" placeholder=" " required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="signupEmail">Adresse email</label>
+                    <input type="email" id="signupEmail" placeholder=" " required autocomplete="email">
+                </div>
+                <div class="form-group">
+                    <label for="signupPassword">Mot de passe</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="signupPassword" placeholder=" " required autocomplete="new-password">
+                        <button type="button" class="toggle-password" data-target="signupPassword">👁️</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="signupConfirmPassword">Confirmer le mot de passe</label>
+                    <input type="password" id="signupConfirmPassword" placeholder=" " required autocomplete="new-password">
+                </div>
+                <div class="error-message" id="signupError"></div>
+                <div class="success-message" id="signupSuccess"></div>
+                <button type="submit" class="btn-primary" id="signupBtn">
+                    <span id="signupBtnText">Créer un compte</span>
+                </button>
+            </form>
+        </div>
 
-            <div class="success-message" id="successMessage"></div>
-            <div class="error-message" id="apiError"></div>
-
-            <button type="submit" class="btn-primary" id="authBtn">
-                <span id="authBtnText">Se connecter</span>
-            </button>
-
-            <div class="toggle-link">
-                <span id="toggleText">Pas encore de compte ?</span>
-                <a href="#" id="toggleAuth">Créer un compte</a>
-            </div>
-        </form>
+        <div class="toggle-link">
+            <span id="toggleText">Pas encore de compte ?</span>
+            <a href="#" id="toggleAuth">Créer un compte</a>
+        </div>
 
         <div class="version">v2.0 · Interface sécurisée</div>
     </div>
@@ -345,150 +301,195 @@
             let mode = 'login';
 
             const container = document.getElementById('mainContainer');
-            const usernameGroup = document.getElementById('usernameGroup');
-            const usernameInput = document.getElementById('username');
-            const emailInput = document.getElementById('email');
-            const passwordInput = document.getElementById('password');
-            const confirmPasswordGroup = document.getElementById('confirmPasswordGroup');
-            const confirmPasswordInput = document.getElementById('confirmPassword');
-            const toggleBtn = document.getElementById('togglePassword');
-            const authBtn = document.getElementById('authBtn');
-            const authBtnText = document.getElementById('authBtnText');
+            const loginPanel = document.getElementById('loginPanel');
+            const signupPanel = document.getElementById('signupPanel');
+            const loginForm = document.getElementById('loginForm');
+            const signupForm = document.getElementById('signupForm');
+            const loginEmail = document.getElementById('loginEmail');
+            const loginPassword = document.getElementById('loginPassword');
+            const signupUsername = document.getElementById('signupUsername');
+            const signupEmail = document.getElementById('signupEmail');
+            const signupPassword = document.getElementById('signupPassword');
+            const signupConfirmPassword = document.getElementById('signupConfirmPassword');
+            const loginError = document.getElementById('loginError');
+            const signupError = document.getElementById('signupError');
+            const signupSuccess = document.getElementById('signupSuccess');
+            const loginBtn = document.getElementById('loginBtn');
+            const loginBtnText = document.getElementById('loginBtnText');
+            const signupBtn = document.getElementById('signupBtn');
+            const signupBtnText = document.getElementById('signupBtnText');
             const toggleAuthLink = document.getElementById('toggleAuth');
             const toggleText = document.getElementById('toggleText');
             const formDescription = document.getElementById('formDescription');
-            const apiError = document.getElementById('apiError');
-            const successMessage = document.getElementById('successMessage');
             const forgotPasswordLink = document.getElementById('forgotPasswordLink');
 
-            // Afficher/cacher le mot de passe
-            toggleBtn.addEventListener('click', () => {
-                const isPass = passwordInput.type === 'password';
-                passwordInput.type = isPass ? 'text' : 'password';
-                toggleBtn.textContent = isPass ? '🙈' : '👁️';
+            // Gestion des yeux pour afficher/masquer le mot de passe
+            document.querySelectorAll('.toggle-password').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const targetId = btn.dataset.target;
+                    const input = document.getElementById(targetId);
+                    const isPass = input.type === 'password';
+                    input.type = isPass ? 'text' : 'password';
+                    btn.textContent = isPass ? '🙈' : '👁️';
+                });
             });
 
-            function setMode(newMode) {
+            function switchMode(newMode) {
                 mode = newMode;
-                successMessage.classList.remove('visible');
-                apiError.classList.remove('visible');
+                loginError.classList.remove('visible');
+                signupError.classList.remove('visible');
+                signupSuccess.classList.remove('visible');
 
                 if (mode === 'login') {
+                    container.classList.remove('signup-active');
                     formDescription.textContent = 'Connectez-vous à votre compte';
-                    authBtnText.textContent = 'Se connecter';
                     toggleText.textContent = 'Pas encore de compte ?';
                     toggleAuthLink.textContent = 'Créer un compte';
-                    usernameGroup.classList.add('hidden-field');
-                    confirmPasswordGroup.classList.add('hidden-field');
-                    container.classList.remove('floating');
                 } else {
+                    container.classList.add('signup-active');
                     formDescription.textContent = 'Créez votre compte';
-                    authBtnText.textContent = 'Créer un compte';
                     toggleText.textContent = 'Déjà un compte ?';
                     toggleAuthLink.textContent = 'Se connecter';
-                    usernameGroup.classList.remove('hidden-field');
-                    confirmPasswordGroup.classList.remove('hidden-field');
-                    container.classList.add('floating');
                 }
             }
 
             toggleAuthLink.addEventListener('click', (e) => {
                 e.preventDefault();
-                setMode(mode === 'login' ? 'signup' : 'login');
+                switchMode(mode === 'login' ? 'signup' : 'login');
             });
 
             function isValidEmail(email) {
                 return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
             }
 
-            form.addEventListener('submit', async (e) => {
+            // Connexion
+            loginForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
-                apiError.classList.remove('visible');
-                successMessage.classList.remove('visible');
+                loginError.classList.remove('visible');
 
-                const email = emailInput.value.trim();
-                const password = passwordInput.value;
-                const confirmPassword = confirmPasswordInput.value;
-                const username = usernameInput.value.trim();
+                const email = loginEmail.value.trim();
+                const password = loginPassword.value;
 
                 if (!isValidEmail(email)) {
-                    apiError.textContent = 'Adresse email invalide.';
-                    apiError.classList.add('visible');
+                    loginError.textContent = 'Adresse email invalide.';
+                    loginError.classList.add('visible');
                     return;
                 }
                 if (password.length < 6) {
-                    apiError.textContent = 'Le mot de passe doit contenir au moins 6 caractères.';
-                    apiError.classList.add('visible');
+                    loginError.textContent = 'Le mot de passe doit contenir au moins 6 caractères.';
+                    loginError.classList.add('visible');
                     return;
                 }
 
-                if (mode === 'signup') {
-                    if (!username) {
-                        apiError.textContent = 'Le nom d\'utilisateur est requis.';
-                        apiError.classList.add('visible');
-                        return;
-                    }
-                    if (password !== confirmPassword) {
-                        apiError.textContent = 'Les mots de passe ne correspondent pas.';
-                        apiError.classList.add('visible');
-                        return;
-                    }
-                }
-
-                authBtn.disabled = true;
-                authBtnText.innerHTML = '<span class="spinner"></span> Patientez…';
+                loginBtn.disabled = true;
+                loginBtnText.innerHTML = '<span class="spinner"></span> Patientez…';
 
                 try {
                     const response = await fetch('/api/auth', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            email,
-                            password,
-                            confirmPassword: mode === 'signup' ? confirmPassword : undefined,
-                            username: mode === 'signup' ? username : undefined,
-                            mode
-                        })
+                        body: JSON.stringify({ email, password, mode: 'login' })
                     });
-
                     const data = await response.json();
 
-                    authBtn.disabled = false;
-                    authBtnText.textContent = mode === 'login' ? 'Se connecter' : 'Créer un compte';
-
                     if (!response.ok) {
-                        apiError.textContent = data.error || 'Erreur inconnue';
-                        apiError.classList.add('visible');
-                        return;
-                    }
-
-                    if (mode === 'signup') {
-                        successMessage.textContent = data.message || 'Compte créé avec succès. Vous pouvez maintenant vous connecter.';
-                        successMessage.classList.add('visible');
-                        setMode('login');
-                        usernameInput.value = '';
-                        emailInput.value = '';
-                        passwordInput.value = '';
-                        confirmPasswordInput.value = '';
+                        loginError.textContent = data.error || 'Identifiants incorrects';
+                        loginError.classList.add('visible');
+                        loginBtn.disabled = false;
+                        loginBtnText.textContent = 'Se connecter';
                         return;
                     }
 
                     localStorage.setItem('auth_token', data.token);
                     window.location.href = '/dashboard.html';
                 } catch (err) {
-                    apiError.textContent = 'Erreur réseau.';
-                    apiError.classList.add('visible');
-                    authBtn.disabled = false;
-                    authBtnText.textContent = mode === 'login' ? 'Se connecter' : 'Créer un compte';
+                    loginError.textContent = 'Erreur réseau.';
+                    loginError.classList.add('visible');
+                    loginBtn.disabled = false;
+                    loginBtnText.textContent = 'Se connecter';
                 }
             });
 
-            forgotPasswordLink.addEventListener('click', (e) => {
+            // Inscription
+            signupForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
-                apiError.textContent = 'Fonctionnalité à venir.';
-                apiError.classList.add('visible');
+                signupError.classList.remove('visible');
+                signupSuccess.classList.remove('visible');
+
+                const username = signupUsername.value.trim();
+                const email = signupEmail.value.trim();
+                const password = signupPassword.value;
+                const confirmPassword = signupConfirmPassword.value;
+
+                if (!username) {
+                    signupError.textContent = 'Le nom d\'utilisateur est requis.';
+                    signupError.classList.add('visible');
+                    return;
+                }
+                if (!isValidEmail(email)) {
+                    signupError.textContent = 'Adresse email invalide.';
+                    signupError.classList.add('visible');
+                    return;
+                }
+                if (password.length < 6) {
+                    signupError.textContent = 'Le mot de passe doit contenir au moins 6 caractères.';
+                    signupError.classList.add('visible');
+                    return;
+                }
+                if (password !== confirmPassword) {
+                    signupError.textContent = 'Les mots de passe ne correspondent pas.';
+                    signupError.classList.add('visible');
+                    return;
+                }
+
+                signupBtn.disabled = true;
+                signupBtnText.innerHTML = '<span class="spinner"></span> Patientez…';
+
+                try {
+                    const response = await fetch('/api/auth', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email, password, confirmPassword, username, mode: 'signup' })
+                    });
+                    const data = await response.json();
+
+                    if (!response.ok) {
+                        signupError.textContent = data.error || 'Erreur lors de l\'inscription';
+                        signupError.classList.add('visible');
+                        signupBtn.disabled = false;
+                        signupBtnText.textContent = 'Créer un compte';
+                        return;
+                    }
+
+                    signupSuccess.textContent = '✅ Compte créé avec succès ! Vous pouvez maintenant vous connecter.';
+                    signupSuccess.classList.add('visible');
+
+                    // Réinitialiser le formulaire d'inscription
+                    signupUsername.value = '';
+                    signupEmail.value = '';
+                    signupPassword.value = '';
+                    signupConfirmPassword.value = '';
+
+                    // Revenir à la connexion après 2 secondes
+                    setTimeout(() => {
+                        switchMode('login');
+                    }, 2000);
+                } catch (err) {
+                    signupError.textContent = 'Erreur réseau.';
+                    signupError.classList.add('visible');
+                } finally {
+                    signupBtn.disabled = false;
+                    signupBtnText.textContent = 'Créer un compte';
+                }
             });
 
+            // Mot de passe oublié
+            forgotPasswordLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                alert('Fonctionnalité à venir.');
+            });
+
+            // Redirection si déjà connecté
             const existingToken = localStorage.getItem('auth_token');
             if (existingToken) {
                 window.location.href = '/dashboard.html';
