@@ -55,13 +55,13 @@
             transition: transform 0.4s ease, opacity 0.3s ease;
             width: 100%;
         }
-        .panel.login-panel {
+        .login-panel {
             transform: translateX(0);
             opacity: 1;
         }
-        .panel.signup-panel {
+        .signup-panel {
             position: absolute;
-            top: 120px; /* laisser la place au logo */
+            top: 120px;
             left: 36px;
             right: 36px;
             transform: translateX(120%);
@@ -110,9 +110,9 @@
             background: #fff;
         }
 
-        /* Inscription : labels flottants propres */
+        /* Inscription : labels flottants améliorés */
         .signup-panel .form-group {
-            margin-bottom: 24px;
+            margin-bottom: 26px;
         }
         .signup-panel .form-group label {
             position: absolute;
@@ -125,6 +125,7 @@
             background: transparent;
             padding: 0 4px;
             transform-origin: left top;
+            z-index: 1;
         }
         .signup-panel .form-group input {
             width: 100%;
@@ -136,12 +137,15 @@
             transition: border var(--transition), box-shadow var(--transition), background var(--transition);
             outline: none;
             color: var(--text);
+            position: relative;
+            z-index: 0;
         }
         .signup-panel .form-group input:focus {
             border-color: var(--primary);
             box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
             background: #fff;
         }
+        /* Déplacement du label quand l'input est focus ou rempli */
         .signup-panel .form-group input:focus + label,
         .signup-panel .form-group input:not(:placeholder-shown) + label {
             top: -10px;
@@ -152,6 +156,7 @@
             background: #fff;
             padding: 0 6px;
             border-radius: 4px;
+            z-index: 2;
         }
         .signup-panel .form-group input::placeholder {
             color: transparent;
@@ -170,6 +175,7 @@
             color: var(--text-light);
             padding: 4px;
             transition: color var(--transition);
+            z-index: 2;
         }
         .toggle-password:hover { color: var(--primary); }
 
@@ -301,8 +307,6 @@
             let mode = 'login';
 
             const container = document.getElementById('mainContainer');
-            const loginPanel = document.getElementById('loginPanel');
-            const signupPanel = document.getElementById('signupPanel');
             const loginForm = document.getElementById('loginForm');
             const signupForm = document.getElementById('signupForm');
             const loginEmail = document.getElementById('loginEmail');
@@ -464,13 +468,11 @@
                     signupSuccess.textContent = '✅ Compte créé avec succès ! Vous pouvez maintenant vous connecter.';
                     signupSuccess.classList.add('visible');
 
-                    // Réinitialiser le formulaire d'inscription
                     signupUsername.value = '';
                     signupEmail.value = '';
                     signupPassword.value = '';
                     signupConfirmPassword.value = '';
 
-                    // Revenir à la connexion après 2 secondes
                     setTimeout(() => {
                         switchMode('login');
                     }, 2000);
@@ -483,13 +485,11 @@
                 }
             });
 
-            // Mot de passe oublié
             forgotPasswordLink.addEventListener('click', (e) => {
                 e.preventDefault();
                 alert('Fonctionnalité à venir.');
             });
 
-            // Redirection si déjà connecté
             const existingToken = localStorage.getItem('auth_token');
             if (existingToken) {
                 window.location.href = '/dashboard.html';
