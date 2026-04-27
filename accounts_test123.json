@@ -1,0 +1,14 @@
+[
+  {
+    "email": "test@example.com",
+    "password": "de248cf511768dff1fe02728e719d5fc:d401f0e11399f18ab7b2631c366e8a8d",
+    "platform": "tronpick",
+    "proxyIndex": 0,
+    "enabled": false,
+    "cookies": "6b80a3d1cfe2fd7fee2359607b333576:97161f1bd232ee7895046d0617fb75ab",
+    "cookiesStatus": "failed",
+    "errorMessage": "Échec connexion",
+    "lastClaim": 0,
+    "timer": 60
+  }
+]
