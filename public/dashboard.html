@@ -3,81 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Test Dispatch Workflow</title>
+    <title>Test Clic</title>
 </head>
 <body>
-    <h1>Test déclenchement workflow</h1>
-    <p>UserId : <span id="userIdSpan">...</span></p>
-    <button id="testDispatchBtn">🚀 Tester le dispatch</button>
-    <pre id="result" style="background:#f0f0f0; padding:10px; margin-top:10px;"></pre>
+    <h1>Test de clic</h1>
+    <button id="testBtn">🚀 Cliquez-moi</button>
+    <p id="result"></p>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
-        window.addEventListener('DOMContentLoaded', function() {
-            const testBtn = document.getElementById('testDispatchBtn');
-            const userIdSpan = document.getElementById('userIdSpan');
-            const resultPre = document.getElementById('result');
-
-            const SUPABASE_URL = 'https://xwmituhhszailaaxposg.supabase.co';
-            const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3bWl0dWhoc3phaWxhYXhwb3NnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMjQ4MzQsImV4cCI6MjA5MjgwMDgzNH0.-LWoiKQVvgAhkkG1fF5067V-1ckA2aQ4UaUxfS95ukE';
-            const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-            const token = localStorage.getItem('auth_token');
-            if (!token) {
-                resultPre.textContent = 'Non connecté. Redirection...';
-                window.location.href = '/index.html';
+        // Ce script n'utilise aucune bibliothèque externe, juste du JavaScript pur.
+        document.addEventListener('DOMContentLoaded', function() {
+            const btn = document.getElementById('testBtn');
+            const result = document.getElementById('result');
+            if (!btn) {
+                result.textContent = 'Erreur: bouton introuvable';
                 return;
             }
-
-            async function getUserId() {
-                const { data: { user }, error } = await supabase.auth.getUser(token);
-                if (error) throw error;
-                return user.id;
-            }
-
-            getUserId().then(uid => {
-                userIdSpan.textContent = uid;
-                window.currentUserId = uid;
-            }).catch(err => {
-                resultPre.textContent = 'Erreur auth : ' + err.message;
+            btn.addEventListener('click', function() {
+                result.textContent = 'Le bouton a été cliqué !';
+                alert('Clic détecté !');
             });
-
-            testBtn.addEventListener('click', async () => {
-                if (!window.currentUserId) {
-                    resultPre.textContent = 'UserId pas encore chargé.';
-                    return;
-                }
-                resultPre.textContent = 'Envoi du dispatch...';
-                try {
-                    const url = `/api/data?path=/repos/hasiniainahasina1-art/tronpick-faucet/actions/workflows/test-account.yml/dispatches&userId=${window.currentUserId}`;
-                    const payload = {
-                        ref: 'main',
-                        inputs: {
-                            email: 'test@test.com',
-                            password: 'test',
-                            platform: 'tronpick',
-                            proxyIndex: '0',
-                            initialTimer: '60:00',
-                            action: 'login',
-                            userId: window.currentUserId
-                        }
-                    };
-                    const res = await fetch(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-                    const status = res.status;
-                    if (status === 204) {
-                        resultPre.textContent = '✅ Succès (204 No Content)';
-                    } else {
-                        const text = await res.text();
-                        resultPre.textContent = `Erreur ${status} : ${text}`;
-                    }
-                } catch (e) {
-                    resultPre.textContent = 'Exception : ' + e.message;
-                }
-            });
+            result.textContent = 'Script chargé, prêt à cliquer.';
         });
     </script>
 </body>
