@@ -3,373 +3,81 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard – Finoana Auto Claim</title>
-    <style>
-        :root {
-            --bg: #f5f7fa; --card-bg: #ffffff; --primary: #2563eb; --primary-hover: #1d4ed8;
-            --success: #10b981; --danger: #ef4444; --text: #1e293b; --text-secondary: #64748b;
-            --border: #e2e8f0; --radius: 8px; --shadow: 0 2px 8px rgba(0,0,0,0.04);
-        }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); font-size: 0.85rem; line-height: 1.4; min-height: 100vh; }
-        .header { background: var(--card-bg); padding: 12px 24px; box-shadow: var(--shadow); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
-        .header h1 { font-size: 1.2rem; font-weight: 700; }
-        .btn { padding: 8px 16px; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 6px; transition: background 0.2s; white-space: nowrap; }
-        .btn-primary { background: var(--primary); color: white; }
-        .btn-primary:hover { background: var(--primary-hover); }
-        .btn-danger { background: var(--danger); color: white; }
-        .container { max-width: 800px; margin: 20px auto; padding: 0 16px; }
-        .card { background: var(--card-bg); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; margin-bottom: 20px; }
-        .accounts-list { display: flex; flex-direction: column; gap: 10px; }
-        .account-item { display: flex; align-items: center; justify-content: space-between; padding: 12px; background: #f8fafc; border-radius: 6px; border: 1px solid var(--border); }
-        .account-info { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; flex: 1; }
-        .account-email { font-weight: 600; }
-        .account-site { background: #e2e8f0; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; color: var(--text-secondary); }
-        .account-countdown { font-weight: 700; color: var(--primary); }
-        .account-countdown.expired { color: var(--danger); }
-        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); z-index: 1000; align-items: center; justify-content: center; }
-        .modal-overlay.active { display: flex; }
-        .modal { background: var(--card-bg); border-radius: var(--radius); padding: 24px; width: 90%; max-width: 420px; box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
-        .form-group { margin-bottom: 16px; }
-        .form-group label { display: block; margin-bottom: 4px; font-weight: 500; font-size: 0.9rem; }
-        .form-group input, .form-group select { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.9rem; }
-        .toast { position: fixed; bottom: 24px; right: 24px; background: var(--text); color: white; padding: 12px 20px; border-radius: 6px; font-weight: 500; z-index: 2000; opacity: 0; transform: translateX(80px); transition: all 0.3s ease; }
-        .toast.show { opacity: 1; transform: translateX(0); }
-        .toast.success { background: var(--success); }
-        .toast.error { background: var(--danger); }
-    </style>
+    <title>Test Dispatch Workflow</title>
 </head>
 <body>
-    <header class="header">
-        <h1>⚙️ Finoana Auto Claim</h1>
-        <div>
-            <button class="btn btn-primary" id="btnAddAccount">➕ Ajouter un compte</button>
-            <button class="btn btn-primary" id="logoutBtn" style="margin-left:8px;">🚪 Déconnexion</button>
-        </div>
-    </header>
-
-    <div class="container">
-        <div class="card">
-            <h2>📋 Mes comptes</h2>
-            <div id="accountsContainer" class="accounts-list"></div>
-            <div style="text-align:center; margin-top:16px;">
-                <button class="btn btn-primary" id="refreshBtn">🔄 Rafraîchir</button>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal-overlay" id="modalOverlay">
-        <div class="modal">
-            <h3 id="modalTitle">➕ Nouveau compte</h3>
-            <form id="accountForm">
-                <input type="hidden" id="editIndex" value="-1">
-                <div class="form-group"><label>Email</label><input type="email" id="email" required placeholder="exemple@mail.com"></div>
-                <div class="form-group"><label>Mot de passe</label><input type="password" id="password" required placeholder="••••••••"></div>
-                <div class="form-group"><label>Plateforme</label><select id="platform">
-                    <option value="tronpick">TronPick</option><option value="litepick">LitePick</option>
-                    <option value="dogepick">DogePick</option><option value="solpick">SolPick</option><option value="binpick">BinPick</option>
-                </select></div>
-                <div class="form-group"><label>Timer initial (mm:ss)</label><input type="text" id="initialTimer" placeholder="60:00" pattern="[0-9]{1,2}:[0-5][0-9]"></div>
-                <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
-                    <button type="button" class="btn btn-primary" id="btnCancel">Annuler</button>
-                    <button type="submit" class="btn btn-primary" id="btnSubmit">💾 Enregistrer</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <div class="toast" id="toast"></div>
+    <h1>Test déclenchement workflow</h1>
+    <p>UserId : <span id="userIdSpan">...</span></p>
+    <button id="testDispatchBtn">🚀 Tester le dispatch</button>
+    <pre id="result" style="background:#f0f0f0; padding:10px; margin-top:10px;"></pre>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
         window.addEventListener('DOMContentLoaded', function() {
-            // ----- 1. Éléments DOM -----
-            const btnAdd = document.getElementById('btnAddAccount');
-            const logoutBtn = document.getElementById('logoutBtn');
-            const refreshBtn = document.getElementById('refreshBtn');
-            const modal = document.getElementById('modalOverlay');
-            const btnCancel = document.getElementById('btnCancel');
-            const form = document.getElementById('accountForm');
-            const toast = document.getElementById('toast');
-            const accountsContainer = document.getElementById('accountsContainer');
+            const testBtn = document.getElementById('testDispatchBtn');
+            const userIdSpan = document.getElementById('userIdSpan');
+            const resultPre = document.getElementById('result');
 
-            // ----- 2. Constantes globales (placées ici pour éviter toute erreur d'initialisation) -----
-            const GH_USERNAME = 'hasiniainahasina1-art';
-            const GH_REPO = 'tronpick-faucet';
-            const BRANCH = 'main';
             const SUPABASE_URL = 'https://xwmituhhszailaaxposg.supabase.co';
             const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3bWl0dWhoc3phaWxhYXhwb3NnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMjQ4MzQsImV4cCI6MjA5MjgwMDgzNH0.-LWoiKQVvgAhkkG1fF5067V-1ckA2aQ4UaUxfS95ukE';
+            const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-            // ----- 3. État global -----
-            let currentUserId = null;
-            let currentAccounts = [];
-
-            // ----- 4. Fonctions utilitaires -----
-            function showToast(msg, type) {
-                toast.textContent = msg;
-                toast.className = `toast ${type} show`;
-                setTimeout(() => { toast.className = 'toast'; }, 8000);
-            }
-
-            // ----- 5. Initialisation Supabase -----
             const token = localStorage.getItem('auth_token');
             if (!token) {
+                resultPre.textContent = 'Non connecté. Redirection...';
                 window.location.href = '/index.html';
                 return;
             }
-            const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
             async function getUserId() {
-                try {
-                    const { data: { user }, error } = await supabase.auth.getUser(token);
-                    if (error) throw error;
-                    return user.id;
-                } catch (e) {
-                    showToast('Session expirée. Veuillez vous reconnecter.', 'error');
-                    localStorage.removeItem('auth_token');
-                    setTimeout(() => { window.location.href = '/index.html'; }, 1500);
-                    return null;
-                }
+                const { data: { user }, error } = await supabase.auth.getUser(token);
+                if (error) throw error;
+                return user.id;
             }
 
-            // ----- 6. API GitHub (via proxy) -----
-            async function githubApi(method, path, body = null) {
-                const url = `/api/data?path=${encodeURIComponent(path)}&userId=${currentUserId}`;
-                const options = { method, headers: { 'Content-Type': 'application/json' } };
-                if (body) options.body = JSON.stringify(body);
-                const res = await fetch(url, options);
-                if (res.status === 204) return {};
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
-                return data;
-            }
+            getUserId().then(uid => {
+                userIdSpan.textContent = uid;
+                window.currentUserId = uid;
+            }).catch(err => {
+                resultPre.textContent = 'Erreur auth : ' + err.message;
+            });
 
-            // ----- 7. Gestion des comptes -----
-            async function loadAccounts() {
-                const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/accounts.json`;
-                try {
-                    const data = await githubApi('GET', apiPath);
-                    return JSON.parse(atob(data.content));
-                } catch (e) {
-                    if (e.message.includes('404')) return [];
-                    throw e;
-                }
-            }
-
-            async function saveAccounts(accounts) {
-                const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/accounts.json`;
-                let sha = null;
-                try { const d = await githubApi('GET', apiPath); sha = d.sha; } catch (e) {}
-                const content = btoa(unescape(encodeURIComponent(JSON.stringify(accounts, null, 2))));
-                const body = { message: 'Mise à jour comptes', content, branch: BRANCH };
-                if (sha) body.sha = sha;
-                await githubApi('PUT', apiPath, body);
-            }
-
-            // ----- 8. Déclenchement des workflows -----
-            async function dispatchWorkflow(workflowId, inputs) {
-                const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${workflowId}/dispatches`;
-                const payload = { ref: BRANCH, inputs: inputs };
-                try {
-                    await githubApi('POST', apiPath, payload);
-                    return { success: true, message: 'Dispatch envoyé avec succès' };
-                } catch (error) {
-                    return { success: false, message: error.message };
-                }
-            }
-
-            // ----- 9. Rendu des comptes -----
-            function minutesToTimeStr(minutes) {
-                if (isNaN(minutes)) return '0:00';
-                const secs = Math.floor(minutes * 60);
-                return `${Math.floor(secs/60)}:${(secs%60).toString().padStart(2, '0')}`;
-            }
-
-            function timeStrToMinutes(str) {
-                if (!str || !str.includes(':')) return 60;
-                const [m, s] = str.split(':').map(Number);
-                return (m||0) + (s||0)/60;
-            }
-
-            function renderAccounts() {
-                accountsContainer.innerHTML = '';
-                const visible = currentAccounts.filter(a => a.cookiesStatus !== 'failed');
-                if (!visible.length) {
-                    accountsContainer.innerHTML = '<p style="text-align:center; padding:20px;">Aucun compte configuré.</p>';
+            testBtn.addEventListener('click', async () => {
+                if (!window.currentUserId) {
+                    resultPre.textContent = 'UserId pas encore chargé.';
                     return;
                 }
-                visible.forEach((acc, idx) => {
-                    const now = Date.now();
-                    const last = acc.lastClaim || 0;
-                    const intervalMs = (acc.timer || 60) * 60 * 1000;
-                    const nextClaim = last + intervalMs;
-                    let remain = Math.max(0, nextClaim - now);
-                    const fmt = ms => {
-                        const s = Math.floor(ms/1000);
-                        return `${Math.floor(s/60)}:${(s%60).toString().padStart(2,'0')}`;
+                resultPre.textContent = 'Envoi du dispatch...';
+                try {
+                    const url = `/api/data?path=/repos/hasiniainahasina1-art/tronpick-faucet/actions/workflows/test-account.yml/dispatches&userId=${window.currentUserId}`;
+                    const payload = {
+                        ref: 'main',
+                        inputs: {
+                            email: 'test@test.com',
+                            password: 'test',
+                            platform: 'tronpick',
+                            proxyIndex: '0',
+                            initialTimer: '60:00',
+                            action: 'login',
+                            userId: window.currentUserId
+                        }
                     };
-                    const item = document.createElement('div');
-                    item.className = 'account-item';
-                    item.innerHTML = `
-                        <div class="account-info">
-                            <span class="account-email">${acc.email}</span>
-                            <span class="account-site">${acc.platform}</span>
-                            <span class="account-countdown" id="cd-${idx}">${fmt(remain)}</span>
-                        </div>
-                        <button class="btn btn-danger" data-del="${idx}">🗑️</button>
-                    `;
-                    accountsContainer.appendChild(item);
-                    setInterval(() => {
-                        remain = Math.max(0, nextClaim - Date.now());
-                        const el = document.getElementById(`cd-${idx}`);
-                        if (el) el.textContent = fmt(remain);
-                    }, 1000);
-                });
-
-                // Suppression
-                document.querySelectorAll('button[data-del]').forEach(btn => {
-                    btn.addEventListener('click', async (e) => {
-                        const idx = parseInt(btn.dataset.del);
-                        const acc = visible[idx];
-                        if (!confirm(`Supprimer ${acc.email} ?`)) return;
-                        btn.disabled = true;
-                        showToast('Suppression en cours...', 'success');
-                        try {
-                            const result = await dispatchWorkflow('logout.yml', {
-                                email: acc.email,
-                                password: acc.password,
-                                platform: acc.platform,
-                                proxyIndex: String(acc.proxyIndex||0),
-                                userId: currentUserId
-                            });
-                            if (result.success) {
-                                let deleted = false;
-                                for (let i = 0; i < 12; i++) {
-                                    await new Promise(r => setTimeout(r, 10000));
-                                    const fresh = await loadAccounts();
-                                    if (!fresh.some(a => a.email===acc.email && a.platform===acc.platform)) {
-                                        deleted = true; break;
-                                    }
-                                }
-                                if (deleted) showToast('✅ Compte supprimé', 'success');
-                                else showToast('⚠️ Compte toujours présent après 2 min', 'error');
-                            } else {
-                                showToast('❌ Échec dispatch : ' + result.message, 'error');
-                            }
-                        } catch (err) {
-                            showToast('❌ Erreur : ' + err.message, 'error');
-                        } finally {
-                            btn.disabled = false;
-                            loadAndRenderAccounts();
-                        }
+                    const res = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
                     });
-                });
-            }
-
-            async function loadAndRenderAccounts() {
-                try {
-                    currentAccounts = await loadAccounts();
-                    renderAccounts();
+                    const status = res.status;
+                    if (status === 204) {
+                        resultPre.textContent = '✅ Succès (204 No Content)';
+                    } else {
+                        const text = await res.text();
+                        resultPre.textContent = `Erreur ${status} : ${text}`;
+                    }
                 } catch (e) {
-                    showToast('Erreur chargement : ' + e.message, 'error');
+                    resultPre.textContent = 'Exception : ' + e.message;
                 }
-            }
-
-            // ----- 10. Événements -----
-            btnAdd.addEventListener('click', () => {
-                document.getElementById('modalTitle').textContent = '➕ Ajouter un compte';
-                document.getElementById('editIndex').value = '-1';
-                form.reset();
-                document.getElementById('platform').value = 'tronpick';
-                document.getElementById('initialTimer').value = '60:00';
-                modal.classList.add('active');
             });
-
-            logoutBtn.addEventListener('click', () => {
-                localStorage.removeItem('auth_token');
-                window.location.href = '/index.html';
-            });
-
-            refreshBtn.addEventListener('click', () => {
-                loadAndRenderAccounts();
-            });
-
-            btnCancel.addEventListener('click', () => modal.classList.remove('active'));
-            modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('active'); });
-
-            form.addEventListener('submit', async function(e) {
-                e.preventDefault();
-                const email = document.getElementById('email').value.trim().toLowerCase();
-                const password = document.getElementById('password').value;
-                const platform = document.getElementById('platform').value;
-                const timerStr = document.getElementById('initialTimer').value.trim();
-                const timerVal = timeStrToMinutes(timerStr);
-                const editIdx = parseInt(document.getElementById('editIndex').value);
-
-                if (editIdx >= 0) {
-                    // Modification
-                    try {
-                        currentAccounts[editIdx] = { ...currentAccounts[editIdx], email, password, platform, timer: timerVal };
-                        await saveAccounts(currentAccounts);
-                        showToast('✅ Compte mis à jour', 'success');
-                    } catch (err) {
-                        showToast('❌ ' + err.message, 'error');
-                    }
-                    modal.classList.remove('active');
-                    loadAndRenderAccounts();
-                    return;
-                }
-
-                // Ajout
-                if (currentAccounts.some(a => a.email===email && a.platform===platform && a.cookiesStatus!=='failed')) {
-                    showToast('❌ Ce compte existe déjà', 'error');
-                    return;
-                }
-                modal.classList.remove('active');
-                showToast('⏳ Dispatch en cours...', 'success');
-
-                const result = await dispatchWorkflow('test-account.yml', {
-                    email, password, platform,
-                    proxyIndex: String(currentAccounts.length % 2),
-                    initialTimer: timerStr,
-                    action: 'login',
-                    userId: currentUserId
-                });
-
-                if (result.success) {
-                    showToast('✅ Workflow déclenché ! Vérifiez l\'onglet Actions.', 'success');
-                    // Attente de l'ajout effectif
-                    for (let i = 0; i < 24; i++) {
-                        await new Promise(r => setTimeout(r, 5000));
-                        const fresh = await loadAccounts();
-                        const found = fresh.find(a => a.email===email && a.platform===platform);
-                        if (found && found.cookiesStatus==='valid') {
-                            showToast('✅ Compte ajouté avec succès', 'success');
-                            loadAndRenderAccounts();
-                            return;
-                        } else if (found && found.cookiesStatus==='failed') {
-                            showToast('❌ ' + (found.errorMessage || 'Identifiants incorrects'), 'error');
-                            const filtered = fresh.filter(a => a.email!==email || a.platform!==platform);
-                            await saveAccounts(filtered);
-                            loadAndRenderAccounts();
-                            return;
-                        }
-                    }
-                    showToast('⚠️ Aucune réponse après 2 minutes. Vérifiez le workflow.', 'error');
-                } else {
-                    showToast('❌ Échec du dispatch : ' + result.message, 'error');
-                }
-                loadAndRenderAccounts();
-            });
-
-            // ----- 11. Démarrage -----
-            (async function init() {
-                currentUserId = await getUserId();
-                if (!currentUserId) return;
-                showToast('Connecté. Prêt.', 'success');
-                await loadAndRenderAccounts();
-                setInterval(loadAndRenderAccounts, 30000);
-            })();
         });
     </script>
 </body>
