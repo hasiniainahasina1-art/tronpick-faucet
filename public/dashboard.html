@@ -5,87 +5,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard – Finoana Auto Claim</title>
     <style>
+        /* (le même CSS que précédemment, je le garde pour ne pas alourdir) */
         :root {
-            --bg: #f5f7fa;
-            --card-bg: #ffffff;
-            --primary: #2563eb;
-            --primary-hover: #1d4ed8;
-            --success: #10b981;
-            --danger: #ef4444;
-            --text: #1e293b;
-            --text-secondary: #64748b;
-            --border: #e2e8f0;
-            --radius: 8px;
-            --shadow: 0 2px 8px rgba(0,0,0,0.04);
+            --bg: #f5f7fa; --card-bg: #ffffff; --primary: #2563eb; --primary-hover: #1d4ed8;
+            --success: #10b981; --danger: #ef4444; --text: #1e293b; --text-secondary: #64748b;
+            --border: #e2e8f0; --radius: 8px; --shadow: 0 2px 8px rgba(0,0,0,0.04);
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            font-size: 0.85rem;
-            line-height: 1.4;
-            min-height: 100vh;
-        }
-        .header {
-            background: var(--card-bg);
-            padding: 12px 24px;
-            box-shadow: var(--shadow);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); font-size: 0.85rem; line-height: 1.4; min-height: 100vh; }
+        .header { background: var(--card-bg); padding: 12px 24px; box-shadow: var(--shadow); display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
         .header h1 { font-size: 1.2rem; font-weight: 700; }
-        .btn {
-            padding: 8px 16px;
-            border-radius: 6px;
-            border: none;
-            font-weight: 600;
-            cursor: pointer;
-            font-size: 0.85rem;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            transition: background 0.2s;
-            text-decoration: none;
-            white-space: nowrap;
-        }
+        .btn { padding: 8px 16px; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 6px; transition: background 0.2s; text-decoration: none; white-space: nowrap; }
         .btn-primary { background: var(--primary); color: white; }
         .btn-primary:hover { background: var(--primary-hover); }
         .btn-danger { background: var(--danger); color: white; }
         .container { max-width: 800px; margin: 20px auto; padding: 0 16px; }
         .card { background: var(--card-bg); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; margin-bottom: 20px; }
         .accounts-list { display: flex; flex-direction: column; gap: 10px; }
-        .account-item {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 12px; background: #f8fafc; border-radius: 6px; border: 1px solid var(--border);
-        }
+        .account-item { display: flex; align-items: center; justify-content: space-between; padding: 12px; background: #f8fafc; border-radius: 6px; border: 1px solid var(--border); }
         .account-info { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; flex: 1; }
         .account-email { font-weight: 600; }
         .account-site { background: #e2e8f0; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; color: var(--text-secondary); }
         .account-countdown { font-weight: 700; color: var(--primary); }
         .account-countdown.expired { color: var(--danger); }
-        .modal-overlay {
-            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px);
-            z-index: 1000; align-items: center; justify-content: center;
-        }
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); z-index: 1000; align-items: center; justify-content: center; }
         .modal-overlay.active { display: flex; }
-        .modal {
-            background: var(--card-bg); border-radius: var(--radius); padding: 24px;
-            width: 90%; max-width: 420px; box-shadow: 0 20px 40px rgba(0,0,0,0.2);
-        }
+        .modal { background: var(--card-bg); border-radius: var(--radius); padding: 24px; width: 90%; max-width: 420px; box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
         .form-group { margin-bottom: 16px; }
         .form-group label { display: block; margin-bottom: 4px; font-weight: 500; font-size: 0.9rem; }
-        .form-group input, .form-group select {
-            width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.9rem;
-        }
-        .toast {
-            position: fixed; bottom: 24px; right: 24px; background: var(--text); color: white;
-            padding: 12px 20px; border-radius: 6px; font-weight: 500; z-index: 2000;
-            opacity: 0; transform: translateX(80px); transition: all 0.3s ease;
-        }
+        .form-group input, .form-group select { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.9rem; }
+        .toast { position: fixed; bottom: 24px; right: 24px; background: var(--text); color: white; padding: 12px 20px; border-radius: 6px; font-weight: 500; z-index: 2000; opacity: 0; transform: translateX(80px); transition: all 0.3s ease; }
         .toast.show { opacity: 1; transform: translateX(0); }
         .toast.success { background: var(--success); }
         .toast.error { background: var(--danger); }
@@ -110,34 +59,18 @@
         </div>
     </div>
 
-    <!-- Modale -->
     <div class="modal-overlay" id="modalOverlay">
         <div class="modal">
             <h3 id="modalTitle">➕ Nouveau compte</h3>
             <form id="accountForm">
                 <input type="hidden" id="editIndex" value="-1">
-                <div class="form-group">
-                    <label>Email</label>
-                    <input type="email" id="email" required placeholder="exemple@mail.com">
-                </div>
-                <div class="form-group">
-                    <label>Mot de passe</label>
-                    <input type="password" id="password" required placeholder="••••••••">
-                </div>
-                <div class="form-group">
-                    <label>Plateforme</label>
-                    <select id="platform">
-                        <option value="tronpick">TronPick</option>
-                        <option value="litepick">LitePick</option>
-                        <option value="dogepick">DogePick</option>
-                        <option value="solpick">SolPick</option>
-                        <option value="binpick">BinPick</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Timer initial (mm:ss)</label>
-                    <input type="text" id="initialTimer" placeholder="60:00" pattern="[0-9]{1,2}:[0-5][0-9]">
-                </div>
+                <div class="form-group"><label>Email</label><input type="email" id="email" required placeholder="exemple@mail.com"></div>
+                <div class="form-group"><label>Mot de passe</label><input type="password" id="password" required placeholder="••••••••"></div>
+                <div class="form-group"><label>Plateforme</label><select id="platform">
+                    <option value="tronpick">TronPick</option><option value="litepick">LitePick</option>
+                    <option value="dogepick">DogePick</option><option value="solpick">SolPick</option><option value="binpick">BinPick</option>
+                </select></div>
+                <div class="form-group"><label>Timer initial (mm:ss)</label><input type="text" id="initialTimer" placeholder="60:00" pattern="[0-9]{1,2}:[0-5][0-9]"></div>
                 <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
                     <button type="button" class="btn btn-primary" id="btnCancel">Annuler</button>
                     <button type="submit" class="btn btn-primary" id="btnSubmit">💾 Enregistrer</button>
@@ -151,23 +84,69 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
         window.addEventListener('DOMContentLoaded', function() {
-            // ---------- Éléments DOM ----------
+            // --- Éléments du DOM ---
             const btnAdd = document.getElementById('btnAddAccount');
             const logoutBtn = document.getElementById('logoutBtn');
+            const refreshBtn = document.getElementById('refreshBtn');
             const modal = document.getElementById('modalOverlay');
             const btnCancel = document.getElementById('btnCancel');
             const form = document.getElementById('accountForm');
-            const refreshBtn = document.getElementById('refreshBtn');
             const toast = document.getElementById('toast');
             const accountsContainer = document.getElementById('accountsContainer');
 
-            let currentAccounts = [];
-            let currentUserId = null;
+            // Vérification de l'existence des éléments
+            if (!btnAdd || !logoutBtn || !modal || !btnCancel || !form || !toast) {
+                alert('Erreur : éléments manquants dans la page. Vérifiez le code HTML.');
+                return;
+            }
 
-            // ---------- 1. Authentification ----------
+            // Fonction pour afficher un toast
+            function showToast(msg, type = '') {
+                toast.textContent = msg;
+                toast.className = `toast ${type} show`;
+                setTimeout(() => { toast.className = 'toast'; }, 5000);
+            }
+
+            // --- 1. Tests immédiats des boutons (avec retour visuel) ---
+            btnAdd.addEventListener('click', () => {
+                showToast('➡️ Ajouter cliqué', 'success');
+                // On tente d'ouvrir la modale
+                try {
+                    document.getElementById('modalTitle').textContent = '➕ Ajouter un compte';
+                    document.getElementById('editIndex').value = '-1';
+                    form.reset();
+                    document.getElementById('platform').value = 'tronpick';
+                    document.getElementById('initialTimer').value = '60:00';
+                    modal.classList.add('active');
+                } catch (e) {
+                    showToast('Erreur modale : ' + e.message, 'error');
+                }
+            });
+
+            logoutBtn.addEventListener('click', () => {
+                showToast('Déconnexion...', 'success');
+                localStorage.removeItem('auth_token');
+                window.location.href = '/index.html';
+            });
+
+            refreshBtn.addEventListener('click', () => {
+                showToast('Rafraîchissement...', 'success');
+                loadAndRenderAccounts();
+            });
+
+            btnCancel.addEventListener('click', () => {
+                modal.classList.remove('active');
+            });
+
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) modal.classList.remove('active');
+            });
+
+            // --- 2. Authentification et isolation ---
             const token = localStorage.getItem('auth_token');
             if (!token) {
-                window.location.href = '/index.html';
+                showToast('Non connecté, redirection...', 'error');
+                setTimeout(() => { window.location.href = '/index.html'; }, 1000);
                 return;
             }
 
@@ -181,17 +160,18 @@
                     if (error) throw error;
                     return user.id;
                 } catch (e) {
-                    alert('Session expirée. Veuillez vous reconnecter.');
+                    showToast('Erreur session : ' + e.message, 'error');
                     localStorage.removeItem('auth_token');
-                    window.location.href = '/index.html';
+                    setTimeout(() => { window.location.href = '/index.html'; }, 1500);
                     return null;
                 }
             }
 
-            // ---------- 2. API GitHub (isolation utilisateur) ----------
             const GH_USERNAME = 'hasiniainahasina1-art';
             const GH_REPO = 'tronpick-faucet';
             const BRANCH = 'main';
+            let currentUserId = null;
+            let currentAccounts = [];
 
             async function githubApi(method, path, body = null) {
                 const url = `/api/data?path=${encodeURIComponent(path)}&userId=${currentUserId}`;
@@ -205,8 +185,8 @@
             }
 
             async function loadAccounts() {
+                const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/accounts.json`;
                 try {
-                    const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/accounts.json`;
                     const data = await githubApi('GET', apiPath);
                     return JSON.parse(atob(data.content));
                 } catch (e) {
@@ -230,44 +210,7 @@
                 await githubApi('POST', apiPath, { ref: BRANCH, inputs });
             }
 
-            // ---------- 3. Interface ----------
-            function showToast(message, type = '') {
-                toast.textContent = message;
-                toast.className = `toast ${type} show`;
-                setTimeout(() => { toast.className = 'toast'; }, 5000);
-            }
-
-            function openModal(title, account = null) {
-                document.getElementById('modalTitle').textContent = title;
-                if (account) {
-                    document.getElementById('editIndex').value = currentAccounts.indexOf(account);
-                    document.getElementById('email').value = account.email || '';
-                    document.getElementById('password').value = account.password || '';
-                    document.getElementById('platform').value = account.platform || 'tronpick';
-                    document.getElementById('initialTimer').value = minutesToTimeStr(account.timer || 60);
-                } else {
-                    document.getElementById('editIndex').value = '-1';
-                    form.reset();
-                    document.getElementById('platform').value = 'tronpick';
-                    document.getElementById('initialTimer').value = '60:00';
-                }
-                modal.classList.add('active');
-            }
-
-            function closeModal() { modal.classList.remove('active'); }
-
-            function minutesToTimeStr(minutes) {
-                if (isNaN(minutes)) return '0:00';
-                const secs = Math.floor(minutes * 60);
-                return `${Math.floor(secs/60)}:${(secs%60).toString().padStart(2, '0')}`;
-            }
-
-            function timeStrToMinutes(str) {
-                if (!str || !str.includes(':')) return 60;
-                const [m, s] = str.split(':').map(Number);
-                return (m||0) + (s||0)/60;
-            }
-
+            // --- 3. Rendu des comptes ---
             function renderAccounts() {
                 accountsContainer.innerHTML = '';
                 const visible = currentAccounts.filter(a => a.cookiesStatus !== 'failed');
@@ -275,7 +218,6 @@
                     accountsContainer.innerHTML = '<p style="text-align:center; padding:20px;">Aucun compte configuré.</p>';
                     return;
                 }
-
                 visible.forEach((acc, idx) => {
                     const now = Date.now();
                     const last = acc.lastClaim || 0;
@@ -299,69 +241,55 @@
                     `;
                     accountsContainer.appendChild(item);
 
-                    const interval = setInterval(() => {
+                    setInterval(() => {
                         remain = Math.max(0, nextClaim - Date.now());
                         const el = document.getElementById(`cd-${idx}`);
-                        if (el) {
-                            el.textContent = fmt(remain);
-                            el.className = 'account-countdown' + (remain <= 0 ? ' expired' : '');
-                        }
+                        if (el) el.textContent = fmt(remain);
                     }, 1000);
                 });
 
-                // Attacher les événements de suppression
                 document.querySelectorAll('button[data-del]').forEach(btn => {
                     btn.addEventListener('click', async (e) => {
                         const idx = parseInt(btn.dataset.del);
                         const acc = visible[idx];
-                        if (!confirm(`Supprimer définitivement ${acc.email} ?`)) return;
+                        if (!confirm(`Supprimer ${acc.email} ?`)) return;
                         btn.disabled = true;
-                        showToast(`🗑️ Suppression de ${acc.email}...`);
+                        showToast(`🗑️ Suppression de ${acc.email}...`, 'success');
                         try {
                             await triggerWorkflow('logout.yml', {
-                                email: acc.email,
-                                password: acc.password,
-                                platform: acc.platform,
-                                proxyIndex: String(acc.proxyIndex||0)
+                                email: acc.email, password: acc.password,
+                                platform: acc.platform, proxyIndex: String(acc.proxyIndex||0)
                             });
                             let deleted = false;
                             for (let i = 0; i < 12; i++) {
                                 await new Promise(r => setTimeout(r, 10000));
                                 const fresh = await loadAccounts();
                                 if (!fresh.some(a => a.email===acc.email && a.platform===acc.platform)) {
-                                    deleted = true;
-                                    break;
+                                    deleted = true; break;
                                 }
                             }
                             if (deleted) showToast('✅ Compte supprimé', 'success');
                             else showToast('⚠️ Compte toujours présent après 2 min', 'error');
                         } catch (err) {
-                            showToast('❌ Erreur: ' + err.message, 'error');
+                            showToast('❌ Erreur : ' + err.message, 'error');
                         } finally {
                             btn.disabled = false;
-                            await refreshAccounts();
+                            loadAndRenderAccounts();
                         }
                     });
                 });
             }
 
-            async function refreshAccounts() {
+            async function loadAndRenderAccounts() {
                 try {
                     currentAccounts = await loadAccounts();
                     renderAccounts();
-                } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+                } catch (e) {
+                    showToast('Erreur chargement : ' + e.message, 'error');
+                }
             }
 
-            // ---------- 4. Événements ----------
-            btnAdd.addEventListener('click', () => openModal('➕ Ajouter un compte'));
-            btnCancel.addEventListener('click', closeModal);
-            modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
-
-            logoutBtn.addEventListener('click', () => {
-                localStorage.removeItem('auth_token');
-                window.location.href = '/index.html';
-            });
-
+            // --- 4. Soumission du formulaire ---
             form.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const email = document.getElementById('email').value.trim().toLowerCase();
@@ -373,19 +301,20 @@
 
                 if (editIdx >= 0) {
                     // Modification
-                    currentAccounts[editIdx] = { ...currentAccounts[editIdx], email, password, platform, timer: timerVal };
-                    await saveAccounts(currentAccounts);
-                    closeModal();
-                    showToast('✅ Compte mis à jour', 'success');
-                    refreshAccounts();
+                    try {
+                        currentAccounts[editIdx] = { ...currentAccounts[editIdx], email, password, platform, timer: timerVal };
+                        await saveAccounts(currentAccounts);
+                        showToast('✅ Compte mis à jour', 'success');
+                    } catch (err) {
+                        showToast('❌ Erreur modification : ' + err.message, 'error');
+                    }
                 } else {
                     // Ajout
                     if (currentAccounts.some(a => a.email===email && a.platform===platform && a.cookiesStatus!=='failed')) {
                         showToast('❌ Ce compte existe déjà', 'error');
                         return;
                     }
-                    closeModal();
-                    showToast('⏳ Ajout en cours...');
+                    showToast('⏳ Ajout en cours...', 'success');
                     try {
                         await triggerWorkflow('test-account.yml', {
                             email, password, platform,
@@ -393,33 +322,50 @@
                             initialTimer: timerStr,
                             action: 'login'
                         });
+                        // Attente active
                         for (let i = 0; i < 24; i++) {
                             await new Promise(r => setTimeout(r, 5000));
                             const fresh = await loadAccounts();
                             const found = fresh.find(a => a.email===email && a.platform===platform);
                             if (found && found.cookiesStatus==='valid') {
-                                showToast('✅ Compte ajouté', 'success');
-                                return refreshAccounts();
+                                showToast('✅ Compte ajouté avec succès', 'success');
+                                break;
                             } else if (found && found.cookiesStatus==='failed') {
                                 showToast('❌ ' + (found.errorMessage || 'Identifiants incorrects'), 'error');
+                                // Nettoyer
                                 const filtered = fresh.filter(a => a.email!==email || a.platform!==platform);
                                 await saveAccounts(filtered);
-                                return refreshAccounts();
+                                break;
                             }
                         }
-                        showToast('❌ Timeout', 'error');
-                    } catch (err) { showToast('❌ ' + err.message, 'error'); }
+                    } catch (err) {
+                        showToast('❌ Erreur ajout : ' + err.message, 'error');
+                    }
                 }
+                // Fermer la modale et rafraîchir
+                modal.classList.remove('active');
+                loadAndRenderAccounts();
             });
 
-            refreshBtn.addEventListener('click', refreshAccounts);
+            function minutesToTimeStr(minutes) {
+                if (isNaN(minutes)) return '0:00';
+                const secs = Math.floor(minutes * 60);
+                return `${Math.floor(secs/60)}:${(secs%60).toString().padStart(2, '0')}`;
+            }
 
-            // ---------- 5. Démarrage ----------
+            function timeStrToMinutes(str) {
+                if (!str || !str.includes(':')) return 60;
+                const [m, s] = str.split(':').map(Number);
+                return (m||0) + (s||0)/60;
+            }
+
+            // --- 5. Démarrage ---
             (async function init() {
                 currentUserId = await getUserId();
                 if (!currentUserId) return;
-                await refreshAccounts();
-                setInterval(refreshAccounts, 30000);
+                showToast('Connecté avec succès', 'success');
+                await loadAndRenderAccounts();
+                setInterval(loadAndRenderAccounts, 30000);
             })();
         });
     </script>
