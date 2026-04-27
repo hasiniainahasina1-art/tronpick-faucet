@@ -35,187 +35,76 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 16px;
             flex-wrap: wrap;
+            gap: 8px;
         }
         .header h1 {
             font-size: 1.2rem;
             font-weight: 700;
-            display: flex;
-            align-items: center;
-            gap: 6px;
         }
         .btn {
-            padding: 6px 14px;
+            padding: 8px 16px;
             border-radius: 6px;
             border: none;
             font-weight: 600;
             cursor: pointer;
-            font-size: 0.8rem;
+            font-size: 0.85rem;
             display: inline-flex;
             align-items: center;
-            gap: 4px;
-            transition: all 0.2s;
+            gap: 6px;
+            transition: background 0.2s;
             text-decoration: none;
             white-space: nowrap;
         }
         .btn-primary { background: var(--primary); color: white; }
         .btn-primary:hover { background: var(--primary-hover); }
-        .btn-success { background: var(--success); color: white; }
-        .btn-success:hover { background: #059669; }
-        .btn-danger { background: var(--danger); color: white; }
-        .btn-danger:hover { background: #dc2626; }
-        .btn-outline {
-            background: transparent;
-            border: 1px solid var(--border);
-            color: var(--text-secondary);
-            padding: 4px 10px;
-        }
+        .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-secondary); }
         .btn-outline:hover { background: #f1f5f9; }
-        .container {
-            max-width: 800px;
-            margin: 20px auto;
-            padding: 0 16px;
-        }
-        .card {
-            background: var(--card-bg);
-            border-radius: var(--radius);
-            box-shadow: var(--shadow);
-            padding: 16px;
-            margin-bottom: 16px;
-        }
-        .card h2 {
-            font-size: 1rem;
-            margin-bottom: 12px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .accounts-list {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
+        .btn-danger { background: var(--danger); color: white; }
+        .container { max-width: 800px; margin: 20px auto; padding: 0 16px; }
+        .card { background: var(--card-bg); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; }
+        .accounts-list { display: flex; flex-direction: column; gap: 10px; }
         .account-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 10px 12px;
-            background: #f8fafc;
-            border-radius: 6px;
-            border: 1px solid var(--border);
-            flex-wrap: wrap;
-            gap: 10px;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px; background: #f8fafc; border-radius: 6px; border: 1px solid var(--border);
         }
-        .account-info {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            flex-wrap: wrap;
-            flex: 1;
-        }
-        .account-email { font-weight: 600; font-size: 0.9rem; min-width: 150px; }
-        .account-site {
-            color: var(--text-secondary);
-            font-size: 0.8rem;
-            background: #e2e8f0;
-            padding: 2px 8px;
-            border-radius: 4px;
-        }
-        .account-countdown {
-            font-weight: 700;
-            font-variant-numeric: tabular-nums;
-            color: var(--primary);
-            font-size: 0.85rem;
-            min-width: 60px;
-        }
+        .account-info { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; flex: 1; }
+        .account-email { font-weight: 600; }
+        .account-site { background: #e2e8f0; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; color: var(--text-secondary); }
+        .account-countdown { font-weight: 700; color: var(--primary); }
         .account-countdown.expired { color: var(--danger); }
-        .spinner {
-            display: inline-block;
-            width: 16px;
-            height: 16px;
-            border: 2px solid var(--border);
-            border-top-color: var(--primary);
-            border-radius: 50%;
-            animation: spin 0.6s linear infinite;
-            margin-right: 8px;
+        .modal-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px);
+            z-index: 1000; align-items: center; justify-content: center;
         }
-        @keyframes spin { to { transform: rotate(360deg); } }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: var(--card-bg); border-radius: var(--radius); padding: 24px;
+            width: 90%; max-width: 420px; box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+            animation: fadeSlide 0.2s ease;
+        }
+        @keyframes fadeSlide { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; margin-bottom: 4px; font-weight: 500; font-size: 0.9rem; }
+        .form-group input, .form-group select {
+            width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.9rem;
+        }
         .toast {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            background: var(--text);
-            color: white;
-            padding: 10px 20px;
-            border-radius: 6px;
-            font-weight: 500;
-            font-size: 0.8rem;
-            z-index: 2000;
-            opacity: 0;
-            transform: translateX(80px);
-            transition: all 0.3s ease;
-            max-width: 300px;
+            position: fixed; bottom: 24px; right: 24px; background: var(--text); color: white;
+            padding: 12px 20px; border-radius: 6px; font-weight: 500; z-index: 2000;
+            opacity: 0; transform: translateX(80px); transition: all 0.3s ease;
         }
         .toast.show { opacity: 1; transform: translateX(0); }
         .toast.success { background: var(--success); }
         .toast.error { background: var(--danger); }
-        .modal-overlay {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.4);
-            backdrop-filter: blur(4px);
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
-        }
-        .modal-overlay.active { display: flex; }
-        .modal {
-            background: var(--card-bg);
-            border-radius: var(--radius);
-            padding: 20px;
-            width: 90%;
-            max-width: 420px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
-            animation: fadeSlide 0.2s ease;
-        }
-        @keyframes fadeSlide {
-            from { opacity: 0; transform: translateY(15px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .modal h3 { font-size: 1rem; margin-bottom: 16px; }
-        .form-group { margin-bottom: 12px; }
-        .form-group label {
-            display: block;
-            margin-bottom: 4px;
-            font-weight: 500;
-            font-size: 0.8rem;
-            color: var(--text);
-        }
-        .form-group input,
-        .form-group select {
-            width: 100%;
-            padding: 8px 10px;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            font-size: 0.8rem;
-            transition: border 0.15s;
-        }
-        .form-group input:focus,
-        .form-group select:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
-        }
     </style>
 </head>
 <body>
     <header class="header">
         <h1>⚙️ Finoana Auto Claim</h1>
-        <div style="display:flex; gap:8px;">
+        <div>
             <button class="btn btn-primary" id="btnAddAccount">➕ Ajouter un compte</button>
-            <button class="btn btn-outline" id="logoutBtn">🚪 Déconnexion</button>
+            <button class="btn btn-outline" id="logoutBtn" style="margin-left:8px;">🚪 Déconnexion</button>
         </div>
     </header>
 
@@ -223,13 +112,13 @@
         <div class="card">
             <h2>📋 Mes comptes</h2>
             <div id="accountsContainer" class="accounts-list"></div>
-            <div style="text-align:center; margin-top:10px;">
+            <div style="text-align:center; margin-top:16px;">
                 <button class="btn btn-outline" id="refreshBtn">🔄 Rafraîchir</button>
             </div>
         </div>
     </div>
 
-    <!-- Modale Ajout / Modification -->
+    <!-- Modale -->
     <div class="modal-overlay" id="modalOverlay">
         <div class="modal">
             <h3 id="modalTitle">➕ Nouveau compte</h3>
@@ -259,7 +148,7 @@
                 </div>
                 <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
                     <button type="button" class="btn btn-outline" id="btnCancel">Annuler</button>
-                    <button type="submit" class="btn btn-success" id="btnSubmit">💾 Enregistrer</button>
+                    <button type="submit" class="btn btn-primary" id="btnSubmit">💾 Enregistrer</button>
                 </div>
             </form>
         </div>
@@ -267,11 +156,31 @@
 
     <div class="toast" id="toast"></div>
 
-    <!-- Bibliothèque Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
-        (function() {
-            // --- Authentification et isolation utilisateur ---
+        document.addEventListener('DOMContentLoaded', function() {
+            // --- Éléments DOM (vérification qu'ils existent) ---
+            const btnAdd = document.getElementById('btnAddAccount');
+            const logoutBtn = document.getElementById('logoutBtn');
+            const modal = document.getElementById('modalOverlay');
+            const btnCancel = document.getElementById('btnCancel');
+            const form = document.getElementById('accountForm');
+            const editIndex = document.getElementById('editIndex');
+            const emailInput = document.getElementById('email');
+            const passwordInput = document.getElementById('password');
+            const platformInput = document.getElementById('platform');
+            const timerInput = document.getElementById('initialTimer');
+            const modalTitle = document.getElementById('modalTitle');
+            const refreshBtn = document.getElementById('refreshBtn');
+            const toast = document.getElementById('toast');
+
+            // Vérification rapide
+            if (!btnAdd || !logoutBtn) {
+                console.error('Boutons non trouvés');
+                return;
+            }
+
+            // --- Authentification Supabase ---
             const token = localStorage.getItem('auth_token');
             if (!token) {
                 window.location.href = '/index.html';
@@ -283,6 +192,8 @@
             const supabase = supabase.createClient(supabaseUrl, supabaseAnonKey);
 
             let currentUserId = null;
+            let currentAccounts = [];
+            let countdownIntervals = [];
 
             async function getUserId() {
                 const { data: { user }, error } = await supabase.auth.getUser(token);
@@ -300,9 +211,8 @@
             const LOGIN_WORKFLOW_ID = 'test-account.yml';
             const LOGOUT_WORKFLOW_ID = 'logout.yml';
             const BRANCH = 'main';
-            const BASE_FILE_PATH = 'accounts.json'; // sera remplacé dynamiquement
+            const BASE_FILE_PATH = 'accounts.json';
 
-            // --- Proxy API /api/data avec userId ---
             async function githubApi(method, path, body = null) {
                 const url = `/api/data?path=${encodeURIComponent(path)}&userId=${currentUserId}`;
                 const options = { method, headers: { 'Content-Type': 'application/json' } };
@@ -310,14 +220,7 @@
                 const response = await fetch(url, options);
                 if (response.status === 204) return {};
                 const data = await response.json();
-                if (!response.ok) {
-                    let errorMsg = `HTTP ${response.status}`;
-                    if (response.status === 401) errorMsg = 'Token invalide';
-                    else if (response.status === 403) errorMsg = 'Permission refusée';
-                    else if (response.status === 404) errorMsg = 'Fichier introuvable';
-                    else if (data.message) errorMsg = data.message;
-                    throw new Error(errorMsg);
-                }
+                if (!response.ok) throw new Error(data.message || `HTTP ${response.status}`);
                 return data;
             }
 
@@ -325,8 +228,7 @@
                 const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/${BASE_FILE_PATH}`;
                 try {
                     const data = await githubApi('GET', apiPath);
-                    const content = atob(data.content);
-                    return JSON.parse(content);
+                    return JSON.parse(atob(data.content));
                 } catch (e) {
                     if (e.message.includes('404')) return [];
                     throw e;
@@ -336,10 +238,7 @@
             async function saveAccounts(accounts) {
                 const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/${BASE_FILE_PATH}`;
                 let sha = null;
-                try {
-                    const data = await githubApi('GET', apiPath);
-                    sha = data.sha;
-                } catch (e) {}
+                try { const d = await githubApi('GET', apiPath); sha = d.sha; } catch (e) {}
                 const content = btoa(unescape(encodeURIComponent(JSON.stringify(accounts, null, 2))));
                 const body = { message: 'Mise à jour comptes', content, branch: BRANCH };
                 if (sha) body.sha = sha;
@@ -348,28 +247,10 @@
 
             async function triggerWorkflow(workflowId, inputs) {
                 const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${workflowId}/dispatches`;
-                const payload = { ref: BRANCH, inputs };
-                await githubApi('POST', apiPath, payload);
+                await githubApi('POST', apiPath, { ref: BRANCH, inputs });
             }
 
-            // --- Interface ---
-            const modal = document.getElementById('modalOverlay');
-            const btnAdd = document.getElementById('btnAddAccount');
-            const btnCancel = document.getElementById('btnCancel');
-            const form = document.getElementById('accountForm');
-            const editIndex = document.getElementById('editIndex');
-            const emailInput = document.getElementById('email');
-            const passwordInput = document.getElementById('password');
-            const platformInput = document.getElementById('platform');
-            const timerInput = document.getElementById('initialTimer');
-            const modalTitle = document.getElementById('modalTitle');
-            const refreshBtn = document.getElementById('refreshBtn');
-            const toast = document.getElementById('toast');
-            const logoutBtn = document.getElementById('logoutBtn');
-
-            let currentAccounts = [];
-            let countdownIntervals = [];
-
+            // --- UI functions ---
             function showToast(message, type = '') {
                 toast.textContent = message;
                 toast.className = `toast ${type} show`;
@@ -393,49 +274,18 @@
                 modal.classList.add('active');
             }
 
-            function closeModal() {
-                modal.classList.remove('active');
-            }
-
-            btnAdd.addEventListener('click', () => openModal('➕ Ajouter un compte'));
-            btnCancel.addEventListener('click', closeModal);
-            modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+            function closeModal() { modal.classList.remove('active'); }
 
             function minutesToTimeStr(minutes) {
                 if (isNaN(minutes)) return '0:00';
-                const totalSeconds = Math.floor(minutes * 60);
-                const mins = Math.floor(totalSeconds / 60);
-                const secs = totalSeconds % 60;
-                return `${mins}:${secs.toString().padStart(2, '0')}`;
+                const secs = Math.floor(minutes * 60);
+                return `${Math.floor(secs/60)}:${(secs%60).toString().padStart(2, '0')}`;
             }
 
             function timeStrToMinutes(str) {
                 if (!str || !str.includes(':')) return 60;
-                const [mins, secs] = str.split(':').map(Number);
-                return (mins || 0) + (secs || 0) / 60;
-            }
-
-            function showLoader(accountElement) {
-                const info = accountElement.querySelector('.account-info');
-                if (info && !info.querySelector('.spinner')) {
-                    const spinner = document.createElement('span');
-                    spinner.className = 'spinner';
-                    info.prepend(spinner);
-                }
-            }
-
-            function hideLoader(accountElement) {
-                const spinner = accountElement.querySelector('.spinner');
-                if (spinner) spinner.remove();
-            }
-
-            async function refreshAccounts() {
-                try {
-                    currentAccounts = await loadAccounts();
-                    renderAccounts();
-                } catch (e) {
-                    showToast(`Erreur chargement: ${e.message}`, 'error');
-                }
+                const [m, s] = str.split(':').map(Number);
+                return (m||0) + (s||0)/60;
             }
 
             function renderAccounts() {
@@ -443,177 +293,148 @@
                 countdownIntervals = [];
                 const container = document.getElementById('accountsContainer');
                 container.innerHTML = '';
-
-                const visibleAccounts = currentAccounts.filter(acc => acc.cookiesStatus !== 'failed');
-
-                if (!visibleAccounts.length) {
-                    container.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-secondary);">Aucun compte configuré.</div>';
+                const visible = currentAccounts.filter(a => a.cookiesStatus !== 'failed');
+                if (!visible.length) {
+                    container.innerHTML = '<p style="text-align:center; padding:20px; color:gray;">Aucun compte configuré.</p>';
                     return;
                 }
-                visibleAccounts.forEach((acc, displayIdx) => {
+                visible.forEach((acc, idx) => {
                     const now = Date.now();
                     const last = acc.lastClaim || 0;
                     const intervalMs = (acc.timer || 60) * 60 * 1000;
-                    const nextClaimTime = last + intervalMs;
-                    let remainingMs = Math.max(0, nextClaimTime - now);
-
-                    const formatTime = (ms) => {
-                        if (ms <= 0) return '0:00';
-                        const totalSeconds = Math.floor(ms / 1000);
-                        const mins = Math.floor(totalSeconds / 60);
-                        const secs = totalSeconds % 60;
-                        return `${mins}:${secs.toString().padStart(2, '0')}`;
+                    const nextClaim = last + intervalMs;
+                    let remain = Math.max(0, nextClaim - now);
+                    const fmt = ms => {
+                        const s = Math.floor(ms/1000);
+                        return `${Math.floor(s/60)}:${(s%60).toString().padStart(2,'0')}`;
                     };
 
                     const item = document.createElement('div');
                     item.className = 'account-item';
-                    item.dataset.index = displayIdx;
                     item.innerHTML = `
                         <div class="account-info">
                             <span class="account-email">${acc.email}</span>
-                            <span class="account-site">${acc.platform || 'tronpick'}</span>
-                            <span class="account-countdown" id="cd-${displayIdx}">${formatTime(remainingMs)}</span>
+                            <span class="account-site">${acc.platform}</span>
+                            <span class="account-countdown" id="cd-${idx}">${fmt(remain)}</span>
                         </div>
-                        <button class="btn btn-outline btn-delete" title="Supprimer le compte">🗑️</button>
+                        <button class="btn btn-danger btn-sm" data-del="${idx}">🗑️</button>
                     `;
                     container.appendChild(item);
 
                     const interval = setInterval(() => {
-                        const n = Date.now();
-                        const r = Math.max(0, nextClaimTime - n);
-                        const sp = document.getElementById(`cd-${displayIdx}`);
-                        if (sp) {
-                            sp.textContent = formatTime(r);
-                            sp.className = 'account-countdown' + (r === 0 ? ' expired' : '');
+                        remain = Math.max(0, nextClaim - Date.now());
+                        const el = document.getElementById(`cd-${idx}`);
+                        if (el) {
+                            el.textContent = fmt(remain);
+                            el.className = 'account-countdown' + (remain <= 0 ? ' expired' : '');
                         }
                     }, 1000);
                     countdownIntervals.push(interval);
                 });
 
-                // Suppression
-                document.querySelectorAll('.btn-delete').forEach(btn => {
+                document.querySelectorAll('.btn-danger[data-del]').forEach(btn => {
                     btn.addEventListener('click', async (e) => {
-                        const item = btn.closest('.account-item');
-                        const idx = parseInt(item.dataset.index);
-                        const acc = visibleAccounts[idx];
-                        if (!confirm(`Supprimer définitivement le compte ${acc.email} ?`)) return;
-                        showLoader(item);
+                        const idx = parseInt(btn.dataset.del);
+                        const acc = visible[idx];
+                        if (!confirm(`Supprimer le compte ${acc.email} ?`)) return;
                         btn.disabled = true;
-                        showToast(`🗑️ Déconnexion de ${acc.email}...`, '');
+                        showToast(`🗑️ Déconnexion de ${acc.email}...`);
                         try {
                             await triggerWorkflow(LOGOUT_WORKFLOW_ID, {
-                                email: acc.email,
-                                password: acc.password,
-                                platform: acc.platform,
-                                proxyIndex: String(acc.proxyIndex || 0)
+                                email: acc.email, password: acc.password,
+                                platform: acc.platform, proxyIndex: String(acc.proxyIndex||0)
                             });
-                            showToast(`⏳ Déconnexion en cours (peut prendre 2 min)...`, '');
-                            let isDeleted = false;
-                            for (let attempt = 0; attempt < 12; attempt++) {
+                            for (let i=0; i<12; i++) {
                                 await new Promise(r => setTimeout(r, 10000));
                                 currentAccounts = await loadAccounts();
-                                if (!currentAccounts.some(a => a.email === acc.email && a.platform === acc.platform)) {
-                                    isDeleted = true;
-                                    break;
+                                if (!currentAccounts.some(a => a.email===acc.email && a.platform===acc.platform)) {
+                                    showToast('✅ Compte supprimé', 'success');
+                                    return refreshAccounts();
                                 }
                             }
-                            if (isDeleted) {
-                                showToast(`✅ Compte ${acc.email} supprimé.`, 'success');
-                            } else {
-                                showToast(`⚠️ Le compte existe toujours après 2 min.`, 'error');
-                            }
+                            showToast('⚠️ Compte toujours présent après 2 min', 'error');
                         } catch (err) {
-                            showToast(`❌ Erreur: ${err.message}`, 'error');
+                            showToast('❌ Erreur: '+err.message, 'error');
                         } finally {
-                            hideLoader(item);
                             btn.disabled = false;
-                            await refreshAccounts();
+                            refreshAccounts();
                         }
                     });
                 });
             }
 
-            // Formulaire d'ajout / modification
+            async function refreshAccounts() {
+                try {
+                    currentAccounts = await loadAccounts();
+                    renderAccounts();
+                } catch (e) { showToast('Erreur: '+e.message, 'error'); }
+            }
+
+            // --- Event Listeners (garantis par DOMContentLoaded) ---
+            btnAdd.addEventListener('click', () => openModal('➕ Ajouter un compte'));
+            btnCancel.addEventListener('click', closeModal);
+            modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+            logoutBtn.addEventListener('click', () => {
+                localStorage.removeItem('auth_token');
+                window.location.href = '/index.html';
+            });
+
             form.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const email = emailInput.value.trim().toLowerCase();
                 const password = passwordInput.value;
                 const platform = platformInput.value;
                 const timerStr = timerInput.value.trim();
-                const timerValue = timeStrToMinutes(timerStr);
-                const proxyIndex = currentAccounts.length % 2;
-
+                const timerVal = timeStrToMinutes(timerStr);
                 const idx = parseInt(editIndex.value);
                 if (idx >= 0) {
-                    currentAccounts[idx].email = email;
-                    currentAccounts[idx].password = password;
-                    currentAccounts[idx].platform = platform;
-                    currentAccounts[idx].timer = timerValue;
+                    currentAccounts[idx] = { ...currentAccounts[idx], email, password, platform, timer: timerVal };
                     await saveAccounts(currentAccounts);
                     closeModal();
-                    await refreshAccounts();
-                    showToast('✅ Compte mis à jour.', 'success');
+                    refreshAccounts();
+                    showToast('✅ Compte mis à jour', 'success');
                 } else {
-                    if (currentAccounts.some(a => a.email === email && a.platform === platform && a.cookiesStatus !== 'failed')) {
-                        showToast('❌ Ce compte existe déjà.', 'error');
+                    if (currentAccounts.some(a => a.email===email && a.platform===platform && a.cookiesStatus!=='failed')) {
+                        showToast('❌ Ce compte existe déjà', 'error');
                         return;
                     }
                     closeModal();
-                    showToast(`⏳ Ajout de ${email} en cours...`, '');
+                    showToast('⏳ Ajout en cours...');
                     try {
                         await triggerWorkflow(LOGIN_WORKFLOW_ID, {
                             email, password, platform,
-                            proxyIndex: String(proxyIndex),
-                            initialTimer: timerStr,
-                            action: 'login'
+                            proxyIndex: String(currentAccounts.length % 2),
+                            initialTimer: timerStr, action: 'login'
                         });
-                        let attempts = 0;
-                        const checkInterval = setInterval(async () => {
-                            try {
-                                currentAccounts = await loadAccounts();
-                                const found = currentAccounts.find(a => a.email === email && a.platform === platform);
-                                if (found) {
-                                    clearInterval(checkInterval);
-                                    if (found.cookies && found.cookies.length > 0 && found.cookiesStatus === 'valid') {
-                                        showToast(`✅ Compte ${email} ajouté.`, 'success');
-                                    } else if (found.cookiesStatus === 'failed') {
-                                        showToast(`❌ ${found.errorMessage || 'Identifiants incorrects'}`, 'error');
-                                        const filtered = currentAccounts.filter(a => !(a.email === email && a.platform === platform));
-                                        await saveAccounts(filtered);
-                                    }
-                                    await refreshAccounts();
-                                }
-                                if (attempts++ > 24) {
-                                    clearInterval(checkInterval);
-                                    showToast(`❌ Échec de l'ajout (timeout).`, 'error');
-                                    await refreshAccounts();
-                                }
-                            } catch {
-                                clearInterval(checkInterval);
+                        for (let i=0; i<24; i++) {
+                            await new Promise(r => setTimeout(r, 5000));
+                            currentAccounts = await loadAccounts();
+                            const found = currentAccounts.find(a => a.email===email && a.platform===platform);
+                            if (found && found.cookiesStatus==='valid') {
+                                showToast('✅ Compte ajouté', 'success');
+                                return refreshAccounts();
+                            } else if (found && found.cookiesStatus==='failed') {
+                                showToast('❌ '+found.errorMessage||'Identifiants incorrects', 'error');
+                                const filtered = currentAccounts.filter(a => a.email!==email || a.platform!==platform);
+                                await saveAccounts(filtered);
+                                return refreshAccounts();
                             }
-                        }, 5000);
-                    } catch (err) {
-                        showToast(`❌ Erreur: ${err.message}`, 'error');
-                    }
+                        }
+                        showToast('❌ Timeout', 'error');
+                    } catch (err) { showToast('❌ '+err.message, 'error'); }
                 }
             });
 
-            // Déconnexion
-            logoutBtn.addEventListener('click', () => {
-                localStorage.removeItem('auth_token');
-                window.location.href = '/index.html';
-            });
+            refreshBtn.addEventListener('click', refreshAccounts);
 
-            // Initialisation
+            // Lancement
             (async function init() {
                 currentUserId = await getUserId();
                 if (!currentUserId) return;
-
-                await refreshAccounts();
-                refreshBtn.addEventListener('click', refreshAccounts);
+                refreshAccounts();
                 setInterval(refreshAccounts, 30000);
             })();
-        })();
+        });
     </script>
 </body>
 </html>
