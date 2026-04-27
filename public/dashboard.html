@@ -82,9 +82,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
-        // --- 1. Attente du DOM et vérification de base ---
         window.addEventListener('DOMContentLoaded', function() {
-            // Éléments
             const btnAdd = document.getElementById('btnAddAccount');
             const logoutBtn = document.getElementById('logoutBtn');
             const refreshBtn = document.getElementById('refreshBtn');
@@ -94,58 +92,42 @@
             const toast = document.getElementById('toast');
             const accountsContainer = document.getElementById('accountsContainer');
 
-            // Test élément existant
             if (!btnAdd || !logoutBtn || !modal) {
-                alert('Erreur : boutons ou modale introuvables dans le HTML');
+                alert('Erreur : éléments manquants');
                 return;
             }
 
-            // Fonction utilitaire toast
-            function showToast(msg, type = '') {
+            function showToast(msg, type) {
                 toast.textContent = msg;
                 toast.className = `toast ${type} show`;
-                setTimeout(() => { toast.className = 'toast'; }, 5000);
+                setTimeout(() => { toast.className = 'toast'; }, 8000);
             }
 
-            // --- 2. Tests immédiats des boutons (alertes) ---
-            btnAdd.addEventListener('click', function() {
-                alert('Ajouter cliqué');
-                try {
-                    document.getElementById('modalTitle').textContent = '➕ Ajouter un compte';
-                    document.getElementById('editIndex').value = '-1';
-                    form.reset();
-                    document.getElementById('platform').value = 'tronpick';
-                    document.getElementById('initialTimer').value = '60:00';
-                    modal.classList.add('active');
-                } catch (e) {
-                    alert('Erreur ouverture modale : ' + e.message);
-                }
+            // Tests boutons
+            btnAdd.addEventListener('click', () => {
+                document.getElementById('modalTitle').textContent = '➕ Ajouter un compte';
+                document.getElementById('editIndex').value = '-1';
+                form.reset();
+                document.getElementById('platform').value = 'tronpick';
+                document.getElementById('initialTimer').value = '60:00';
+                modal.classList.add('active');
             });
 
-            logoutBtn.addEventListener('click', function() {
-                alert('Déconnexion cliquée');
+            logoutBtn.addEventListener('click', () => {
                 localStorage.removeItem('auth_token');
                 window.location.href = '/index.html';
             });
 
-            refreshBtn.addEventListener('click', function() {
-                alert('Rafraîchir cliqué');
+            refreshBtn.addEventListener('click', () => {
                 if (typeof loadAndRenderAccounts === 'function') loadAndRenderAccounts();
-                else alert('Fonction loadAndRenderAccounts non définie');
             });
 
-            btnCancel.addEventListener('click', function() {
-                modal.classList.remove('active');
-            });
+            btnCancel.addEventListener('click', () => modal.classList.remove('active'));
+            modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('active'); });
 
-            modal.addEventListener('click', function(e) {
-                if (e.target === modal) modal.classList.remove('active');
-            });
-
-            // --- 3. Authentification et isolation ---
+            // Authentification
             const token = localStorage.getItem('auth_token');
             if (!token) {
-                alert('Non connecté, redirection...');
                 window.location.href = '/index.html';
                 return;
             }
@@ -154,21 +136,21 @@
             const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3bWl0dWhoc3phaWxhYXhwb3NnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMjQ4MzQsImV4cCI6MjA5MjgwMDgzNH0.-LWoiKQVvgAhkkG1fF5067V-1ckA2aQ4UaUxfS95ukE';
             const supabase = supabase.createClient(supabaseUrl, supabaseAnonKey);
 
+            let currentUserId = null;
+            let currentAccounts = [];
+
             async function getUserId() {
                 try {
                     const { data: { user }, error } = await supabase.auth.getUser(token);
                     if (error) throw error;
                     return user.id;
                 } catch (e) {
-                    alert('Erreur authentification : ' + e.message + '. Redirection...');
+                    alert('Échec authentification : ' + e.message);
                     localStorage.removeItem('auth_token');
                     window.location.href = '/index.html';
                     return null;
                 }
             }
-
-            let currentUserId = null;
-            let currentAccounts = [];
 
             const GH_USERNAME = 'hasiniainahasina1-art';
             const GH_REPO = 'tronpick-faucet';
@@ -206,9 +188,18 @@
                 await githubApi('PUT', apiPath, body);
             }
 
-            async function triggerWorkflow(workflowId, inputs) {
+            // Fonction de dispatch avec retour détaillé
+            async function dispatchWorkflow(workflowId, inputs) {
                 const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${workflowId}/dispatches`;
-                await githubApi('POST', apiPath, { ref: BRANCH, inputs });
+                // Construire le corps correctement : {"ref":"main","inputs":{...}}
+                const payload = { ref: BRANCH, inputs: inputs };
+                try {
+                    const response = await githubApi('POST', apiPath, payload);
+                    // Si on arrive là, le dispatch a été accepté (HTTP 204 No Content)
+                    return { success: true, message: 'Dispatch envoyé avec succès' };
+                } catch (error) {
+                    return { success: false, message: error.message };
+                }
             }
 
             function minutesToTimeStr(minutes) {
@@ -264,27 +255,31 @@
                         const acc = visible[idx];
                         if (!confirm(`Supprimer ${acc.email} ?`)) return;
                         btn.disabled = true;
-                        alert('Suppression déclenchée');
+                        showToast('Suppression en cours...', 'success');
                         try {
-                            await triggerWorkflow('logout.yml', {
+                            const result = await dispatchWorkflow('logout.yml', {
                                 email: acc.email,
                                 password: acc.password,
                                 platform: acc.platform,
                                 proxyIndex: String(acc.proxyIndex||0),
                                 userId: currentUserId
                             });
-                            let deleted = false;
-                            for (let i = 0; i < 12; i++) {
-                                await new Promise(r => setTimeout(r, 10000));
-                                const fresh = await loadAccounts();
-                                if (!fresh.some(a => a.email===acc.email && a.platform===acc.platform)) {
-                                    deleted = true; break;
+                            if (result.success) {
+                                let deleted = false;
+                                for (let i = 0; i < 12; i++) {
+                                    await new Promise(r => setTimeout(r, 10000));
+                                    const fresh = await loadAccounts();
+                                    if (!fresh.some(a => a.email===acc.email && a.platform===acc.platform)) {
+                                        deleted = true; break;
+                                    }
                                 }
+                                if (deleted) showToast('✅ Compte supprimé', 'success');
+                                else showToast('⚠️ Compte toujours présent après 2 min', 'error');
+                            } else {
+                                showToast('❌ Échec dispatch : ' + result.message, 'error');
                             }
-                            if (deleted) alert('✅ Compte supprimé');
-                            else alert('⚠️ Compte toujours présent après 2 min');
                         } catch (err) {
-                            alert('❌ Erreur suppression : ' + err.message);
+                            showToast('❌ Erreur : ' + err.message, 'error');
                         } finally {
                             btn.disabled = false;
                             loadAndRenderAccounts();
@@ -298,11 +293,11 @@
                     currentAccounts = await loadAccounts();
                     renderAccounts();
                 } catch (e) {
-                    alert('Erreur chargement comptes : ' + e.message);
+                    showToast('Erreur chargement : ' + e.message, 'error');
                 }
             }
 
-            // --- 4. Soumission du formulaire ---
+            // Soumission du formulaire avec diagnostic
             form.addEventListener('submit', async function(e) {
                 e.preventDefault();
                 const email = document.getElementById('email').value.trim().toLowerCase();
@@ -313,55 +308,67 @@
                 const editIdx = parseInt(document.getElementById('editIndex').value);
 
                 if (editIdx >= 0) {
+                    // Modification
                     try {
                         currentAccounts[editIdx] = { ...currentAccounts[editIdx], email, password, platform, timer: timerVal };
                         await saveAccounts(currentAccounts);
-                        alert('✅ Compte mis à jour');
+                        showToast('✅ Compte mis à jour', 'success');
                     } catch (err) {
-                        alert('❌ Erreur modification : ' + err.message);
+                        showToast('❌ ' + err.message, 'error');
                     }
-                } else {
-                    if (currentAccounts.some(a => a.email===email && a.platform===platform && a.cookiesStatus!=='failed')) {
-                        alert('❌ Ce compte existe déjà');
-                        return;
-                    }
-                    alert('⏳ Ajout en cours (vérifiez l’onglet Actions)');
-                    try {
-                        await triggerWorkflow('test-account.yml', {
-                            email, password, platform,
-                            proxyIndex: String(currentAccounts.length % 2),
-                            initialTimer: timerStr,
-                            action: 'login',
-                            userId: currentUserId
-                        });
-                        // Attente
-                        for (let i = 0; i < 24; i++) {
-                            await new Promise(r => setTimeout(r, 5000));
-                            const fresh = await loadAccounts();
-                            const found = fresh.find(a => a.email===email && a.platform===platform);
-                            if (found && found.cookiesStatus==='valid') {
-                                alert('✅ Compte ajouté avec succès');
-                                break;
-                            } else if (found && found.cookiesStatus==='failed') {
-                                alert('❌ ' + (found.errorMessage || 'Identifiants incorrects'));
-                                const filtered = fresh.filter(a => a.email!==email || a.platform!==platform);
-                                await saveAccounts(filtered);
-                                break;
-                            }
-                        }
-                    } catch (err) {
-                        alert('❌ Erreur ajout : ' + err.message);
-                    }
+                    modal.classList.remove('active');
+                    loadAndRenderAccounts();
+                    return;
+                }
+
+                // Ajout
+                if (currentAccounts.some(a => a.email===email && a.platform===platform && a.cookiesStatus!=='failed')) {
+                    showToast('❌ Ce compte existe déjà', 'error');
+                    return;
                 }
                 modal.classList.remove('active');
+                showToast('⏳ Dispatch en cours...', 'success');
+
+                // Appeler le dispatch et afficher le résultat
+                const result = await dispatchWorkflow('test-account.yml', {
+                    email, password, platform,
+                    proxyIndex: String(currentAccounts.length % 2),
+                    initialTimer: timerStr,
+                    action: 'login',
+                    userId: currentUserId
+                });
+
+                if (result.success) {
+                    showToast('✅ Workflow déclenché ! Vérifiez l\'onglet Actions.', 'success');
+                    // Attente de l'ajout effectif
+                    for (let i = 0; i < 24; i++) {
+                        await new Promise(r => setTimeout(r, 5000));
+                        const fresh = await loadAccounts();
+                        const found = fresh.find(a => a.email===email && a.platform===platform);
+                        if (found && found.cookiesStatus==='valid') {
+                            showToast('✅ Compte ajouté avec succès', 'success');
+                            loadAndRenderAccounts();
+                            return;
+                        } else if (found && found.cookiesStatus==='failed') {
+                            showToast('❌ ' + (found.errorMessage || 'Identifiants incorrects'), 'error');
+                            const filtered = fresh.filter(a => a.email!==email || a.platform!==platform);
+                            await saveAccounts(filtered);
+                            loadAndRenderAccounts();
+                            return;
+                        }
+                    }
+                    showToast('⚠️ Aucune réponse après 2 minutes. Vérifiez le workflow.', 'error');
+                } else {
+                    showToast('❌ Échec du dispatch : ' + result.message, 'error');
+                }
                 loadAndRenderAccounts();
             });
 
-            // --- 5. Démarrage final ---
+            // Lancement
             (async function init() {
                 currentUserId = await getUserId();
                 if (!currentUserId) return;
-                alert('✅ Connecté et prêt. UserId : ' + currentUserId);
+                showToast('Connecté. Prêt.', 'success');
                 await loadAndRenderAccounts();
                 setInterval(loadAndRenderAccounts, 30000);
             })();
