@@ -83,6 +83,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
         window.addEventListener('DOMContentLoaded', function() {
+            // ----- 1. Éléments DOM -----
             const btnAdd = document.getElementById('btnAddAccount');
             const logoutBtn = document.getElementById('logoutBtn');
             const refreshBtn = document.getElementById('refreshBtn');
@@ -92,52 +93,31 @@
             const toast = document.getElementById('toast');
             const accountsContainer = document.getElementById('accountsContainer');
 
-            if (!btnAdd || !logoutBtn || !modal) {
-                alert('Erreur : éléments manquants');
-                return;
-            }
+            // ----- 2. Constantes globales (placées ici pour éviter toute erreur d'initialisation) -----
+            const GH_USERNAME = 'hasiniainahasina1-art';
+            const GH_REPO = 'tronpick-faucet';
+            const BRANCH = 'main';
+            const SUPABASE_URL = 'https://xwmituhhszailaaxposg.supabase.co';
+            const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3bWl0dWhoc3phaWxhYXhwb3NnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMjQ4MzQsImV4cCI6MjA5MjgwMDgzNH0.-LWoiKQVvgAhkkG1fF5067V-1ckA2aQ4UaUxfS95ukE';
 
+            // ----- 3. État global -----
+            let currentUserId = null;
+            let currentAccounts = [];
+
+            // ----- 4. Fonctions utilitaires -----
             function showToast(msg, type) {
                 toast.textContent = msg;
                 toast.className = `toast ${type} show`;
                 setTimeout(() => { toast.className = 'toast'; }, 8000);
             }
 
-            // Tests boutons
-            btnAdd.addEventListener('click', () => {
-                document.getElementById('modalTitle').textContent = '➕ Ajouter un compte';
-                document.getElementById('editIndex').value = '-1';
-                form.reset();
-                document.getElementById('platform').value = 'tronpick';
-                document.getElementById('initialTimer').value = '60:00';
-                modal.classList.add('active');
-            });
-
-            logoutBtn.addEventListener('click', () => {
-                localStorage.removeItem('auth_token');
-                window.location.href = '/index.html';
-            });
-
-            refreshBtn.addEventListener('click', () => {
-                if (typeof loadAndRenderAccounts === 'function') loadAndRenderAccounts();
-            });
-
-            btnCancel.addEventListener('click', () => modal.classList.remove('active'));
-            modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('active'); });
-
-            // Authentification
+            // ----- 5. Initialisation Supabase -----
             const token = localStorage.getItem('auth_token');
             if (!token) {
                 window.location.href = '/index.html';
                 return;
             }
-
-            const supabaseUrl = 'https://xwmituhhszailaaxposg.supabase.co';
-            const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3bWl0dWhoc3phaWxhYXhwb3NnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMjQ4MzQsImV4cCI6MjA5MjgwMDgzNH0.-LWoiKQVvgAhkkG1fF5067V-1ckA2aQ4UaUxfS95ukE';
-            const supabase = supabase.createClient(supabaseUrl, supabaseAnonKey);
-
-            let currentUserId = null;
-            let currentAccounts = [];
+            const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
             async function getUserId() {
                 try {
@@ -145,17 +125,14 @@
                     if (error) throw error;
                     return user.id;
                 } catch (e) {
-                    alert('Échec authentification : ' + e.message);
+                    showToast('Session expirée. Veuillez vous reconnecter.', 'error');
                     localStorage.removeItem('auth_token');
-                    window.location.href = '/index.html';
+                    setTimeout(() => { window.location.href = '/index.html'; }, 1500);
                     return null;
                 }
             }
 
-            const GH_USERNAME = 'hasiniainahasina1-art';
-            const GH_REPO = 'tronpick-faucet';
-            const BRANCH = 'main';
-
+            // ----- 6. API GitHub (via proxy) -----
             async function githubApi(method, path, body = null) {
                 const url = `/api/data?path=${encodeURIComponent(path)}&userId=${currentUserId}`;
                 const options = { method, headers: { 'Content-Type': 'application/json' } };
@@ -167,6 +144,7 @@
                 return data;
             }
 
+            // ----- 7. Gestion des comptes -----
             async function loadAccounts() {
                 const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/accounts.json`;
                 try {
@@ -188,20 +166,19 @@
                 await githubApi('PUT', apiPath, body);
             }
 
-            // Fonction de dispatch avec retour détaillé
+            // ----- 8. Déclenchement des workflows -----
             async function dispatchWorkflow(workflowId, inputs) {
                 const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${workflowId}/dispatches`;
-                // Construire le corps correctement : {"ref":"main","inputs":{...}}
                 const payload = { ref: BRANCH, inputs: inputs };
                 try {
-                    const response = await githubApi('POST', apiPath, payload);
-                    // Si on arrive là, le dispatch a été accepté (HTTP 204 No Content)
+                    await githubApi('POST', apiPath, payload);
                     return { success: true, message: 'Dispatch envoyé avec succès' };
                 } catch (error) {
                     return { success: false, message: error.message };
                 }
             }
 
+            // ----- 9. Rendu des comptes -----
             function minutesToTimeStr(minutes) {
                 if (isNaN(minutes)) return '0:00';
                 const secs = Math.floor(minutes * 60);
@@ -249,6 +226,7 @@
                     }, 1000);
                 });
 
+                // Suppression
                 document.querySelectorAll('button[data-del]').forEach(btn => {
                     btn.addEventListener('click', async (e) => {
                         const idx = parseInt(btn.dataset.del);
@@ -297,7 +275,28 @@
                 }
             }
 
-            // Soumission du formulaire avec diagnostic
+            // ----- 10. Événements -----
+            btnAdd.addEventListener('click', () => {
+                document.getElementById('modalTitle').textContent = '➕ Ajouter un compte';
+                document.getElementById('editIndex').value = '-1';
+                form.reset();
+                document.getElementById('platform').value = 'tronpick';
+                document.getElementById('initialTimer').value = '60:00';
+                modal.classList.add('active');
+            });
+
+            logoutBtn.addEventListener('click', () => {
+                localStorage.removeItem('auth_token');
+                window.location.href = '/index.html';
+            });
+
+            refreshBtn.addEventListener('click', () => {
+                loadAndRenderAccounts();
+            });
+
+            btnCancel.addEventListener('click', () => modal.classList.remove('active'));
+            modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('active'); });
+
             form.addEventListener('submit', async function(e) {
                 e.preventDefault();
                 const email = document.getElementById('email').value.trim().toLowerCase();
@@ -329,7 +328,6 @@
                 modal.classList.remove('active');
                 showToast('⏳ Dispatch en cours...', 'success');
 
-                // Appeler le dispatch et afficher le résultat
                 const result = await dispatchWorkflow('test-account.yml', {
                     email, password, platform,
                     proxyIndex: String(currentAccounts.length % 2),
@@ -364,7 +362,7 @@
                 loadAndRenderAccounts();
             });
 
-            // Lancement
+            // ----- 11. Démarrage -----
             (async function init() {
                 currentUserId = await getUserId();
                 if (!currentUserId) return;
