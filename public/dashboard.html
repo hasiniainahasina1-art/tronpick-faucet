@@ -12,20 +12,28 @@
         .success { background: #d4edda; color: #155724; }
         .error { background: #f8d7da; color: #721c24; }
         .info { background: #d1ecf1; color: #0c5460; }
-        pre { background: #f0f0f0; padding: 10px; white-space: pre-wrap; }
     </style>
 </head>
 <body>
     <h1>Tableau de bord</h1>
-    <div id="status" class="info">Vérification de la session…</div>
+    <div id="status" class="info">Chargement de la session…</div>
     <button id="addBtn" disabled>➕ Ajouter un compte</button>
     <button id="logoutBtn">🚪 Déconnexion</button>
     <h2>Mes comptes</h2>
     <div id="accountsTable"></div>
 
+    <!-- Chargement de Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
-        (function() {
+        // Ce script s'exécute uniquement après le chargement complet du DOM et de la bibliothèque
+        window.addEventListener('load', function() {
+            // Vérification que la bibliothèque Supabase est disponible
+            if (typeof window.supabase === 'undefined') {
+                document.getElementById('status').textContent = '❌ Bibliothèque Supabase non chargée.';
+                document.getElementById('status').className = 'error';
+                return;
+            }
+
             const SUPABASE_URL = 'https://xwmituhhszailaaxposg.supabase.co';
             const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3bWl0dWhoc3phaWxhYXhwb3NnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMjQ4MzQsImV4cCI6MjA5MjgwMDgzNH0.-LWoiKQVvgAhkkG1fF5067V-1ckA2aQ4UaUxfS95ukE';
             const GH_USERNAME = 'hasiniainahasina1-art';
@@ -47,7 +55,7 @@
                 setTimeout(() => div.remove(), 6000);
             }
 
-            // Initialisation de la session Supabase
+            // Authentification
             async function initAuth() {
                 try {
                     const token = localStorage.getItem('auth_token');
@@ -58,7 +66,7 @@
                         return false;
                     }
 
-                    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
                     const { data: { user }, error } = await supabase.auth.getUser(token);
                     if (error) throw error;
                     if (!user) throw new Error('Utilisateur non trouvé');
@@ -71,15 +79,11 @@
                 } catch (e) {
                     statusDiv.textContent = '❌ Échec de l\'authentification : ' + e.message;
                     statusDiv.className = 'error';
-                    // On laisse le bouton désactivé
                     addBtn.disabled = true;
-                    // Proposer de se reconnecter
-                    setTimeout(() => {
-                        if (confirm('Voulez-vous retourner à la page de connexion ?')) {
-                            localStorage.removeItem('auth_token');
-                            window.location.href = '/index.html';
-                        }
-                    }, 2000);
+                    if (confirm('Voulez-vous retourner à la page de connexion ?')) {
+                        localStorage.removeItem('auth_token');
+                        window.location.href = '/index.html';
+                    }
                     return false;
                 }
             }
@@ -209,7 +213,7 @@
                     setInterval(renderAccounts, 30000);
                 }
             });
-        })();
+        });
     </script>
 </body>
 </html>
