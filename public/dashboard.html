@@ -152,7 +152,6 @@
 
     <div class="toast" id="toast"></div>
 
-    <!-- Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
         function initWhenSupabaseReady() {
@@ -170,7 +169,6 @@
         }
 
         function startDashboard(supabase) {
-            // Éléments DOM
             const btnAdd = document.getElementById('btnAddAccount');
             const logoutBtn = document.getElementById('logoutBtn');
             const refreshBtn = document.getElementById('refreshBtn');
@@ -218,7 +216,6 @@
                 if (spinner) spinner.remove();
             }
 
-            // Authentification
             async function getUserId() {
                 const token = localStorage.getItem('auth_token');
                 if (!token) {
@@ -237,14 +234,12 @@
                 }
             }
 
-            // Configuration GitHub
             const GH_USERNAME = 'hasiniainahasina1-art';
             const GH_REPO = 'tronpick-faucet';
             const BRANCH = 'main';
             const LOGIN_WORKFLOW_ID = 'test-account.yml';
             const LOGOUT_WORKFLOW_ID = 'logout.yml';
 
-            // Proxy API
             async function githubApi(method, path, body = null) {
                 const url = `/api/data?path=${encodeURIComponent(path)}&userId=${currentUserId}`;
                 const options = { method, headers: { 'Content-Type': 'application/json' } };
@@ -283,7 +278,6 @@
                 await githubApi('POST', apiPath, payload);
             }
 
-            // Modale
             function openModal(title, account = null) {
                 document.getElementById('modalTitle').textContent = title;
                 if (account) {
@@ -303,7 +297,6 @@
 
             function closeModal() { modal.classList.remove('active'); }
 
-            // Rendu des comptes (affiche TOUS les comptes, y compris en échec)
             function renderAccounts() {
                 countdownIntervals.forEach(clearInterval);
                 countdownIntervals = [];
@@ -357,7 +350,6 @@
                     }
                 });
 
-                // Attacher les suppressions
                 document.querySelectorAll('.btn-delete').forEach(btn => {
                     btn.addEventListener('click', async (e) => {
                         const item = btn.closest('.account-item');
@@ -433,7 +425,6 @@
 
                 const idx = parseInt(document.getElementById('editIndex').value);
                 if (idx >= 0) {
-                    // Modification
                     currentAccounts[idx].email = email;
                     currentAccounts[idx].password = password;
                     currentAccounts[idx].platform = platform;
@@ -443,11 +434,25 @@
                     await refreshAccounts();
                     showToast('✅ Compte mis à jour.', 'success');
                 } else {
-                    // Vérification stricte : email ET plateforme déjà existants, quel que soit le statut
+                    // Vérification locale
                     if (currentAccounts.some(a => a.email === email && a.platform === platform)) {
-                        showToast('❌ Un compte avec cet email et cette plateforme existe déjà. Supprimez l\'ancien d\'abord.', 'error');
+                        showToast('❌ Ce compte existe déjà dans votre liste.', 'error');
                         return;
                     }
+
+                    // Vérification GLOBALE
+                    try {
+                        const checkRes = await fetch(`/api/check-account?email=${encodeURIComponent(email)}&platform=${encodeURIComponent(platform)}`);
+                        const checkData = await checkRes.json();
+                        if (!checkRes.ok || checkData.available === false) {
+                            showToast('❌ Ce compte est déjà utilisé par un autre utilisateur.', 'error');
+                            return;
+                        }
+                    } catch (err) {
+                        showToast('⚠️ Impossible de vérifier la disponibilité globale. Ajout annulé.', 'error');
+                        return;
+                    }
+
                     closeModal();
                     showToast(`⏳ Ajout de ${email} en cours...`, '');
                     try {
@@ -470,7 +475,6 @@
                                 } else if (found && found.cookiesStatus === 'failed') {
                                     clearInterval(checkInterval);
                                     showToast(`❌ ${found.errorMessage || 'Identifiants incorrects'}`, 'error');
-                                    // Le compte en échec est conservé, l'utilisateur pourra le supprimer
                                     await refreshAccounts();
                                 }
                                 if (attempts++ > 24) {
