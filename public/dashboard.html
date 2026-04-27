@@ -22,18 +22,19 @@
     <h2>Mes comptes</h2>
     <div id="accountsTable"></div>
 
-    <!-- Chargement de Supabase -->
+    <!-- Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
-        // Ce script s'exécute uniquement après le chargement complet du DOM et de la bibliothèque
+        // Attendre que la page ET la bibliothèque Supabase soient chargées
         window.addEventListener('load', function() {
-            // Vérification que la bibliothèque Supabase est disponible
+            // Vérification de la bibliothèque
             if (typeof window.supabase === 'undefined') {
                 document.getElementById('status').textContent = '❌ Bibliothèque Supabase non chargée.';
                 document.getElementById('status').className = 'error';
                 return;
             }
 
+            // Configuration
             const SUPABASE_URL = 'https://xwmituhhszailaaxposg.supabase.co';
             const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3bWl0dWhoc3phaWxhYXhwb3NnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMjQ4MzQsImV4cCI6MjA5MjgwMDgzNH0.-LWoiKQVvgAhkkG1fF5067V-1ckA2aQ4UaUxfS95ukE';
             const GH_USERNAME = 'hasiniainahasina1-art';
@@ -42,6 +43,7 @@
 
             let currentUserId = null;
             let accounts = [];
+
             const statusDiv = document.getElementById('status');
             const addBtn = document.getElementById('addBtn');
             const logoutBtn = document.getElementById('logoutBtn');
@@ -88,7 +90,7 @@
                 }
             }
 
-            // Fonctions API
+            // API GitHub via proxy
             async function githubApi(method, path, body = null) {
                 const url = `/api/data?path=${encodeURIComponent(path)}&userId=${currentUserId}`;
                 const options = { method, headers: { 'Content-Type': 'application/json' } };
@@ -96,27 +98,34 @@
                 const res = await fetch(url, options);
                 if (res.status === 204) return {};
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.error || data.message || `HTTP ${res.status}`);
+                if (!res.ok) {
+                    const error = new Error(data.error || data.message || `HTTP ${res.status}`);
+                    error.status = res.status;
+                    throw error;
+                }
                 return data;
             }
 
+            // Charger les comptes (gère le fichier inexistant)
             async function loadAccounts() {
                 const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/accounts.json`;
                 try {
                     const data = await githubApi('GET', apiPath);
                     return JSON.parse(atob(data.content));
                 } catch (e) {
-                    if (e.message.includes('404')) return [];
+                    if (e.status === 404) return [];
                     throw e;
                 }
             }
 
+            // Déclencher un workflow
             async function dispatchWorkflow(workflowId, inputs) {
                 const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${workflowId}/dispatches`;
                 const payload = { ref: BRANCH, inputs: inputs };
                 await githubApi('POST', apiPath, payload);
             }
 
+            // Affichage des comptes
             async function renderAccounts() {
                 try {
                     accounts = await loadAccounts();
@@ -124,6 +133,7 @@
                         accountsDiv.innerHTML = '<p>Aucun compte configuré.</p>';
                         return;
                     }
+
                     let html = '<table><tr><th>Email</th><th>Plateforme</th><th>Prochain claim</th><th>Actions</th></tr>';
                     accounts.forEach((acc, idx) => {
                         const now = Date.now();
@@ -145,6 +155,7 @@
                     html += '</table>';
                     accountsDiv.innerHTML = html;
 
+                    // Événements de suppression
                     document.querySelectorAll('button[data-del]').forEach(btn => {
                         btn.addEventListener('click', async (e) => {
                             const idx = parseInt(btn.dataset.del);
@@ -206,7 +217,7 @@
                 }
             });
 
-            // Lancement
+            // Lancement de l'application
             initAuth().then(success => {
                 if (success) {
                     renderAccounts();
