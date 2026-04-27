@@ -9,6 +9,9 @@ on:
       platform:
         required: true
         type: string
+      userId:
+        required: true
+        type: string
 
 jobs:
   claim:
@@ -34,15 +37,17 @@ jobs:
         env:
           CLAIM_EMAIL: ${{ github.event.inputs.email }}
           CLAIM_PLATFORM: ${{ github.event.inputs.platform }}
+          USER_ID: ${{ github.event.inputs.userId }}
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GH_USERNAME: ${{ secrets.GH_USERNAME }}
           GH_REPO: ${{ secrets.GH_REPO }}
           GH_BRANCH: ${{ secrets.GH_BRANCH }}
           GH_FILE_PATH: ${{ secrets.GH_FILE_PATH }}
           JP_PROXY_LIST: ${{ secrets.JP_PROXY_LIST }}
+          CRYPTO_SECRET: ${{ secrets.CRYPTO_SECRET }}
         run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" node script.js
 
-      - name: 📤 Upload des captures d'écran (artefacts)
+      - name: 📤 Upload des captures d'écran
         uses: actions/upload-artifact@v4
         if: always()
         with:
