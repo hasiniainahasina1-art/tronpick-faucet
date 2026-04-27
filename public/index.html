@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Connexion – Finoana Auto Claim</title>
+    <title>Finoana Claim – Connexion</title>
     <style>
         :root {
             --bg: #f0f4f8;
@@ -38,54 +38,118 @@
         }
         .logo {
             text-align: center;
-            margin-bottom: 24px;
+            margin-bottom: 30px;
         }
         .logo-icon { font-size: 2.5rem; margin-bottom: 8px; color: var(--primary); }
-        .logo h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.3px; }
+        .logo h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.3px; }
         .logo p { font-size: 0.85rem; color: var(--text-light); margin-top: 4px; }
-        .form-group { margin-bottom: 16px; position: relative; }
+
+        /* Floating label */
+        .form-group {
+            margin-bottom: 20px;
+            position: relative;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 14px 16px;
+            border: 1.5px solid var(--border);
+            border-radius: 10px;
+            font-size: 0.95rem;
+            background: #fafbfc;
+            transition: border 0.2s, box-shadow 0.2s;
+            outline: none;
+        }
+        .form-group input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37,99,235,0.15);
+            background: #fff;
+        }
         .form-group label {
-            display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.8rem;
-            text-transform: uppercase; letter-spacing: 0.5px; color: var(--text);
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: #fafbfc;
+            padding: 0 6px;
+            font-size: 0.85rem;
+            color: var(--text-light);
+            pointer-events: none;
+            transition: all 0.15s ease;
         }
-        .input-wrapper { position: relative; display: flex; align-items: center; }
-        .input-wrapper input {
-            width: 100%; padding: 12px 44px 12px 14px; border: 1.5px solid var(--border);
-            border-radius: 10px; font-size: 0.95rem; background: #fafbfc;
-            transition: border 0.2s, box-shadow 0.2s; outline: none;
+        .form-group input:focus + label,
+        .form-group input:not(:placeholder-shown) + label {
+            top: -8px;
+            transform: translateY(0);
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--primary);
+            background: #ffffff;
+            padding: 0 8px;
         }
-        .input-wrapper input:focus {
-            border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.15); background: #fff;
+        /* Pour le champ confirmPassword, on masque par défaut, affiché seulement en mode signup */
+        .hidden-field {
+            display: none;
         }
-        .input-wrapper .icon {
-            position: absolute; right: 12px; font-size: 1.2rem; color: var(--text-light);
-            background: none; border: none; cursor: pointer; padding: 4px;
+
+        .error-message {
+            color: var(--danger);
+            font-size: 0.75rem;
+            margin-top: 6px;
+            display: none;
         }
-        .input-wrapper .icon:hover { color: var(--primary); }
-        .error-message { color: var(--danger); font-size: 0.75rem; margin-top: 6px; display: none; }
         .error-message.visible { display: block; }
+
         .btn-primary {
-            width: 100%; padding: 13px; border-radius: 10px; border: none; font-weight: 600;
-            cursor: pointer; font-size: 0.95rem; background: var(--primary); color: white;
-            transition: background 0.2s, transform 0.2s; letter-spacing: 0.3px;
+            width: 100%;
+            padding: 14px;
+            border-radius: 10px;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 1rem;
+            background: var(--primary);
+            color: white;
+            transition: background 0.2s, transform 0.2s;
+            letter-spacing: 0.3px;
+            margin-top: 8px;
         }
         .btn-primary:hover { background: var(--primary-hover); transform: translateY(-1px); }
         .btn-primary:active { transform: translateY(0); }
         .btn-primary:disabled { background: #94a3b8; cursor: not-allowed; transform: none; }
-        .toggle-link { text-align: center; margin-top: 16px; font-size: 0.85rem; }
+
+        .toggle-link {
+            text-align: center;
+            margin-top: 18px;
+            font-size: 0.85rem;
+        }
         .toggle-link a { color: var(--primary); text-decoration: none; font-weight: 600; }
         .toggle-link a:hover { text-decoration: underline; }
-        .forgot-password { text-align: right; margin-bottom: 4px; }
-        .forgot-password a { font-size: 0.8rem; color: var(--primary); text-decoration: none; }
+
+        .forgot-password {
+            text-align: right;
+            margin-bottom: 4px;
+        }
+        .forgot-password a {
+            font-size: 0.8rem;
+            color: var(--primary);
+            text-decoration: none;
+        }
         .forgot-password a:hover { text-decoration: underline; }
+
         .spinner {
-            display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3);
-            border-top-color: white; border-radius: 50%; animation: spin 0.6s linear infinite;
-            margin-right: 8px; vertical-align: middle;
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+
         .version { text-align: center; margin-top: 24px; font-size: 0.7rem; color: var(--text-light); }
-        .debug-info { margin-top: 10px; font-size: 0.75rem; color: green; text-align: center; }
     </style>
 </head>
 <body>
@@ -97,25 +161,26 @@
         </div>
 
         <form id="authForm" novalidate>
-            <div class="form-group" id="emailGroup">
+            <div class="form-group">
+                <input type="email" id="email" placeholder=" " required autocomplete="email">
                 <label for="email">Adresse email</label>
-                <div class="input-wrapper">
-                    <input type="email" id="email" placeholder="vous@exemple.com" required autocomplete="email">
-                    <span class="icon">📧</span>
-                </div>
                 <div class="error-message" id="emailError">Veuillez entrer une adresse email valide.</div>
             </div>
 
-            <div class="form-group" id="passwordGroup">
+            <div class="form-group">
+                <input type="password" id="password" placeholder=" " required autocomplete="current-password">
                 <label for="password">Mot de passe</label>
-                <div class="input-wrapper">
-                    <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password">
-                    <button type="button" class="icon" id="togglePassword">👁️</button>
-                </div>
+                <button type="button" class="icon" id="togglePassword" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--text-light);">👁️</button>
                 <div class="forgot-password">
                     <a href="#" id="forgotPasswordLink">Mot de passe oublié ?</a>
                 </div>
                 <div class="error-message" id="passwordError">Le mot de passe doit contenir au moins 6 caractères.</div>
+            </div>
+
+            <div class="form-group hidden-field" id="confirmPasswordGroup">
+                <input type="password" id="confirmPassword" placeholder=" " required autocomplete="new-password">
+                <label for="confirmPassword">Confirmer le mot de passe</label>
+                <div class="error-message" id="confirmPasswordError">Les mots de passe ne correspondent pas.</div>
             </div>
 
             <div class="form-group" id="apiErrorGroup" style="display:none;">
@@ -133,55 +198,19 @@
         </form>
 
         <div class="version">v2.0 · Interface sécurisée</div>
-        <div class="debug-info" id="debugStatus">Chargement…</div>
     </div>
 
-    <!-- Bibliothèque Supabase -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
-        // Vérification immédiate que le script s'exécute
-        document.getElementById('debugStatus').textContent = 'Script démarré';
-
-        // Attendre que le DOM soit prêt
-        document.addEventListener('DOMContentLoaded', function() {
-            document.getElementById('debugStatus').textContent = 'DOM prêt';
-            initAuth();
-        });
-
-        // Si le DOM est déjà prêt, on lance directement
-        if (document.readyState !== 'loading') {
-            initAuth();
-        }
-
-        function initAuth() {
-            const debug = document.getElementById('debugStatus');
-
-            // Vérifier que la bibliothèque Supabase est chargée
-            if (typeof window.supabase === 'undefined') {
-                debug.textContent = 'Erreur : Supabase non chargée';
-                debug.style.color = 'red';
-                return;
-            }
-
-            // Initialisation Supabase
-            const supabaseUrl = 'https://xwmituhhszailaaxposg.supabase.co';
-            const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3bWl0dWhoc3phaWxhYXhwb3NnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMjQ4MzQsImV4cCI6MjA5MjgwMDgzNH0.-LWoiKQVvgAhkkG1fF5067V-1ckA2aQ4UaUxfS95ukE';
-
-            let supabase;
-            try {
-                supabase = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
-                debug.textContent = 'Supabase initialisée';
-            } catch (e) {
-                debug.textContent = 'Erreur Supabase : ' + e.message;
-                debug.style.color = 'red';
-                return;
-            }
-
+        (function() {
+            // État : 'login' ou 'signup'
             let mode = 'login';
 
+            // Éléments du DOM
             const form = document.getElementById('authForm');
             const emailInput = document.getElementById('email');
             const passwordInput = document.getElementById('password');
+            const confirmPasswordInput = document.getElementById('confirmPassword');
+            const confirmPasswordGroup = document.getElementById('confirmPasswordGroup');
             const toggleBtn = document.getElementById('togglePassword');
             const authBtn = document.getElementById('authBtn');
             const authBtnText = document.getElementById('authBtnText');
@@ -192,15 +221,11 @@
             const apiErrorGroup = document.getElementById('apiErrorGroup');
             const forgotPasswordLink = document.getElementById('forgotPasswordLink');
 
-            debug.textContent = 'Prêt';
-
             // Bascule affichage mot de passe
-            toggleBtn.addEventListener('click', function(e) {
-                e.preventDefault();
+            toggleBtn.addEventListener('click', () => {
                 const isPassword = passwordInput.type === 'password';
                 passwordInput.type = isPassword ? 'text' : 'password';
                 toggleBtn.textContent = isPassword ? '🙈' : '👁️';
-                debug.textContent = passwordInput.type === 'password' ? 'Mot de passe caché' : 'Mot de passe visible';
             });
 
             // Bascule connexion / inscription
@@ -211,30 +236,34 @@
                     authBtnText.textContent = 'Se connecter';
                     toggleText.textContent = 'Pas encore de compte ?';
                     toggleAuthLink.textContent = 'Créer un compte';
+                    confirmPasswordGroup.classList.add('hidden-field');
                 } else {
                     formDescription.textContent = 'Créez votre compte';
                     authBtnText.textContent = 'Créer un compte';
                     toggleText.textContent = 'Déjà un compte ?';
                     toggleAuthLink.textContent = 'Se connecter';
+                    confirmPasswordGroup.classList.remove('hidden-field');
                 }
                 apiErrorGroup.style.display = 'none';
             }
 
-            toggleAuthLink.addEventListener('click', function(e) {
+            toggleAuthLink.addEventListener('click', (e) => {
                 e.preventDefault();
                 setMode(mode === 'login' ? 'signup' : 'login');
             });
 
+            // Validation simple
             function isValidEmail(email) {
                 return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
             }
 
-            form.addEventListener('submit', async function(e) {
+            form.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 apiErrorGroup.style.display = 'none';
 
                 const email = emailInput.value.trim();
                 const password = passwordInput.value;
+                const confirmPassword = confirmPasswordInput.value;
 
                 if (!isValidEmail(email)) {
                     apiError.textContent = 'Adresse email invalide.';
@@ -247,39 +276,54 @@
                     return;
                 }
 
+                if (mode === 'signup') {
+                    if (password !== confirmPassword) {
+                        apiError.textContent = 'Les mots de passe ne correspondent pas.';
+                        apiErrorGroup.style.display = 'block';
+                        return;
+                    }
+                }
+
                 authBtn.disabled = true;
                 authBtnText.innerHTML = '<span class="spinner"></span> Patientez…';
 
-                let result;
-                if (mode === 'login') {
-                    result = await supabase.auth.signInWithPassword({ email, password });
-                } else {
-                    result = await supabase.auth.signUp({ email, password });
-                }
+                try {
+                    const response = await fetch('/api/auth', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            email,
+                            password,
+                            confirmPassword: mode === 'signup' ? confirmPassword : undefined,
+                            mode
+                        })
+                    });
 
-                authBtn.disabled = false;
-                authBtnText.textContent = mode === 'login' ? 'Se connecter' : 'Créer un compte';
+                    const data = await response.json();
 
-                if (result.error) {
-                    apiError.textContent = result.error.message;
+                    if (!response.ok) {
+                        apiError.textContent = data.error || 'Erreur inconnue';
+                        apiErrorGroup.style.display = 'block';
+                        authBtn.disabled = false;
+                        authBtnText.textContent = mode === 'login' ? 'Se connecter' : 'Créer un compte';
+                        return;
+                    }
+
+                    // Succès
+                    localStorage.setItem('auth_token', data.token);
+                    window.location.href = '/dashboard.html';
+                } catch (err) {
+                    apiError.textContent = 'Erreur réseau, veuillez réessayer.';
                     apiErrorGroup.style.display = 'block';
-                    return;
+                    authBtn.disabled = false;
+                    authBtnText.textContent = mode === 'login' ? 'Se connecter' : 'Créer un compte';
                 }
-
-                if (mode === 'signup' && result.data.user?.identities?.length === 0) {
-                    apiError.textContent = 'Un email de confirmation vous a été envoyé.';
-                    apiErrorGroup.style.display = 'block';
-                    return;
-                }
-
-                localStorage.setItem('auth_token', result.data.session.access_token);
-                window.location.href = '/dashboard.html';
             });
 
-            // Mot de passe oublié (placeholder)
-            forgotPasswordLink.addEventListener('click', function(e) {
+            // Mot de passe oublié
+            forgotPasswordLink.addEventListener('click', (e) => {
                 e.preventDefault();
-                apiError.textContent = 'Fonctionnalité en cours de développement.';
+                apiError.textContent = 'Fonctionnalité à venir.';
                 apiErrorGroup.style.display = 'block';
             });
 
@@ -288,7 +332,7 @@
             if (existingToken) {
                 window.location.href = '/dashboard.html';
             }
-        }
+        })();
     </script>
 </body>
 </html>
