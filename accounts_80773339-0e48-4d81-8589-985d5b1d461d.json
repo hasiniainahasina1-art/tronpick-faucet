@@ -9,8 +9,8 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777350941002,
     "timer": 1,
-    "pendingClaim": false,
-    "pendingClaimSince": 1777354687904,
+    "pendingClaim": true,
+    "pendingClaimSince": 1777354985841,
     "claimResult": "❌ Cannot read properties of undefined (reading 'success')"
   },
   {
