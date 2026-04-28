@@ -92,12 +92,11 @@
             border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); background: #fff;
         }
         .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
-        .version { text-align: center; margin-top: 24px; font-size: 0.7rem; color: var(--text-secondary); }
     </style>
 </head>
 <body>
     <header class="header">
-        <h1>⚙️ Finoana Auto Claim</h1>
+        <h1 id="welcomeMessage">⚙️ Chargement...</h1>
         <div style="display:flex; gap:8px;">
             <button class="btn btn-primary" id="btnAddAccount">➕ Ajouter un compte</button>
             <button class="btn btn-outline" id="logoutBtn">🚪 Déconnexion</button>
@@ -120,28 +119,16 @@
             <h3 id="modalTitle">➕ Nouveau compte</h3>
             <form id="accountForm">
                 <input type="hidden" id="editIndex" value="-1">
-                <div class="form-group">
-                    <label>Email</label>
-                    <input type="email" id="email" required placeholder="exemple@mail.com">
-                </div>
-                <div class="form-group">
-                    <label>Mot de passe</label>
-                    <input type="password" id="password" required placeholder="••••••••">
-                </div>
-                <div class="form-group">
-                    <label>Plateforme</label>
-                    <select id="platform">
-                        <option value="tronpick">TronPick</option>
-                        <option value="litepick">LitePick</option>
-                        <option value="dogepick">DogePick</option>
-                        <option value="solpick">SolPick</option>
-                        <option value="binpick">BinPick</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Timer initial (mm:ss)</label>
-                    <input type="text" id="initialTimer" placeholder="60:00" pattern="[0-9]{1,2}:[0-5][0-9]">
-                </div>
+                <div class="form-group"><label>Email</label><input type="email" id="email" required placeholder="exemple@mail.com"></div>
+                <div class="form-group"><label>Mot de passe</label><input type="password" id="password" required placeholder="••••••••"></div>
+                <div class="form-group"><label>Plateforme</label><select id="platform">
+                    <option value="tronpick">TronPick</option>
+                    <option value="litepick">LitePick</option>
+                    <option value="dogepick">DogePick</option>
+                    <option value="solpick">SolPick</option>
+                    <option value="binpick">BinPick</option>
+                </select></div>
+                <div class="form-group"><label>Timer initial (mm:ss)</label><input type="text" id="initialTimer" placeholder="60:00" pattern="[0-9]{1,2}:[0-5][0-9]"></div>
                 <div class="modal-actions">
                     <button type="button" class="btn btn-outline" id="btnCancel">Annuler</button>
                     <button type="submit" class="btn btn-primary" id="btnSubmit">💾 Enregistrer</button>
@@ -162,13 +149,19 @@
             fetch('/api/config')
                 .then(res => res.json())
                 .then(config => {
-                    const supabase = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
-                    startDashboard(supabase);
+                    const supabase = supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
+                    startDashboard(supabase, config);
                 })
                 .catch(err => alert('Erreur de configuration : ' + err.message));
         }
 
-        function startDashboard(supabase) {
+        function startDashboard(supabase, config) {
+            // Récupération des variables secrètes
+            const GH_USERNAME = config.ghUsername;
+            const GH_REPO = config.ghRepo;
+            const BRANCH = config.ghBranch || 'main';
+
+            // Éléments DOM
             const btnAdd = document.getElementById('btnAddAccount');
             const logoutBtn = document.getElementById('logoutBtn');
             const refreshBtn = document.getElementById('refreshBtn');
@@ -177,6 +170,7 @@
             const form = document.getElementById('accountForm');
             const toast = document.getElementById('toast');
             const accountsContainer = document.getElementById('accountsContainer');
+            const welcomeMessage = document.getElementById('welcomeMessage');
 
             let currentUserId = null;
             let currentAccounts = [];
@@ -202,20 +196,7 @@
                 return (mins || 0) + (secs || 0) / 60;
             }
 
-            function showLoader(accountElement) {
-                const info = accountElement.querySelector('.account-info');
-                if (info && !info.querySelector('.spinner')) {
-                    const spinner = document.createElement('span');
-                    spinner.className = 'spinner';
-                    info.prepend(spinner);
-                }
-            }
-
-            function hideLoader(accountElement) {
-                const spinner = accountElement.querySelector('.spinner');
-                if (spinner) spinner.remove();
-            }
-
+            // Authentification + récupération du nom d'utilisateur
             async function getUserId() {
                 const token = localStorage.getItem('auth_token');
                 if (!token) {
@@ -225,6 +206,9 @@
                 try {
                     const { data: { user }, error } = await supabase.auth.getUser(token);
                     if (error) throw error;
+                    // Récupérer le username depuis user_metadata
+                    const username = user.user_metadata?.username || user.email;
+                    welcomeMessage.textContent = `Bienvenue, ${username}`;
                     return user.id;
                 } catch (e) {
                     showToast('Session expirée. Redirection...', 'error');
@@ -234,9 +218,6 @@
                 }
             }
 
-            const GH_USERNAME = 'hasiniainahasina1-art';
-            const GH_REPO = 'tronpick-faucet';
-            const BRANCH = 'main';
             const LOGIN_WORKFLOW_ID = 'test-account.yml';
             const LOGOUT_WORKFLOW_ID = 'logout.yml';
 
@@ -350,15 +331,27 @@
                     }
                 });
 
+                // Gestion de la suppression avec compte à rebours 90s
                 document.querySelectorAll('.btn-delete').forEach(btn => {
-                    btn.addEventListener('click', async (e) => {
-                        const item = btn.closest('.account-item');
-                        const idx = parseInt(item.dataset.index);
+                    btn.addEventListener('click', async function(e) {
+                        const row = btn.closest('.account-item');
+                        const idx = parseInt(row.dataset.index);
                         const acc = currentAccounts[idx];
-                        if (!confirm(`Supprimer définitivement le compte ${acc.email} ?`)) return;
+                        if (!confirm(`Supprimer définitivement ${acc.email} ?`)) return;
 
-                        showLoader(item);
                         btn.disabled = true;
+                        let secondsLeft = 90;
+                        btn.innerHTML = '<span class="spinner"></span> 90s';
+                        const countdownInterval = setInterval(() => {
+                            secondsLeft--;
+                            if (secondsLeft <= 0) {
+                                clearInterval(countdownInterval);
+                                btn.innerHTML = '⏳ Fin...';
+                            } else {
+                                btn.innerHTML = `<span class="spinner"></span> ${secondsLeft}s`;
+                            }
+                        }, 1000);
+
                         showToast(`🗑️ Déconnexion de ${acc.email}...`, '');
 
                         try {
@@ -370,9 +363,8 @@
                                 userId: currentUserId
                             });
 
-                            showToast(`⏳ Déconnexion en cours...`, '');
                             let isDeleted = false;
-                            for (let attempt = 0; attempt < 12; attempt++) {
+                            for (let attempt = 0; attempt < 9; attempt++) {
                                 await new Promise(r => setTimeout(r, 10000));
                                 currentAccounts = await loadAccounts();
                                 if (!currentAccounts.some(a => a.email === acc.email && a.platform === acc.platform)) {
@@ -380,15 +372,18 @@
                                     break;
                                 }
                             }
+
+                            clearInterval(countdownInterval);
                             if (isDeleted) {
                                 showToast(`✅ Compte ${acc.email} supprimé avec succès.`, 'success');
                             } else {
-                                showToast(`⚠️ Le compte existe toujours après 2 minutes.`, 'error');
+                                showToast(`⚠️ Le compte existe toujours après 90s. Réessayez.`, 'error');
                             }
                         } catch (error) {
+                            clearInterval(countdownInterval);
                             showToast(`❌ Erreur: ${error.message}`, 'error');
                         } finally {
-                            hideLoader(item);
+                            btn.innerHTML = '🗑️';
                             btn.disabled = false;
                             await refreshAccounts();
                         }
@@ -434,13 +429,11 @@
                     await refreshAccounts();
                     showToast('✅ Compte mis à jour.', 'success');
                 } else {
-                    // Vérification locale
                     if (currentAccounts.some(a => a.email === email && a.platform === platform)) {
                         showToast('❌ Ce compte existe déjà dans votre liste.', 'error');
                         return;
                     }
 
-                    // Vérification GLOBALE
                     try {
                         const checkRes = await fetch(`/api/check-account?email=${encodeURIComponent(email)}&platform=${encodeURIComponent(platform)}`);
                         const checkData = await checkRes.json();
