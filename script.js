@@ -71,7 +71,7 @@ function parseProxyUrl(proxyUrl) {
     return { server: `http://${match[3]}:${match[4]}`, username: match[1], password: match[2] };
 }
 
-// --- Fonctions Puppeteer (inchangées) ---
+// --- Fonctions Puppeteer ---
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -132,6 +132,7 @@ async function humanClickAt(page, coords) {
     console.log(`🖱️ Clic à (${coords.x}, ${coords.y})`);
 }
 
+// --- Chargement / Sauvegarde ---
 async function loadAccounts() {
     try {
         const res = await octokit.repos.getContent({
@@ -144,7 +145,6 @@ async function loadAccounts() {
     }
 }
 
-// Sauvegarde robuste (fusion intelligente, 30 tentatives)
 async function saveAccounts(accounts, modifiedAccount = null) {
     const maxRetries = 30;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -367,7 +367,7 @@ async function claimWithCookies(account) {
     }
 }
 
-// --- Main ---
+// --- Main (avec anti-double déclenchement) ---
 (async () => {
     try {
         let accounts = await loadAccounts();
@@ -392,6 +392,18 @@ async function claimWithCookies(account) {
         }
 
         const now = Date.now();
+
+        // 🛡️ Protection anti-double déclenchement
+        if (targetAccount.pendingClaim) {
+            console.log('⚠️ Un traitement est déjà en cours (pendingClaim=true). Abandon.');
+            process.exit(0);
+        }
+        if (targetAccount.lastClaim && (now - targetAccount.lastClaim < 3 * 60 * 1000)) {
+            console.log('⚠️ Le compte a été claimé il y a moins de 3 minutes. Abandon.');
+            process.exit(0);
+        }
+
+        // Vérification d'éligibilité
         const lastClaim = targetAccount.lastClaim || 0;
         const intervalMs = (targetAccount.timer || 60) * 60 * 1000;
         if ((now - lastClaim) < intervalMs) {
@@ -407,6 +419,21 @@ async function claimWithCookies(account) {
         }
 
         console.log(`\n===== Traitement : ${CLAIM_EMAIL} (${CLAIM_PLATFORM}) =====`);
+
+        // 🔒 Poser immédiatement le flag pendingClaim
+        targetAccount.pendingClaim = true;
+        targetAccount.pendingClaimSince = now;
+        try {
+            for (const acc of accounts) {
+                if (acc.password && !acc.password.includes(':')) acc.password = encrypt(acc.password);
+                if (acc.cookies && typeof acc.cookies === 'object') acc.cookies = encrypt(JSON.stringify(acc.cookies));
+            }
+            await saveAccounts(accounts, targetAccount);
+            console.log('🔒 Flag pendingClaim posé.');
+        } catch (e) {
+            console.error('❌ Impossible de poser le flag, abandon.');
+            process.exit(1);
+        }
 
         // Login si nécessaire
         if (!targetAccount.cookies || targetAccount.cookiesStatus === 'expired' || targetAccount.cookiesStatus === 'failed') {
@@ -439,7 +466,6 @@ async function claimWithCookies(account) {
             result = { success: false, message: e.message };
         }
 
-        // Journalisation détaillée du résultat
         console.log(`📋 Résultat du claim : success=${result.success}, message="${result.message}"`);
 
         if (result.success) {
@@ -460,7 +486,7 @@ async function claimWithCookies(account) {
             }
         }
 
-        // Délai aléatoire avant sauvegarde pour éviter les collisions
+        // Délai aléatoire avant sauvegarde
         const waitBeforeSave = 2000 + Math.random() * 5000;
         console.log(`⏳ Pause de ${Math.round(waitBeforeSave/1000)}s avant sauvegarde...`);
         await new Promise(r => setTimeout(r, waitBeforeSave));
