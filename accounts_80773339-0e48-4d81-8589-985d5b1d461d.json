@@ -9,8 +9,7 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777355026799,
     "timer": 60,
-    "pendingClaim": true,
-    "pendingClaimSince": 1777358715057,
+    "pendingClaim": false,
     "claimResult": "✅ ×Success!You got 0.001000 TRX!"
   },
   {
@@ -37,8 +36,7 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777358364095,
     "timer": 8,
-    "pendingClaim": true,
-    "pendingClaimSince": 1777358887980
+    "pendingClaim": false
   },
   {
     "email": "rivoniainafinoana123@gmail.com",
