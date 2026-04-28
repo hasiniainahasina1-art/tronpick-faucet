@@ -57,14 +57,15 @@
   },
   {
     "email": "rivoniainafinoana123@gmail.com",
-    "password": "0b8e98dbbf2d62cd1c361466f58a5a39:0e6d896261644aeea1c7d837d808b193",
+    "password": "b777f44ecd39cca40a1ac8ab0a39e334:d78294a1b1d2bb1105745247cd55a251",
     "platform": "tronpick",
     "proxyIndex": 0,
     "enabled": false,
-    "cookies": "7421a5d8ac2922408f20473ec7b8c9d1:b0c51294201fbb2d5067f8e709273204",
+    "cookies": "06d2a74651563d3eaabbd6432e20f0b7:c6dd6fe3d90caf299e36cade6b5ddd09",
     "cookiesStatus": "failed",
     "errorMessage": "Échec connexion",
     "lastClaim": 0,
-    "timer": 60
+    "timer": 60,
+    "pendingLogout": true
   }
 ]
