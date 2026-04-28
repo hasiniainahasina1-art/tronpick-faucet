@@ -1,4 +1,4 @@
-// api/check-claim.js – VERSION DE PRODUCTION
+// api/check-claim.js – VERSION FINALE
 export default async function handler(req, res) {
     const SECRET = process.env.CRON_SECRET;
     const headerSecret = req.headers['x-cron-secret'];
@@ -16,81 +16,51 @@ export default async function handler(req, res) {
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-        return res.status(500).json({ error: 'Configuration Supabase manquante' });
-    }
-
     try {
-        // 1. Récupérer la liste des utilisateurs
-        const profilesResponse = await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
-            headers: {
-                'apikey': SUPABASE_SERVICE_ROLE_KEY,
-                'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
-            }
+        // Récupérer tous les profils
+        const profilesRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
+            headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` }
         });
-        if (!profilesResponse.ok) {
-            console.error('Erreur récupération profils:', profilesResponse.status);
-            return res.status(500).json({ error: 'Impossible de récupérer les utilisateurs' });
-        }
-        const profiles = await profilesResponse.json();
+        if (!profilesRes.ok) throw new Error('Erreur récupération profils');
+        const profiles = await profilesRes.json();
 
         const triggered = [];
 
         for (const profile of profiles) {
             const userId = profile.id;
             const filePath = `accounts_${userId}.json`;
+            const fileUrl = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/contents/${filePath}?ref=${GH_BRANCH}`;
 
-            // Lire le fichier de l'utilisateur
-            const url = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/contents/${filePath}?ref=${GH_BRANCH}`;
-            const response = await fetch(url, {
-                headers: {
-                    Authorization: `token ${GH_TOKEN}`,
-                    Accept: 'application/vnd.github.v3+json'
-                }
+            const fileRes = await fetch(fileUrl, {
+                headers: { Authorization: `token ${GH_TOKEN}`, Accept: 'application/vnd.github.v3+json' }
             });
-
-            if (response.status === 404) continue;
-            if (!response.ok) {
-                console.error(`Erreur lecture fichier ${userId}: ${response.status}`);
+            if (fileRes.status === 404) continue;
+            if (!fileRes.ok) {
+                console.error(`Erreur fichier ${userId}: ${fileRes.status}`);
                 continue;
             }
 
-            const data = await response.json();
+            const fileData = await fileRes.json();
             const content = decodeURIComponent(
-                Array.from(atob(data.content), c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')
+                Array.from(atob(fileData.content), c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')
             );
             const accounts = JSON.parse(content);
-
             const now = Date.now();
 
-            // Nettoyer les pendingClaim expirés (plus de 10 minutes)
-            let cleaned = false;
             for (const acc of accounts) {
-                if (acc.pendingClaim && acc.pendingClaimSince && (now - acc.pendingClaimSince > 10 * 60 * 1000)) {
-                    acc.pendingClaim = false;
-                    delete acc.pendingClaimSince;
-                    cleaned = true;
-                }
-            }
-            if (cleaned) {
-                await updateAccountFile(userId, accounts, GH_USERNAME, GH_REPO, GH_BRANCH, GH_TOKEN);
-                console.log(`🧹 PendingClaim nettoyé pour ${userId}`);
-            }
+                // Vérifier si un claim est déjà en cours
+                if (acc.pendingClaim === true) continue;
+                if (acc.enabled === false) continue;
+                if (acc.pendingLogout === true) continue;
 
-            // Filtrer les comptes éligibles
-            const eligibleAccounts = accounts.filter(acc => {
-                if (acc.enabled === false) return false;
-                if (acc.pendingLogout === true) return false;
-                if (acc.pendingClaim === true) return false;
                 const last = acc.lastClaim || 0;
                 const intervalMs = (acc.timer || 60) * 60 * 1000;
-                return (now - last) >= intervalMs;
-            });
+                if ((now - last) < intervalMs) continue;
 
-            for (const acc of eligibleAccounts) {
-                // Marquer le compte avec pendingClaim
+                // ✅ Compte éligible et libre → poser le flag
                 acc.pendingClaim = true;
                 acc.pendingClaimSince = now;
+                // Sauvegarde rapide pour poser le flag
                 await updateAccountFile(userId, accounts, GH_USERNAME, GH_REPO, GH_BRANCH, GH_TOKEN);
 
                 // Déclencher le workflow
@@ -104,19 +74,15 @@ export default async function handler(req, res) {
                     },
                     body: JSON.stringify({
                         ref: GH_BRANCH,
-                        inputs: {
-                            email: acc.email,
-                            platform: acc.platform,
-                            userId: userId
-                        }
+                        inputs: { email: acc.email, platform: acc.platform, userId }
                     })
                 });
 
                 if (dispatchRes.ok) {
-                    triggered.push(`${acc.email} (${acc.platform}) [${userId}]`);
+                    triggered.push(`${acc.email} (${acc.platform})`);
                 } else {
-                    console.error(`Erreur dispatch pour ${acc.email}: ${dispatchRes.status}`);
-                    // En cas d'échec, retirer le flag
+                    console.error(`Erreur dispatch ${acc.email}: ${dispatchRes.status}`);
+                    // Retirer le flag en cas d'échec
                     acc.pendingClaim = false;
                     delete acc.pendingClaimSince;
                     await updateAccountFile(userId, accounts, GH_USERNAME, GH_REPO, GH_BRANCH, GH_TOKEN);
@@ -126,40 +92,28 @@ export default async function handler(req, res) {
 
         return res.json({ status: 'ok', triggered: triggered.length, emails: triggered });
     } catch (error) {
-        console.error('Erreur dans check-claim:', error);
+        console.error(error);
         return res.status(500).json({ error: error.message });
     }
 }
 
-// Fonction de sauvegarde d'un fichier utilisateur
 async function updateAccountFile(userId, accounts, owner, repo, branch, token) {
     const filePath = `accounts_${userId}.json`;
     const url = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`;
-    try {
-        // Récupérer le sha actuel
-        const getRes = await fetch(url, {
-            headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github.v3+json' }
-        });
-        if (!getRes.ok) return;
-        const data = await getRes.json();
-        const sha = data.sha;
-
-        const content = btoa(unescape(encodeURIComponent(JSON.stringify(accounts, null, 2))));
-        await fetch(url, {
-            method: 'PUT',
-            headers: {
-                Authorization: `token ${token}`,
-                Accept: 'application/vnd.github.v3+json',
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                message: 'Mise à jour pendingClaim',
-                content,
-                branch,
-                sha
-            })
-        });
-    } catch (e) {
-        console.error('Erreur mise à jour pendingClaim:', e.message);
-    }
+    const getRes = await fetch(url, {
+        headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github.v3+json' }
+    });
+    if (!getRes.ok) return;
+    const data = await getRes.json();
+    const sha = data.sha;
+    const content = btoa(unescape(encodeURIComponent(JSON.stringify(accounts, null, 2))));
+    await fetch(url, {
+        method: 'PUT',
+        headers: {
+            Authorization: `token ${token}`,
+            Accept: 'application/vnd.github.v3+json',
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ message: 'Flag pendingClaim', content, branch, sha })
+    });
 }
