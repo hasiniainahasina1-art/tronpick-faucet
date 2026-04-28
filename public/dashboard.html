@@ -327,7 +327,7 @@
                     }
                 });
 
-                // Gestion de la suppression avec compte à rebours 90s – version améliorée
+                // --- Gestion de la suppression avec compte à rebours FIXE de 90s ---
                 document.querySelectorAll('.btn-delete').forEach(btn => {
                     btn.addEventListener('click', async function(e) {
                         const row = btn.closest('.account-item');
@@ -360,14 +360,14 @@
                                 userId: currentUserId
                             });
 
+                            // Attendre 90 secondes (peu importe si la suppression est plus rapide)
+                            await new Promise(r => setTimeout(r, 90000));
+
+                            // Vérifier une seule fois après 90s
                             let isDeleted = false;
-                            for (let attempt = 0; attempt < 9; attempt++) {
-                                await new Promise(r => setTimeout(r, 10000));
-                                currentAccounts = await loadAccounts();
-                                if (!currentAccounts.some(a => a.email === acc.email && a.platform === acc.platform)) {
-                                    isDeleted = true;
-                                    break;
-                                }
+                            currentAccounts = await loadAccounts();
+                            if (!currentAccounts.some(a => a.email === acc.email && a.platform === acc.platform)) {
+                                isDeleted = true;
                             }
 
                             clearInterval(countdownInterval);
