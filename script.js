@@ -132,7 +132,7 @@ async function humanClickAt(page, coords) {
     console.log(`🖱️ Clic à (${coords.x}, ${coords.y})`);
 }
 
-// --- Chargement / Sauvegarde ---
+// --- Chargement / Sauvegarde améliorée ---
 async function loadAccounts() {
     try {
         const res = await octokit.repos.getContent({
@@ -177,12 +177,13 @@ async function saveAccounts(accounts, modifiedAccount = null) {
                         if (modifiedAccount) {
                             const idx = latest.findIndex(a => a.email === modifiedAccount.email && a.platform === modifiedAccount.platform);
                             if (idx !== -1) {
+                                // Fusion intelligente : on écrase les propriétés modifiées mais on garde le reste
                                 latest[idx] = { ...latest[idx], ...modifiedAccount };
                             } else {
                                 latest.push(modifiedAccount);
                             }
                         }
-                        accounts = latest;
+                        accounts = latest; // repartir de la version fraîche
                     } catch (reloadErr) {
                         console.error('❌ Échec rechargement après conflit:', reloadErr);
                     }
@@ -367,13 +368,12 @@ async function claimWithCookies(account) {
     }
 }
 
-// --- Main (version corrigée – sans l’abandon sur pendingClaim) ---
+// --- Main (fusion robuste, gestion des erreurs site) ---
 (async () => {
     try {
         let accounts = await loadAccounts();
         console.log(`📋 Comptes chargés : ${accounts.length}`);
 
-        // Déchiffrer les champs sensibles
         for (const acc of accounts) {
             if (acc.password) acc.password = decrypt(acc.password);
             if (typeof acc.cookies === 'string' && acc.cookies) {
@@ -392,8 +392,6 @@ async function claimWithCookies(account) {
         }
 
         const now = Date.now();
-
-        // Vérification d’éligibilité classique
         const lastClaim = targetAccount.lastClaim || 0;
         const intervalMs = (targetAccount.timer || 60) * 60 * 1000;
         if ((now - lastClaim) < intervalMs) {
@@ -410,7 +408,6 @@ async function claimWithCookies(account) {
 
         console.log(`\n===== Traitement : ${CLAIM_EMAIL} (${CLAIM_PLATFORM}) =====`);
 
-        // Login si nécessaire
         if (!targetAccount.cookies || targetAccount.cookiesStatus === 'expired' || targetAccount.cookiesStatus === 'failed') {
             console.log('🍪 Tentative de login');
             try {
@@ -445,9 +442,9 @@ async function claimWithCookies(account) {
 
         if (result.success) {
             targetAccount.lastClaim = now;
-            if (targetAccount.timer !== 63) {
+            if (targetAccount.timer !== 60) {
                 console.log('🕒 Timer passé à 60 min');
-                targetAccount.timer = 63;
+                targetAccount.timer = 60;
             }
             targetAccount.claimResult = `✅ ${result.message || 'Claim réussi'}`;
             console.log('✅ Claim réussi');
@@ -468,7 +465,6 @@ async function claimWithCookies(account) {
 
         targetAccount.pendingClaim = false;
 
-        // Rechiffrer
         for (const acc of accounts) {
             if (acc.password && !acc.password.includes(':')) acc.password = encrypt(acc.password);
             if (acc.cookies && typeof acc.cookies === 'object') acc.cookies = encrypt(JSON.stringify(acc.cookies));
