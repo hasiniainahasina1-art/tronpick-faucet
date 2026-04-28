@@ -71,7 +71,7 @@ function parseProxyUrl(proxyUrl) {
     return { server: `http://${match[3]}:${match[4]}`, username: match[1], password: match[2] };
 }
 
-// --- Fonctions Puppeteer ---
+// --- Fonctions Puppeteer (inchangées) ---
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -132,7 +132,7 @@ async function humanClickAt(page, coords) {
     console.log(`🖱️ Clic à (${coords.x}, ${coords.y})`);
 }
 
-// --- Chargement / Sauvegarde améliorée ---
+// --- Chargement / Sauvegarde ---
 async function loadAccounts() {
     try {
         const res = await octokit.repos.getContent({
@@ -177,13 +177,12 @@ async function saveAccounts(accounts, modifiedAccount = null) {
                         if (modifiedAccount) {
                             const idx = latest.findIndex(a => a.email === modifiedAccount.email && a.platform === modifiedAccount.platform);
                             if (idx !== -1) {
-                                // Fusion intelligente : on écrase les propriétés modifiées mais on garde le reste
                                 latest[idx] = { ...latest[idx], ...modifiedAccount };
                             } else {
                                 latest.push(modifiedAccount);
                             }
                         }
-                        accounts = latest; // repartir de la version fraîche
+                        accounts = latest;
                     } catch (reloadErr) {
                         console.error('❌ Échec rechargement après conflit:', reloadErr);
                     }
@@ -332,6 +331,7 @@ async function claimWithCookies(account) {
         await delay(5000);
         await page.screenshot({ path: path.join(screenshotsDir, `07_after_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
+        // Récupération des messages et du timer affiché
         const messages = await page.evaluate(() => {
             return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [role="alert"], .alert, .message, .notification'))
                 .map(el => el.textContent.trim()).filter(t => t);
@@ -340,12 +340,39 @@ async function claimWithCookies(account) {
             const btn = document.querySelector('#process_claim_hourly_faucet');
             return btn ? btn.disabled : false;
         });
+
+        // Essayer d'extraire le temps restant (format "XX:XX" ou "Xh XXm")
+        let nextTimerMinutes = null;
+        try {
+            nextTimerMinutes = await page.evaluate(() => {
+                // Chercher un élément contenant le temps restant (souvent '#next_claim_timer', '.countdown', etc.)
+                const timerEl = document.querySelector('#next_claim_timer, .countdown, [id*="timer"], [class*="timer"]');
+                if (timerEl) {
+                    const txt = timerEl.textContent.trim();
+                    // Formats possibles : "60:00", "1h 0min", "60 min"
+                    const hMatch = txt.match(/(\d+)\s*h/i);
+                    const mMatch = txt.match(/(\d+)\s*m/i);
+                    if (hMatch || mMatch) {
+                        const hours = hMatch ? parseInt(hMatch[1]) : 0;
+                        const minutes = mMatch ? parseInt(mMatch[1]) : 0;
+                        return hours * 60 + minutes;
+                    }
+                    const colonMatch = txt.match(/(\d+):(\d+)/);
+                    if (colonMatch) {
+                        return parseInt(colonMatch[1]) + parseInt(colonMatch[2]) / 60;
+                    }
+                }
+                return null;
+            });
+        } catch (e) { /* ignorer */ }
+
         const success = btnDisabled || messages.some(m => /success|claimed|reward|sent|received|thanks/i.test(m));
         const resultMessage = messages[0] || (btnDisabled ? 'Bouton désactivé (succès présumé)' : 'Aucune réaction');
         console.log(`📢 Messages détectés : ${messages.join(' | ')}`);
         console.log(`🔘 Bouton désactivé : ${btnDisabled}`);
+        if (nextTimerMinutes !== null) console.log(`⏱️ Timer site : ${nextTimerMinutes.toFixed(1)} min`);
 
-        return { success, message: resultMessage };
+        return { success, message: resultMessage, siteTimer: nextTimerMinutes };
     } catch (error) {
         if (error.message.includes('Cookies expirés')) {
             console.log(`🔄 Cookies expirés pour ${email} (${platform}), reconnexion...`);
@@ -358,17 +385,17 @@ async function claimWithCookies(account) {
             } catch (loginError) {
                 console.error(`❌ Échec reconnexion : ${loginError.message}`);
                 account.cookiesStatus = 'failed';
-                return { success: false, message: `Échec reconnexion: ${loginError.message}` };
+                return { success: false, message: `Échec reconnexion: ${loginError.message}`, siteTimer: null };
             }
         }
         console.error(`❌ Erreur claim : ${error.message}`);
-        return { success: false, message: error.message };
+        return { success: false, message: error.message, siteTimer: null };
     } finally {
         if (browser) await browser.close().catch(() => {});
     }
 }
 
-// --- Main (fusion robuste, gestion des erreurs site) ---
+// --- Main (avec les 3 conditions) ---
 (async () => {
     try {
         let accounts = await loadAccounts();
@@ -429,32 +456,52 @@ async function claimWithCookies(account) {
         }
 
         console.log('🚀 Claim éligible');
-        let result = { success: false, message: 'Erreur inconnue' };
+        let result = { success: false, message: 'Erreur inconnue', siteTimer: null };
         try {
             result = await claimWithCookies(targetAccount);
-            if (!result) result = { success: false, message: 'Erreur inconnue (résultat vide)' };
+            if (!result) result = { success: false, message: 'Erreur inconnue', siteTimer: null };
         } catch (e) {
             console.error('Exception lors du claim :', e.message);
-            result = { success: false, message: e.message };
+            result = { success: false, message: e.message, siteTimer: null };
         }
 
         console.log(`📋 Résultat du claim : success=${result.success}, message="${result.message}"`);
 
+        // ---- Application des 3 conditions ----
         if (result.success) {
+            // Condition 3 : succès → timer à 62 minutes
             targetAccount.lastClaim = now;
-            if (targetAccount.timer !== 60) {
-                console.log('🕒 Timer passé à 60 min');
-                targetAccount.timer = 60;
-            }
+            targetAccount.timer = 62;
             targetAccount.claimResult = `✅ ${result.message || 'Claim réussi'}`;
-            console.log('✅ Claim réussi');
+            console.log('✅ Claim réussi, timer passé à 62 min');
         } else {
-            targetAccount.claimResult = `❌ ${result.message}`;
-            console.log(`❌ Claim échoué : ${result.message}`);
-            if (result.message && result.message.includes('try again in 10 minutes')) {
+            const msg = (result.message || '').toLowerCase();
+
+            if (msg.includes('try again in 10 minutes')) {
+                // Condition 2 : erreur “try again in 10 minutes” → pause 2 heures
                 const deuxHeuresMs = 2 * 60 * 60 * 1000;
                 targetAccount.lastClaim = now + deuxHeuresMs - ((targetAccount.timer || 60) * 60 * 1000);
-                console.log('⏰ Prochain claim repoussé de 2 heures');
+                targetAccount.claimResult = `❌ ${result.message}`;
+                console.log('⏰ Erreur site, prochain claim repoussé de 2 heures');
+            } else if (msg.includes('aucun résultat') || msg.includes('aucune réaction') || (!result.message && !msg)) {
+                // Condition 1 : aucun résultat → utiliser le timer du site
+                if (result.siteTimer !== null && result.siteTimer > 0) {
+                    // On utilise le timer affiché sur le site
+                    targetAccount.lastClaim = now;
+                    targetAccount.timer = result.siteTimer;
+                    targetAccount.claimResult = `✅ (timer site) ${result.siteTimer.toFixed(1)} min`;
+                    console.log(`ℹ️ Aucun message, timer site appliqué : ${result.siteTimer.toFixed(1)} min`);
+                } else {
+                    // Fallback : 60 minutes par défaut
+                    targetAccount.lastClaim = now;
+                    targetAccount.timer = 60;
+                    targetAccount.claimResult = '✅ (timer par défaut) 60 min';
+                    console.log('ℹ️ Aucun message, timer par défaut 60 min');
+                }
+            } else {
+                // Autre échec (ex: ECONNREFUSED) → ne pas toucher au timer
+                targetAccount.claimResult = `❌ ${result.message}`;
+                console.log('❌ Échec non traité, compte laissé en l\'état');
             }
         }
 
