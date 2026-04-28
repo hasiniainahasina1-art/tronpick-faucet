@@ -23,8 +23,8 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777393492601,
     "timer": 63,
-    "pendingClaim": false,
-    "pendingClaimSince": 1777400888949,
+    "pendingClaim": true,
+    "pendingClaimSince": 1777401026592,
     "claimResult": "❌ connect ECONNREFUSED 127.0.0.1:34967"
   },
   {
