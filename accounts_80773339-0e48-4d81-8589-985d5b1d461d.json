@@ -54,18 +54,5 @@
     "pendingClaim": false,
     "pendingClaimSince": 1777376167411,
     "claimResult": "✅ ×Success!You got 0.00000250 LTC!"
-  },
-  {
-    "email": "rivoniainafinoana123@gmail.com",
-    "password": "b777f44ecd39cca40a1ac8ab0a39e334:d78294a1b1d2bb1105745247cd55a251",
-    "platform": "tronpick",
-    "proxyIndex": 0,
-    "enabled": false,
-    "cookies": "06d2a74651563d3eaabbd6432e20f0b7:c6dd6fe3d90caf299e36cade6b5ddd09",
-    "cookiesStatus": "failed",
-    "errorMessage": "Échec connexion",
-    "lastClaim": 0,
-    "timer": 60,
-    "pendingLogout": true
   }
 ]
