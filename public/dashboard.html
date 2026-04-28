@@ -149,7 +149,6 @@
             fetch('/api/config')
                 .then(res => res.json())
                 .then(config => {
-                    // ✅ Correction : utiliser window.supabase
                     const supabase = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
                     startDashboard(supabase, config);
                 })
@@ -328,7 +327,7 @@
                     }
                 });
 
-                // Gestion de la suppression avec compte à rebours 90s
+                // Gestion de la suppression avec compte à rebours 90s – version améliorée
                 document.querySelectorAll('.btn-delete').forEach(btn => {
                     btn.addEventListener('click', async function(e) {
                         const row = btn.closest('.account-item');
@@ -339,6 +338,7 @@
                         btn.disabled = true;
                         let secondsLeft = 90;
                         btn.innerHTML = '<span class="spinner"></span> 90s';
+
                         const countdownInterval = setInterval(() => {
                             secondsLeft--;
                             if (secondsLeft <= 0) {
@@ -371,14 +371,21 @@
                             }
 
                             clearInterval(countdownInterval);
+
                             if (isDeleted) {
+                                btn.innerHTML = '✅ Supprimé';
                                 showToast(`✅ Compte ${acc.email} supprimé avec succès.`, 'success');
+                                await new Promise(r => setTimeout(r, 2000));
                             } else {
+                                btn.innerHTML = '⚠️ Échec';
                                 showToast(`⚠️ Le compte existe toujours après 90s. Réessayez.`, 'error');
+                                await new Promise(r => setTimeout(r, 2000));
                             }
                         } catch (error) {
                             clearInterval(countdownInterval);
+                            btn.innerHTML = '❌ Erreur';
                             showToast(`❌ Erreur: ${error.message}`, 'error');
+                            await new Promise(r => setTimeout(r, 2000));
                         } finally {
                             btn.innerHTML = '🗑️';
                             btn.disabled = false;
