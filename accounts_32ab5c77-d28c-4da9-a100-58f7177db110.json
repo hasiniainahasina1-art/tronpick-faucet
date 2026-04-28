@@ -23,8 +23,8 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777413951572,
     "timer": 63,
-    "pendingClaim": false,
-    "pendingClaimSince": 1777413912114,
+    "pendingClaim": true,
+    "pendingClaimSince": 1777417746544,
     "claimResult": "✅ ×Success!You got 0.00125000 DOGE!"
   },
   {
