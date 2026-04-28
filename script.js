@@ -445,9 +445,9 @@ async function claimWithCookies(account) {
 
         if (result.success) {
             targetAccount.lastClaim = now;
-            if (targetAccount.timer !== 60) {
+            if (targetAccount.timer !== 63) {
                 console.log('🕒 Timer passé à 60 min');
-                targetAccount.timer = 60;
+                targetAccount.timer = 63;
             }
             targetAccount.claimResult = `✅ ${result.message || 'Claim réussi'}`;
             console.log('✅ Claim réussi');
