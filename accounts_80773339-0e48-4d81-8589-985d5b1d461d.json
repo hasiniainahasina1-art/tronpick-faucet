@@ -9,8 +9,9 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777355026799,
     "timer": 60,
-    "pendingClaim": false,
-    "claimResult": "✅ ×Success!You got 0.001000 TRX!"
+    "pendingClaim": true,
+    "claimResult": "✅ ×Success!You got 0.001000 TRX!",
+    "pendingClaimSince": 1777361420970
   },
   {
     "email": "hasiniainahasina1@gmail.com",
