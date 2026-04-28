@@ -8,15 +8,12 @@ const email = process.env.LOGOUT_EMAIL;
 const password = process.env.LOGOUT_PASSWORD;
 const platform = process.env.LOGOUT_PLATFORM;
 const proxyIndex = process.env.LOGOUT_PROXY_INDEX !== undefined ? parseInt(process.env.LOGOUT_PROXY_INDEX) : 0;
-
 const GH_TOKEN = process.env.GH_TOKEN;
 const GH_USERNAME = process.env.GH_USERNAME;
 const GH_REPO = process.env.GH_REPO;
 const GH_BRANCH = process.env.GH_BRANCH || 'main';
 const GH_FILE_PATH = process.env.GH_FILE_PATH || 'accounts.json';
 const USER_ID = process.env.USER_ID;
-
-const JP_PROXY_LIST = (process.env.JP_PROXY_LIST || '').split(',').filter(p => p.trim() !== '');
 const CRYPTO_SECRET = process.env.CRYPTO_SECRET;
 
 if (!CRYPTO_SECRET || !USER_ID) {
@@ -50,14 +47,7 @@ function decrypt(encryptedText) {
     }
 }
 
-if (!email || !password || !platform) {
-    console.error('❌ LOGOUT_EMAIL, LOGOUT_PASSWORD et LOGOUT_PLATFORM sont requis.');
-    process.exit(1);
-}
-if (!GH_TOKEN || !GH_USERNAME || !GH_REPO) {
-    console.error('❌ Variables GitHub manquantes');
-    process.exit(1);
-}
+const JP_PROXY_LIST = (process.env.JP_PROXY_LIST || '').split(',').filter(p => p.trim() !== '');
 if (JP_PROXY_LIST.length === 0) {
     console.error('❌ JP_PROXY_LIST doit contenir au moins 1 proxy');
     process.exit(1);
@@ -120,6 +110,48 @@ async function saveAccounts(accounts) {
         branch: GH_BRANCH,
         sha
     });
+}
+
+// --- Suppression de la liste globale ---
+async function removeFromGlobalList(email, platform) {
+    const GLOBAL_FILE = 'global_accounts.json';
+    try {
+        let entries = [];
+        let sha = null;
+        try {
+            const res = await octokit.repos.getContent({
+                owner: GH_USERNAME,
+                repo: GH_REPO,
+                path: GLOBAL_FILE,
+                ref: GH_BRANCH
+            });
+            entries = JSON.parse(Buffer.from(res.data.content, 'base64').toString('utf8'));
+            sha = res.data.sha;
+        } catch (e) {
+            console.log('ℹ️ Fichier global introuvable, rien à supprimer.');
+            return;
+        }
+
+        const newEntries = entries.filter(e => !(e.email === email && e.platform === platform));
+        if (newEntries.length === entries.length) {
+            console.log('ℹ️ Compte non trouvé dans la liste globale.');
+            return;
+        }
+
+        const content = Buffer.from(JSON.stringify(newEntries, null, 2)).toString('base64');
+        await octokit.repos.createOrUpdateFileContents({
+            owner: GH_USERNAME,
+            repo: GH_REPO,
+            path: GLOBAL_FILE,
+            message: `Suppression de ${email} (${platform}) de la liste globale`,
+            content,
+            branch: GH_BRANCH,
+            sha
+        });
+        console.log('✅ Compte retiré de la liste globale.');
+    } catch (error) {
+        console.error('❌ Erreur suppression globale :', error.message);
+    }
 }
 
 async function humanClickAt(page, coords) {
@@ -248,7 +280,7 @@ async function performNormalLogout(accountCookies) {
     }
 }
 
-// --- Main ---
+// --- Main (supprime aussi de la liste globale) ---
 (async () => {
     try {
         let accounts = await loadAccounts();
@@ -272,7 +304,6 @@ async function performNormalLogout(accountCookies) {
             console.log('⏩ Cookies déjà expirés, suppression directe.');
         } else {
             account.pendingLogout = true;
-            // Rechiffrer avant sauvegarde
             for (const acc of accounts) {
                 if (acc.password && !acc.password.includes(':')) acc.password = encrypt(acc.password);
                 if (acc.cookies && typeof acc.cookies === 'object') acc.cookies = encrypt(JSON.stringify(acc.cookies));
@@ -280,22 +311,24 @@ async function performNormalLogout(accountCookies) {
             await saveAccounts(accounts);
             console.log(`🏷️ Compte marqué pendingLogout.`);
 
-            // Redéchiffrer pour utiliser
             if (typeof account.cookies === 'string') {
                 try { account.cookies = JSON.parse(decrypt(account.cookies)); } catch {}
             }
             await performNormalLogout(account.cookies);
         }
 
-        // Supprimer le compte
+        // Supprimer le compte du fichier utilisateur
         accounts.splice(idx, 1);
-        // Rechiffrer avant sauvegarde
         for (const acc of accounts) {
             if (acc.password && !acc.password.includes(':')) acc.password = encrypt(acc.password);
             if (acc.cookies && typeof acc.cookies === 'object') acc.cookies = encrypt(JSON.stringify(acc.cookies));
         }
         await saveAccounts(accounts);
         console.log(`🗑️ Compte ${normalizedEmail} supprimé avec succès.`);
+
+        // 🔥 Supprimer aussi de la liste globale
+        await removeFromGlobalList(email, platform);
+
         process.exit(0);
     } catch (err) {
         console.error('❌ Erreur fatale :', err.message);
