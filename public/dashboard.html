@@ -149,19 +149,18 @@
             fetch('/api/config')
                 .then(res => res.json())
                 .then(config => {
-                    const supabase = supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
+                    // ✅ Correction : utiliser window.supabase
+                    const supabase = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
                     startDashboard(supabase, config);
                 })
                 .catch(err => alert('Erreur de configuration : ' + err.message));
         }
 
         function startDashboard(supabase, config) {
-            // Récupération des variables secrètes
             const GH_USERNAME = config.ghUsername;
             const GH_REPO = config.ghRepo;
             const BRANCH = config.ghBranch || 'main';
 
-            // Éléments DOM
             const btnAdd = document.getElementById('btnAddAccount');
             const logoutBtn = document.getElementById('logoutBtn');
             const refreshBtn = document.getElementById('refreshBtn');
@@ -196,7 +195,6 @@
                 return (mins || 0) + (secs || 0) / 60;
             }
 
-            // Authentification + récupération du nom d'utilisateur
             async function getUserId() {
                 const token = localStorage.getItem('auth_token');
                 if (!token) {
@@ -206,7 +204,6 @@
                 try {
                     const { data: { user }, error } = await supabase.auth.getUser(token);
                     if (error) throw error;
-                    // Récupérer le username depuis user_metadata
                     const username = user.user_metadata?.username || user.email;
                     welcomeMessage.textContent = `Bienvenue, ${username}`;
                     return user.id;
