@@ -17,23 +17,13 @@ jobs:
   claim:
     runs-on: ubuntu-latest
     steps:
-      - name: 📥 Récupérer le code source
-        uses: actions/checkout@v4
-
-      - name: 🟢 Installer Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
-
-      - name: 📦 Installer les dépendances système (xvfb)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb
-
-      - name: 📦 Installer les dépendances Node.js
-        run: npm install
-
-      - name: 🤖 Exécuter le claim pour ${{ github.event.inputs.email }} sur ${{ github.event.inputs.platform }}
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - run: npm install puppeteer-real-browser @octokit/rest
+      - name: Exécuter le claim
         env:
           CLAIM_EMAIL: ${{ github.event.inputs.email }}
           CLAIM_PLATFORM: ${{ github.event.inputs.platform }}
@@ -41,13 +31,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GH_USERNAME: ${{ secrets.GH_USERNAME }}
           GH_REPO: ${{ secrets.GH_REPO }}
-          GH_BRANCH: ${{ secrets.GH_BRANCH }}
-          GH_FILE_PATH: ${{ secrets.GH_FILE_PATH }}
+          GH_BRANCH: ${{ secrets.GH_BRANCH || 'main' }}
           JP_PROXY_LIST: ${{ secrets.JP_PROXY_LIST }}
           CRYPTO_SECRET: ${{ secrets.CRYPTO_SECRET }}
-        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" node script.js
-
-      - name: 📤 Upload des captures d'écran
+        run: xvfb-run --auto-servernum node script.js
+      - name: Upload des captures
         uses: actions/upload-artifact@v4
         if: always()
         with:
