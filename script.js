@@ -367,7 +367,7 @@ async function claimWithCookies(account) {
     }
 }
 
-// --- Main (avec anti-double déclenchement) ---
+// --- Main (version corrigée – sans l’abandon sur pendingClaim) ---
 (async () => {
     try {
         let accounts = await loadAccounts();
@@ -393,17 +393,7 @@ async function claimWithCookies(account) {
 
         const now = Date.now();
 
-        // 🛡️ Protection anti-double déclenchement
-        if (targetAccount.pendingClaim) {
-            console.log('⚠️ Un traitement est déjà en cours (pendingClaim=true). Abandon.');
-            process.exit(0);
-        }
-        if (targetAccount.lastClaim && (now - targetAccount.lastClaim < 3 * 60 * 1000)) {
-            console.log('⚠️ Le compte a été claimé il y a moins de 3 minutes. Abandon.');
-            process.exit(0);
-        }
-
-        // Vérification d'éligibilité
+        // Vérification d’éligibilité classique
         const lastClaim = targetAccount.lastClaim || 0;
         const intervalMs = (targetAccount.timer || 60) * 60 * 1000;
         if ((now - lastClaim) < intervalMs) {
@@ -419,21 +409,6 @@ async function claimWithCookies(account) {
         }
 
         console.log(`\n===== Traitement : ${CLAIM_EMAIL} (${CLAIM_PLATFORM}) =====`);
-
-        // 🔒 Poser immédiatement le flag pendingClaim
-        targetAccount.pendingClaim = true;
-        targetAccount.pendingClaimSince = now;
-        try {
-            for (const acc of accounts) {
-                if (acc.password && !acc.password.includes(':')) acc.password = encrypt(acc.password);
-                if (acc.cookies && typeof acc.cookies === 'object') acc.cookies = encrypt(JSON.stringify(acc.cookies));
-            }
-            await saveAccounts(accounts, targetAccount);
-            console.log('🔒 Flag pendingClaim posé.');
-        } catch (e) {
-            console.error('❌ Impossible de poser le flag, abandon.');
-            process.exit(1);
-        }
 
         // Login si nécessaire
         if (!targetAccount.cookies || targetAccount.cookiesStatus === 'expired' || targetAccount.cookiesStatus === 'failed') {
