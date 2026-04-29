@@ -9,8 +9,8 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777480191013,
     "timer": 62,
-    "pendingClaim": false,
-    "pendingClaimSince": 1777480145537,
+    "pendingClaim": true,
+    "pendingClaimSince": 1777483927231,
     "claimResult": "✅ ×Success!You got 0.001000 TRX!"
   },
   {
