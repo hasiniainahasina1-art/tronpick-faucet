@@ -37,8 +37,8 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777447423193,
     "timer": 62,
-    "pendingClaim": false,
-    "pendingClaimSince": 1777451166470,
+    "pendingClaim": true,
+    "pendingClaimSince": 1777451285977,
     "claimResult": "❌ Navigation timeout of 30000 ms exceeded"
   }
 ]
