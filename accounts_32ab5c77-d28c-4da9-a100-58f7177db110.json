@@ -9,8 +9,8 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777450854385,
     "timer": 62,
-    "pendingClaim": false,
-    "pendingClaimSince": 1777450816772,
+    "pendingClaim": true,
+    "pendingClaimSince": 1777454584708,
     "claimResult": "✅ Bouton désactivé (succès présumé)"
   },
   {
