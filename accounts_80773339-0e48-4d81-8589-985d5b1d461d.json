@@ -52,7 +52,7 @@
     "lastClaim": 1777578109499,
     "timer": 60,
     "pendingClaim": true,
-    "pendingClaimSince": 1777581727005,
-    "claimResult": "✅ (timer par défaut) 60 min"
+    "claimResult": "✅ (timer par défaut) 60 min",
+    "pendingClaimSince": 1777582086995
   }
 ]
