@@ -1,4 +1,4 @@
-// api/check-claim.js – VERSION FINALE
+// api/check-claim.js – VERSION AVEC EXPIRATION AUTOMATIQUE DE 5 MINUTES
 export default async function handler(req, res) {
     const SECRET = process.env.CRON_SECRET;
     const headerSecret = req.headers['x-cron-secret'];
@@ -16,8 +16,12 @@ export default async function handler(req, res) {
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+        return res.status(500).json({ error: 'Configuration Supabase manquante' });
+    }
+
     try {
-        // Récupérer tous les profils
+        // 1. Récupérer tous les profils
         const profilesRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
             headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` }
         });
@@ -46,46 +50,59 @@ export default async function handler(req, res) {
             );
             const accounts = JSON.parse(content);
             const now = Date.now();
+            const EXPIRATION_MS = 5 * 60 * 1000; // 5 minutes
 
             for (const acc of accounts) {
-                // Vérifier si un claim est déjà en cours
-                if (acc.pendingClaim === true) continue;
                 if (acc.enabled === false) continue;
                 if (acc.pendingLogout === true) continue;
 
-                const last = acc.lastClaim || 0;
-                const intervalMs = (acc.timer || 60) * 60 * 1000;
-                if ((now - last) < intervalMs) continue;
+                // Si un flag est présent et n'a pas expiré, on ignore
+                if (acc.pendingClaim === true && acc.pendingClaimSince && (now - acc.pendingClaimSince < EXPIRATION_MS)) {
+                    console.log(`⏭️ Ignoré (flag actif) : ${acc.email} (${acc.platform})`);
+                    continue;
+                }
 
-                // ✅ Compte éligible et libre → poser le flag
-                acc.pendingClaim = true;
-                acc.pendingClaimSince = now;
-                // Sauvegarde rapide pour poser le flag
-                await updateAccountFile(userId, accounts, GH_USERNAME, GH_REPO, GH_BRANCH, GH_TOKEN);
-
-                // Déclencher le workflow
-                const dispatchUrl = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${CLAIM_WORKFLOW_ID}/dispatches`;
-                const dispatchRes = await fetch(dispatchUrl, {
-                    method: 'POST',
-                    headers: {
-                        Authorization: `token ${GH_TOKEN}`,
-                        Accept: 'application/vnd.github.v3+json',
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        ref: GH_BRANCH,
-                        inputs: { email: acc.email, platform: acc.platform, userId }
-                    })
-                });
-
-                if (dispatchRes.ok) {
-                    triggered.push(`${acc.email} (${acc.platform})`);
-                } else {
-                    console.error(`Erreur dispatch ${acc.email}: ${dispatchRes.status}`);
-                    // Retirer le flag en cas d'échec
+                // Si le flag a expiré, on le nettoie (il sera réévalué)
+                if (acc.pendingClaim === true) {
                     acc.pendingClaim = false;
                     delete acc.pendingClaimSince;
+                    console.log(`🧹 Flag expiré nettoyé pour ${acc.email}`);
+                    // On sauvegarde ci-dessous
+                }
+
+                const last = acc.lastClaim || 0;
+                const intervalMs = (acc.timer || 60) * 60 * 1000;
+                if ((now - last) >= intervalMs) {
+                    // Compte éligible → poser le flag avec timestamp
+                    acc.pendingClaim = true;
+                    acc.pendingClaimSince = now;
+                    // Sauvegarde immédiate pour poser le flag
                     await updateAccountFile(userId, accounts, GH_USERNAME, GH_REPO, GH_BRANCH, GH_TOKEN);
+
+                    // Déclencher le workflow
+                    const dispatchUrl = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${CLAIM_WORKFLOW_ID}/dispatches`;
+                    const dispatchRes = await fetch(dispatchUrl, {
+                        method: 'POST',
+                        headers: {
+                            Authorization: `token ${GH_TOKEN}`,
+                            Accept: 'application/vnd.github.v3+json',
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            ref: GH_BRANCH,
+                            inputs: { email: acc.email, platform: acc.platform, userId }
+                        })
+                    });
+
+                    if (dispatchRes.ok) {
+                        triggered.push(`${acc.email} (${acc.platform})`);
+                    } else {
+                        console.error(`Erreur dispatch ${acc.email}: ${dispatchRes.status}`);
+                        // Retirer le flag en cas d'échec
+                        acc.pendingClaim = false;
+                        delete acc.pendingClaimSince;
+                        await updateAccountFile(userId, accounts, GH_USERNAME, GH_REPO, GH_BRANCH, GH_TOKEN);
+                    }
                 }
             }
         }
