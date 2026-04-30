@@ -52,7 +52,7 @@
     "lastClaim": 1777569539570,
     "timer": 62,
     "pendingClaim": true,
-    "pendingClaimSince": 1777573265236,
-    "claimResult": "❌ ×Error!Something went wrong! Please try again in 10 minutes!"
+    "claimResult": "❌ ×Error!Something went wrong! Please try again in 10 minutes!",
+    "pendingClaimSince": 1777574047886
   }
 ]
