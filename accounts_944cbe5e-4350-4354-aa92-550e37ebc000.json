@@ -9,8 +9,8 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777584054143,
     "timer": 62,
-    "pendingClaim": false,
-    "pendingClaimSince": 1777584012924,
+    "pendingClaim": true,
+    "pendingClaimSince": 1777587786151,
     "claimResult": "✅ ×Success!You got 0.00001000 LTC!"
   }
 ]
