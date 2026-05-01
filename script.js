@@ -43,7 +43,8 @@ function decrypt(encryptedText) {
     } catch (e) { return encryptedText; }
 }
 
-const USER_FILE = `account_${process.env.USER_ID}_${process.env.CLAIM_PLATFORM}_${process.env.CLAIM_EMAIL}.json`;
+// ✅ Fichier individuel
+const USER_FILE = `account_${USER_ID}_${CLAIM_PLATFORM}_${CLAIM_EMAIL}.json`;
 
 const octokit = new Octokit({ auth: GH_TOKEN });
 
@@ -77,6 +78,7 @@ function parseProxyUrl(proxyUrl) {
     };
 }
 
+// --- Fonctions Puppeteer (inchangées) ---
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -137,20 +139,24 @@ async function humanClickAt(page, coords) {
     console.log(`🖱️ Clic à (${coords.x}, ${coords.y})`);
 }
 
-// --- Chargement / Sauvegarde ---
+// --- Chargement / Sauvegarde d'un fichier individuel ---
 async function loadAccounts() {
     try {
         const res = await octokit.repos.getContent({
             owner: GH_USERNAME, repo: GH_REPO, path: USER_FILE, ref: GH_BRANCH
         });
-        return JSON.parse(Buffer.from(res.data.content, 'base64').toString('utf8'));
+        const account = JSON.parse(Buffer.from(res.data.content, 'base64').toString('utf8'));
+        // Retourner un tableau contenant l'unique compte (compatibilité avec le reste du script)
+        return [account];
     } catch (e) {
-        if (e.status === 404) return [];
+        if (e.status === 404) return [];   // fichier inexistant → tableau vide
         throw e;
     }
 }
 
 async function saveAccounts(accounts, modifiedAccount = null) {
+    // 'accounts' est le tableau contenant l'unique compte
+    const account = accounts[0];
     const maxRetries = 30;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
@@ -161,7 +167,7 @@ async function saveAccounts(accounts, modifiedAccount = null) {
                 });
                 sha = res.data.sha;
             } catch (e) {}
-            const content = Buffer.from(JSON.stringify(accounts, null, 2)).toString('base64');
+            const content = Buffer.from(JSON.stringify(account, null, 2)).toString('base64');
             await octokit.repos.createOrUpdateFileContents({
                 owner: GH_USERNAME, repo: GH_REPO, path: USER_FILE,
                 message: 'Mise à jour automatique', content, branch: GH_BRANCH, sha
@@ -180,17 +186,9 @@ async function saveAccounts(accounts, modifiedAccount = null) {
                         });
                         const latest = JSON.parse(Buffer.from(res.data.content, 'base64').toString('utf8'));
                         if (modifiedAccount) {
-                            const idx = latest.findIndex(a => a.email === modifiedAccount.email && a.platform === modifiedAccount.platform);
-                            if (idx !== -1) {
-                                latest[idx] = { ...latest[idx], ...modifiedAccount };
-                            } else {
-                                latest.push(modifiedAccount);
-                            }
+                            account = { ...latest, ...modifiedAccount };
                         }
-                        accounts = latest;
-                    } catch (reloadErr) {
-                        console.error('❌ Échec rechargement après conflit:', reloadErr);
-                    }
+                    } catch (reloadErr) {}
                 } else {
                     console.error('❌ Trop de conflits, abandon.');
                     throw e;
@@ -427,6 +425,7 @@ async function claimWithCookies(account) {
         let accounts = await loadAccounts();
         console.log(`📋 Comptes chargés : ${accounts.length}`);
 
+        // Déchiffrer les champs sensibles
         for (const acc of accounts) {
             if (acc.password) acc.password = decrypt(acc.password);
             if (typeof acc.cookies === 'string' && acc.cookies) {
@@ -460,6 +459,7 @@ async function claimWithCookies(account) {
 
         console.log(`\n===== Traitement : ${CLAIM_EMAIL} (${CLAIM_PLATFORM}) =====`);
 
+        // Login si nécessaire
         if (!targetAccount.cookies || targetAccount.cookiesStatus === 'expired' || targetAccount.cookiesStatus === 'failed') {
             console.log('🍪 Tentative de login');
             try {
@@ -522,8 +522,12 @@ async function claimWithCookies(account) {
             }
         }
 
-        targetAccount.pendingClaim = false;
+        // Délai aléatoire avant sauvegarde
+        const waitBeforeSave = 2000 + Math.random() * 5000;
+        console.log(`⏳ Pause de ${Math.round(waitBeforeSave/1000)}s avant sauvegarde...`);
+        await new Promise(r => setTimeout(r, waitBeforeSave));
 
+        // Rechiffrer
         for (const acc of accounts) {
             if (acc.password && !acc.password.includes(':')) acc.password = encrypt(acc.password);
             if (acc.cookies && typeof acc.cookies === 'object') acc.cookies = encrypt(JSON.stringify(acc.cookies));
