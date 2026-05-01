@@ -53,6 +53,10 @@
             font-weight: 700; font-variant-numeric: tabular-nums; color: var(--primary); font-size: 0.85rem; min-width: 60px;
         }
         .account-countdown.expired { color: var(--danger); }
+        .badge {
+            display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: 600; margin-left: 8px;
+        }
+        .badge-failed { background: #fee2e2; color: #991b1b; }
         .spinner {
             display: inline-block; width: 16px; height: 16px; border: 2px solid var(--border);
             border-top-color: var(--primary); border-radius: 50%; animation: spin 0.6s linear infinite; margin-right: 8px;
@@ -134,6 +138,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
+        // --- Initialisation sécurisée de Supabase ---
         function initWhenSupabaseReady() {
             if (typeof window.supabase === 'undefined') {
                 setTimeout(initWhenSupabaseReady, 300);
@@ -145,7 +150,9 @@
                     const supabase = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
                     startDashboard(supabase, config);
                 })
-                .catch(err => alert('Erreur de configuration : ' + err.message));
+                .catch(err => {
+                    document.getElementById('welcomeMessage').textContent = 'Erreur de configuration';
+                });
         }
 
         function startDashboard(supabase, config) {
@@ -153,6 +160,7 @@
             const GH_REPO = config.ghRepo;
             const BRANCH = config.ghBranch || 'main';
 
+            // Éléments DOM
             const btnAdd = document.getElementById('btnAddAccount');
             const logoutBtn = document.getElementById('logoutBtn');
             const refreshBtn = document.getElementById('refreshBtn');
@@ -187,6 +195,21 @@
                 return (mins || 0) + (secs || 0) / 60;
             }
 
+            function showLoader(accountElement) {
+                const info = accountElement.querySelector('.account-info');
+                if (info && !info.querySelector('.spinner')) {
+                    const spinner = document.createElement('span');
+                    spinner.className = 'spinner';
+                    info.prepend(spinner);
+                }
+            }
+
+            function hideLoader(accountElement) {
+                const spinner = accountElement.querySelector('.spinner');
+                if (spinner) spinner.remove();
+            }
+
+            // --- Authentification ---
             async function getUserId() {
                 const token = localStorage.getItem('auth_token');
                 if (!token) {
@@ -210,7 +233,7 @@
             const LOGIN_WORKFLOW_ID = 'test-account.yml';
             const LOGOUT_WORKFLOW_ID = 'logout.yml';
 
-            // --- API Proxy (modifiée pour listage et fichiers individuels) ---
+            // --- API proxy ---
             async function githubApi(method, path, body = null, isList = false) {
                 let url = `/api/data?path=${encodeURIComponent(path)}&userId=${currentUserId}`;
                 if (isList) {
@@ -225,25 +248,23 @@
                 return data;
             }
 
-            // --- Chargement des comptes (liste des fichiers individuels) ---
+            // --- Chargement des comptes (fichiers individuels) ---
             async function loadAccounts() {
                 try {
-                    // 1. Obtenir la liste des fichiers de l'utilisateur
+                    // Liste des fichiers de l'utilisateur
                     const files = await githubApi('GET', '/', null, true);
                     if (!Array.isArray(files)) return [];
 
                     const accounts = [];
                     for (const file of files) {
-                        // 2. Pour chaque fichier, lire son contenu (en passant le vrai chemin)
+                        if (!file.name.startsWith(`account_${currentUserId}_`)) continue;
                         const filePath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/${file.name}`;
                         const fileData = await githubApi('GET', filePath);
                         const content = atob(fileData.content);
                         try {
                             const account = JSON.parse(content);
                             accounts.push(account);
-                        } catch (e) {
-                            console.warn('Fichier ignoré (JSON invalide) :', file.name);
-                        }
+                        } catch (e) { /* ignorer JSON invalide */ }
                     }
                     return accounts;
                 } catch (e) {
@@ -252,30 +273,13 @@
                 }
             }
 
-            async function saveAccounts(accounts) {
-                // N'est plus utilisé avec les fichiers individuels, mais conservé pour compatibilité
-            }
-
             async function triggerWorkflow(workflowId, inputs) {
                 const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${workflowId}/dispatches`;
                 const payload = { ref: BRANCH, inputs };
                 await githubApi('POST', apiPath, payload);
             }
 
-            function showLoader(accountElement) {
-                const info = accountElement.querySelector('.account-info');
-                if (info && !info.querySelector('.spinner')) {
-                    const spinner = document.createElement('span');
-                    spinner.className = 'spinner';
-                    info.prepend(spinner);
-                }
-            }
-
-            function hideLoader(accountElement) {
-                const spinner = accountElement.querySelector('.spinner');
-                if (spinner) spinner.remove();
-            }
-
+            // --- Modale ---
             function openModal(title, account = null) {
                 document.getElementById('modalTitle').textContent = title;
                 if (account) {
@@ -295,6 +299,7 @@
 
             function closeModal() { modal.classList.remove('active'); }
 
+            // --- Rendu des comptes ---
             function renderAccounts() {
                 countdownIntervals.forEach(clearInterval);
                 countdownIntervals = [];
@@ -349,16 +354,29 @@
                     }
                 });
 
-                // Suppression (appel individuel avec les paramètres du compte)
+                // Suppression avec loader 90s
                 document.querySelectorAll('.btn-delete').forEach(btn => {
                     btn.addEventListener('click', async (e) => {
                         const item = btn.closest('.account-item');
                         const idx = parseInt(item.dataset.index);
                         const acc = visibleAccounts[idx];
-                        if (!confirm(`Supprimer définitivement le compte ${acc.email} ?`)) return;
+                        if (!confirm(`Supprimer définitivement ${acc.email} ?`)) return;
 
                         showLoader(item);
                         btn.disabled = true;
+                        let secondsLeft = 90;
+                        btn.innerHTML = '<span class="spinner"></span> 90s';
+
+                        const countdownInterval = setInterval(() => {
+                            secondsLeft--;
+                            if (secondsLeft <= 0) {
+                                clearInterval(countdownInterval);
+                                btn.innerHTML = '⏳ Fin...';
+                            } else {
+                                btn.innerHTML = `<span class="spinner"></span> ${secondsLeft}s`;
+                            }
+                        }, 1000);
+
                         showToast(`🗑️ Déconnexion de ${acc.email}...`, '');
 
                         try {
@@ -370,9 +388,8 @@
                                 userId: currentUserId
                             });
 
-                            showToast(`⏳ Déconnexion en cours...`, '');
                             let isDeleted = false;
-                            for (let attempt = 0; attempt < 12; attempt++) {
+                            for (let attempt = 0; attempt < 9; attempt++) {
                                 await new Promise(r => setTimeout(r, 10000));
                                 currentAccounts = await loadAccounts();
                                 if (!currentAccounts.some(a => a.email === acc.email && a.platform === acc.platform)) {
@@ -380,15 +397,20 @@
                                     break;
                                 }
                             }
+
+                            clearInterval(countdownInterval);
                             if (isDeleted) {
-                                showToast(`✅ Compte ${acc.email} supprimé avec succès.`, 'success');
+                                btn.innerHTML = '✅ Supprimé';
+                                showToast(`✅ Compte ${acc.email} supprimé`, 'success');
                             } else {
-                                showToast(`⚠️ Le compte existe toujours après 2 minutes.`, 'error');
+                                btn.innerHTML = '⚠️ Échec';
+                                showToast(`⚠️ Compte toujours présent après 90s`, 'error');
                             }
                         } catch (error) {
+                            clearInterval(countdownInterval);
                             showToast(`❌ Erreur: ${error.message}`, 'error');
                         } finally {
-                            hideLoader(item);
+                            btn.innerHTML = '🗑️';
                             btn.disabled = false;
                             await refreshAccounts();
                         }
@@ -423,58 +445,64 @@
                 const timerStr = document.getElementById('initialTimer').value.trim();
                 const timerValue = timeStrToMinutes(timerStr);
 
-                const idx = parseInt(document.getElementById('editIndex').value);
-                if (idx >= 0) {
-                    // Modification : on ne gère plus avec cette structure, mais on laisse pour compatibilité
-                    showToast('❌ Modification non supportée actuellement.', 'error');
+                // Vérification locale
+                if (currentAccounts.some(a => a.email === email && a.platform === platform)) {
+                    showToast('❌ Ce compte existe déjà dans votre liste.', 'error');
                     return;
-                } else {
-                    // Vérification locale rapide (optionnelle, car la vérification globale est faite)
-                    if (currentAccounts.some(a => a.email === email && a.platform === platform)) {
-                        showToast('❌ Ce compte existe déjà.', 'error');
+                }
+
+                // Vérification globale (via API)
+                try {
+                    const checkRes = await fetch(`/api/check-account?email=${encodeURIComponent(email)}&platform=${encodeURIComponent(platform)}`);
+                    const checkData = await checkRes.json();
+                    if (!checkRes.ok || checkData.available === false) {
+                        showToast('❌ Ce compte est déjà utilisé par un autre utilisateur.', 'error');
                         return;
                     }
+                } catch (err) {
+                    showToast('⚠️ Impossible de vérifier la disponibilité globale. Ajout annulé.', 'error');
+                    return;
+                }
 
-                    closeModal();
-                    showToast(`⏳ Ajout de ${email} en cours...`, '');
-                    try {
-                        await triggerWorkflow(LOGIN_WORKFLOW_ID, {
-                            email, password, platform,
-                            proxyIndex: String(currentAccounts.length % 2),
-                            initialTimer: timerStr,
-                            action: 'login',
-                            userId: currentUserId
-                        });
-                        let attempts = 0;
-                        const checkInterval = setInterval(async () => {
-                            try {
-                                currentAccounts = await loadAccounts();
-                                const found = currentAccounts.find(a => a.email === email && a.platform === platform);
-                                if (found && found.cookiesStatus === 'valid') {
-                                    clearInterval(checkInterval);
-                                    showToast(`✅ Compte ${email} ajouté avec succès.`, 'success');
-                                    await refreshAccounts();
-                                } else if (found && found.cookiesStatus === 'failed') {
-                                    clearInterval(checkInterval);
-                                    showToast(`❌ ${found.errorMessage || 'Identifiants incorrects'}`, 'error');
-                                    await refreshAccounts();
-                                }
-                                if (attempts++ > 24) {
-                                    clearInterval(checkInterval);
-                                    showToast(`❌ Échec de l'ajout (timeout).`, 'error');
-                                    await refreshAccounts();
-                                }
-                            } catch {
+                closeModal();
+                showToast(`⏳ Ajout de ${email} en cours...`, '');
+                try {
+                    await triggerWorkflow(LOGIN_WORKFLOW_ID, {
+                        email, password, platform,
+                        proxyIndex: String(currentAccounts.length % 2),
+                        initialTimer: timerStr,
+                        action: 'login',
+                        userId: currentUserId
+                    });
+                    let attempts = 0;
+                    const checkInterval = setInterval(async () => {
+                        try {
+                            currentAccounts = await loadAccounts();
+                            const found = currentAccounts.find(a => a.email === email && a.platform === platform);
+                            if (found && found.cookiesStatus === 'valid') {
                                 clearInterval(checkInterval);
+                                showToast(`✅ Compte ${email} ajouté avec succès.`, 'success');
+                                await refreshAccounts();
+                            } else if (found && found.cookiesStatus === 'failed') {
+                                clearInterval(checkInterval);
+                                showToast(`❌ ${found.errorMessage || 'Identifiants incorrects'}`, 'error');
+                                await refreshAccounts();
                             }
-                        }, 5000);
-                    } catch (err) {
-                        showToast(`❌ Erreur: ${err.message}`, 'error');
-                    }
+                            if (attempts++ > 24) {
+                                clearInterval(checkInterval);
+                                showToast(`❌ Échec de l'ajout (timeout).`, 'error');
+                                await refreshAccounts();
+                            }
+                        } catch {
+                            clearInterval(checkInterval);
+                        }
+                    }, 5000);
+                } catch (err) {
+                    showToast(`❌ Erreur: ${err.message}`, 'error');
                 }
             });
 
-            // Lancement
+            // --- Lancement ---
             (async function start() {
                 currentUserId = await getUserId();
                 if (!currentUserId) return;
