@@ -1,4 +1,4 @@
-// api/check-claim.js – LIT LES FICHIERS INDIVIDUELS
+// api/check-claim.js – FICHIERS INDIVIDUELS + PAUSE DE 5 MIN
 export default async function handler(req, res) {
     const SECRET = process.env.CRON_SECRET;
     const headerSecret = req.headers['x-cron-secret'];
@@ -31,7 +31,6 @@ export default async function handler(req, res) {
 
         for (const profile of profiles) {
             const userId = profile.id;
-            // Lister tous les fichiers du dépôt
             const listUrl = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/contents/?ref=${GH_BRANCH}`;
             const listRes = await fetch(listUrl, {
                 headers: { Authorization: `token ${GH_TOKEN}`, Accept: 'application/vnd.github.v3+json' }
@@ -52,15 +51,15 @@ export default async function handler(req, res) {
                 );
                 const account = JSON.parse(content);
                 const now = Date.now();
-                const EXPIRATION_MS = 10 * 60 * 1000;
+                const EXPIRATION_MS = 5 * 60 * 1000;   // ← 5 minutes exactement
 
-                // Nettoyage flag expiré
+                // Nettoyage des flags expirés (plus de 5 min)
                 if (account.pendingClaim === true && account.pendingClaimSince && (now - account.pendingClaimSince >= EXPIRATION_MS)) {
                     account.pendingClaim = false;
                     delete account.pendingClaimSince;
                 }
 
-                // Vérifier éligibilité
+                // Ignorer si le compte est en cours (flag actif depuis moins de 5 min)
                 if (account.enabled === false) continue;
                 if (account.pendingLogout === true) continue;
                 if (account.pendingClaim === true) continue;
@@ -95,7 +94,7 @@ export default async function handler(req, res) {
                 if (dispatchRes.ok) {
                     triggered.push(`${account.email} (${account.platform})`);
                 } else {
-                    // Retirer le flag
+                    // Retirer le flag en cas d'échec
                     account.pendingClaim = false;
                     delete account.pendingClaimSince;
                     await updateIndividualFile(file.name, account, GH_USERNAME, GH_REPO, GH_BRANCH, GH_TOKEN);
