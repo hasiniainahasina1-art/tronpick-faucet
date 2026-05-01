@@ -133,11 +133,58 @@
             </form>
         </div>
     </div>
+    <!-- Modale Historique -->
+<div class="history-modal" id="historyModal">
+    <div class="history-content">
+        <h3 id="historyTitle">📊 Historique 24h</h3>
+        <p id="historyEmail"></p>
+        <p id="historySuccess"></p>
+        <p id="historyBonus"></p>
+        <button class="btn btn-primary" onclick="document.getElementById('historyModal').classList.remove('active')">Fermer</button>
+    </div>
+</div>
 
     <div class="toast" id="toast"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
+
+        // Après renderAccounts, attacher les clics sur les emails
+function attachHistoryClicks() {
+    document.querySelectorAll('.account-email').forEach(span => {
+        span.style.cursor = 'pointer';
+        span.addEventListener('click', (e) => {
+            const item = span.closest('.account-item');
+            const idx = parseInt(item.dataset.index);
+            const acc = currentAccounts.filter(a => a.cookiesStatus !== 'failed')[idx];
+            showHistory(acc);
+        });
+    });
+}
+
+async function showHistory(account) {
+    const modal = document.getElementById('historyModal');
+    document.getElementById('historyEmail').textContent = `${account.email} (${account.platform})`;
+    document.getElementById('historySuccess').textContent = 'Chargement...';
+    document.getElementById('historyBonus').textContent = '';
+    modal.classList.add('active');
+
+    try {
+        const res = await fetch(`/api/history?userId=${currentUserId}`);
+        const data = await res.json();
+        const accountEntries = data.entries.filter(e => e.email === account.email && e.platform === account.platform);
+        const successCount = accountEntries.filter(e => e.success).length;
+        const totalBonus = accountEntries.reduce((sum, e) => sum + (e.bonus || 0), 0);
+        document.getElementById('historySuccess').textContent = `✅ Claims réussis (24h) : ${successCount}`;
+        document.getElementById('historyBonus').textContent = `💰 Total bonus : ${totalBonus}`;
+    } catch (err) {
+        document.getElementById('historySuccess').textContent = '❌ Erreur';
+        document.getElementById('historyBonus').textContent = '';
+    }
+}
+
+// Dans la fonction renderAccounts(), après avoir ajouté les éléments, appelez :
+attachHistoryClicks();
         // --- Initialisation sécurisée de Supabase ---
         function initWhenSupabaseReady() {
             if (typeof window.supabase === 'undefined') {
