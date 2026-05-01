@@ -36,8 +36,14 @@ jobs:
         with:
           node-version: '20'
       - run: sudo apt-get update && sudo apt-get install -y xvfb
-      - run: npm install puppeteer-real-browser @octokit/rest
-      - name: Run action
+
+      # ✅ Nettoyage complet et réinstallation pour éviter les corruptions
+      - name: Nettoyer et réinstaller les dépendances
+        run: |
+          rm -rf node_modules package-lock.json
+          npm install puppeteer-real-browser @octokit/rest
+
+      - name: Exécuter le script de login
         env:
           TEST_EMAIL: ${{ github.event.inputs.email }}
           TEST_PASSWORD: ${{ github.event.inputs.password }}
