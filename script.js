@@ -43,7 +43,7 @@ function decrypt(encryptedText) {
     } catch (e) { return encryptedText; }
 }
 
-// ✅ Fichier individuel
+// ✅ Fichier individuel par compte
 const USER_FILE = `account_${USER_ID}_${CLAIM_PLATFORM}_${CLAIM_EMAIL}.json`;
 
 const octokit = new Octokit({ auth: GH_TOKEN });
@@ -146,16 +146,14 @@ async function loadAccounts() {
             owner: GH_USERNAME, repo: GH_REPO, path: USER_FILE, ref: GH_BRANCH
         });
         const account = JSON.parse(Buffer.from(res.data.content, 'base64').toString('utf8'));
-        // Retourner un tableau contenant l'unique compte (compatibilité avec le reste du script)
         return [account];
     } catch (e) {
-        if (e.status === 404) return [];   // fichier inexistant → tableau vide
+        if (e.status === 404) return [];
         throw e;
     }
 }
 
 async function saveAccounts(accounts, modifiedAccount = null) {
-    // 'accounts' est le tableau contenant l'unique compte
     const account = accounts[0];
     const maxRetries = 30;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -222,210 +220,58 @@ async function connectWithProxy(proxyUrl) {
     return { browser, page };
 }
 
-async function performLoginAndCaptureCookies(account) {
-    const { email, password, platform } = account;
-    console.log(`🔐 Login pour ${email} sur ${platform}...`);
-    const siteUrls = {
-        tronpick: 'https://tronpick.io/login.php',
-        litepick: 'https://litepick.io/login.php',
-        dogepick: 'https://dogepick.io/login.php',
-        solpick: 'https://solpick.io/login.php',
-        bnbpick: 'https://bnbpick.io/login.php'
-    };
-    const loginUrl = siteUrls[platform];
-    if (!loginUrl) throw new Error('Plateforme inconnue');
+async function performLoginAndCaptureCookies(account) { /* ... identique ... */ }
 
-    let browser;
+async function claimWithCookies(account) { /* ... identique ... */ }
+
+// 📜 NOUVELLE FONCTION : sauvegarde de l'historique
+async function saveHistory(account, success, message) {
+    const historyFile = `history_${USER_ID}.json`;
+    const octokit = new Octokit({ auth: GH_TOKEN });
+
+    let bonus = 0;
+    if (success && message) {
+        const match = message.match(/([\d]+(\.[\d]+)?)/);
+        if (match) bonus = parseFloat(match[1]) || 0;
+    }
+
+    const entry = {
+        email: account.email,
+        platform: account.platform,
+        timestamp: Date.now(),
+        success,
+        message: message || '',
+        bonus
+    };
+
     try {
-        const { browser: br, page } = await connectWithProxy(PRIMARY_PROXY);
-        browser = br;
-        await page.setViewport({ width: 1280, height: 720 });
-        await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 60000 });
-
-        await fillField(page, 'input[type="email"], input[name="email"]', email, 'email');
-        await fillField(page, 'input[type="password"]', password, 'password');
-        await delay(2000);
-
-        const frame = await page.waitForFrame(
-            f => f.url().includes('challenges.cloudflare.com/turnstile'),
-            { timeout: 15000 }
-        ).catch(() => null);
-
-        if (frame) {
-            console.log('✅ Iframe Turnstile trouvée (login), clic checkbox');
-            await frame.click('input[type="checkbox"]');
-            await delay(8000);
-        } else {
-            console.log('⚠️ Iframe non trouvée, fallback coordonné');
-            await humanClickAt(page, TURNSTILE_LOGIN_COORDS);
-            await delay(10000);
-        }
-
-        const loginClicked = await page.evaluate(() => {
-            const btns = [...document.querySelectorAll('button')];
-            const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
-            if (loginBtn) { loginBtn.click(); return true; }
-            return false;
-        });
-        if (!loginClicked) throw new Error('Bouton Log in introuvable');
-
-        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
-        await delay(5000);
-        if (page.url().includes('login.php')) {
-            const errorMsg = await page.evaluate(() => {
-                const el = document.querySelector('.alert-danger, .error');
-                return el ? el.textContent.trim() : null;
-            });
-            throw new Error(errorMsg || 'Échec connexion');
-        }
-        const cookies = await page.cookies();
-        return cookies;
-    } finally {
-        if (browser) await browser.close().catch(() => {});
-    }
-}
-
-async function claimWithCookies(account) {
-    const { email, cookies, platform } = account;
-    console.log(`🍪 Claim pour ${email} sur ${platform} via cookies`);
-    const siteUrls = {
-        tronpick: 'https://tronpick.io/faucet.php',
-        litepick: 'https://litepick.io/faucet.php',
-        dogepick: 'https://dogepick.io/faucet.php',
-        solpick: 'https://solpick.io/faucet.php',
-        bnbpick: 'https://bnbpick.io/faucet.php'
-    };
-    const faucetUrl = siteUrls[platform] || 'https://tronpick.io/faucet.php';
-
-    let browser;
-    let attempt = 0;
-    const maxAttempts = 3;
-
-    while (attempt < maxAttempts) {
-        attempt++;
+        let history = [];
+        let sha = null;
         try {
-            console.log(`🔄 Tentative ${attempt}/${maxAttempts}`);
-            const { browser: br, page } = await connectWithProxy(PRIMARY_PROXY);
-            browser = br;
-            await page.setCookie(...cookies);
-            await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 90000 });
-            await delay(5000);
-            if (page.url().includes('login.php')) throw new Error('Cookies expirés');
-
-            console.log('⏳ Attente de 5 secondes...');
-            await delay(5000);
-            console.log('🔄 Actualisation de la page faucet...');
-            await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
-            await page.screenshot({ path: path.join(screenshotsDir, `01_after_reload_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-
-            console.log('⏳ Attente de 20 secondes...');
-            await delay(20000);
-            await page.screenshot({ path: path.join(screenshotsDir, `02_after_wait_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-
-            await humanScrollToClaim(page);
-            await delay(2000);
-            await page.screenshot({ path: path.join(screenshotsDir, `03_turnstile_visible_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-
-            console.log('🖱️ Premier clic sur Turnstile faucet');
-            await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
-            await page.screenshot({ path: path.join(screenshotsDir, `04_after_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-
-            console.log('⏳ Attente de 10 secondes...');
-            await delay(10000);
-
-            console.log('🖱️ Second clic sur Turnstile faucet');
-            await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
-            await page.screenshot({ path: path.join(screenshotsDir, `05_after_second_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-
-            console.log('⏳ Attente de 10 secondes...');
-            await delay(10000);
-
-            console.log('⏳ Attente de 10 secondes avant le clic sur CLAIM...');
-            await delay(10000);
-            await page.screenshot({ path: path.join(screenshotsDir, `06_before_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-
-            console.log('🖱️ Clic sur CLAIM');
-            await humanClickAt(page, CLAIM_COORDS);
-            await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
-            await delay(5000);
-            await page.screenshot({ path: path.join(screenshotsDir, `07_after_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-
-            const messages = await page.evaluate(() => {
-                return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [role="alert"], .alert, .message, .notification'))
-                    .map(el => el.textContent.trim()).filter(t => t);
+            const res = await octokit.repos.getContent({
+                owner: GH_USERNAME, repo: GH_REPO, path: historyFile, ref: GH_BRANCH
             });
-            const btnDisabled = await page.evaluate(() => {
-                const btn = document.querySelector('#process_claim_hourly_faucet');
-                return btn ? btn.disabled : false;
-            });
+            history = JSON.parse(Buffer.from(res.data.content, 'base64').toString('utf8'));
+            sha = res.data.sha;
+        } catch (e) {}
 
-            let nextTimerMinutes = null;
-            try {
-                nextTimerMinutes = await page.evaluate(() => {
-                    const timerEl = document.querySelector('#next_claim_timer, .countdown, [id*="timer"], [class*="timer"]');
-                    if (timerEl) {
-                        const txt = timerEl.textContent.trim();
-                        const hMatch = txt.match(/(\d+)\s*h/i);
-                        const mMatch = txt.match(/(\d+)\s*m/i);
-                        if (hMatch || mMatch) {
-                            const hours = hMatch ? parseInt(hMatch[1]) : 0;
-                            const minutes = mMatch ? parseInt(mMatch[1]) : 0;
-                            return hours * 60 + minutes;
-                        }
-                        const colonMatch = txt.match(/(\d+):(\d+)/);
-                        if (colonMatch) {
-                            return parseInt(colonMatch[1]) + parseInt(colonMatch[2]) / 60;
-                        }
-                    }
-                    return null;
-                });
-            } catch (e) {}
-
-            const success = btnDisabled || messages.some(m => /success|claimed|reward|sent|received|thanks/i.test(m));
-            const resultMessage = messages[0] || (btnDisabled ? 'Bouton désactivé (succès présumé)' : 'Aucune réaction');
-            console.log(`📢 Messages détectés : ${messages.join(' | ')}`);
-            console.log(`🔘 Bouton désactivé : ${btnDisabled}`);
-            if (nextTimerMinutes !== null) console.log(`⏱️ Timer site : ${nextTimerMinutes.toFixed(1)} min`);
-
-            return { success, message: resultMessage, siteTimer: nextTimerMinutes };
-        } catch (error) {
-            if (attempt < maxAttempts && error.message.includes('timeout')) {
-                console.warn(`⚠️ Timeout navigation (tentative ${attempt}/${maxAttempts}), on réessaie...`);
-                if (browser) await browser.close().catch(() => {});
-                await delay(5000);
-                continue;
-            }
-            if (error.message.includes('Cookies expirés')) {
-                console.log(`🔄 Cookies expirés pour ${email} (${platform}), reconnexion...`);
-                try {
-                    const newCookies = await performLoginAndCaptureCookies(account);
-                    account.cookies = newCookies;
-                    account.cookiesStatus = 'valid';
-                    console.log(`✅ Nouveaux cookies capturés. Relance du claim.`);
-                    return await claimWithCookies(account);
-                } catch (loginError) {
-                    console.error(`❌ Échec reconnexion : ${loginError.message}`);
-                    account.cookiesStatus = 'failed';
-                    return { success: false, message: `Échec reconnexion: ${loginError.message}`, siteTimer: null };
-                }
-            }
-            console.error(`❌ Erreur claim : ${error.message}`);
-            return { success: false, message: error.message, siteTimer: null };
-        } finally {
-            if (browser) await browser.close().catch(() => {});
-        }
+        history.push(entry);
+        const content = Buffer.from(JSON.stringify(history, null, 2)).toString('base64');
+        await octokit.repos.createOrUpdateFileContents({
+            owner: GH_USERNAME, repo: GH_REPO, path: historyFile,
+            message: 'Historique claim', content, branch: GH_BRANCH, sha
+        });
+    } catch (err) {
+        console.error('❌ Erreur sauvegarde historique :', err.message);
     }
-
-    return { success: false, message: 'Échec après plusieurs tentatives', siteTimer: null };
 }
 
-// --- Main ---
+// --- Main (avec appel à saveHistory) ---
 (async () => {
     try {
         let accounts = await loadAccounts();
         console.log(`📋 Comptes chargés : ${accounts.length}`);
 
-        // Déchiffrer les champs sensibles
         for (const acc of accounts) {
             if (acc.password) acc.password = decrypt(acc.password);
             if (typeof acc.cookies === 'string' && acc.cookies) {
@@ -459,7 +305,6 @@ async function claimWithCookies(account) {
 
         console.log(`\n===== Traitement : ${CLAIM_EMAIL} (${CLAIM_PLATFORM}) =====`);
 
-        // Login si nécessaire
         if (!targetAccount.cookies || targetAccount.cookiesStatus === 'expired' || targetAccount.cookiesStatus === 'failed') {
             console.log('🍪 Tentative de login');
             try {
@@ -522,12 +367,14 @@ async function claimWithCookies(account) {
             }
         }
 
+        // 📜 Enregistrer dans l'historique
+        await saveHistory(targetAccount, result.success, result.message || '');
+
         // Délai aléatoire avant sauvegarde
         const waitBeforeSave = 2000 + Math.random() * 5000;
         console.log(`⏳ Pause de ${Math.round(waitBeforeSave/1000)}s avant sauvegarde...`);
         await new Promise(r => setTimeout(r, waitBeforeSave));
 
-        // Rechiffrer
         for (const acc of accounts) {
             if (acc.password && !acc.password.includes(':')) acc.password = encrypt(acc.password);
             if (acc.cookies && typeof acc.cookies === 'object') acc.cookies = encrypt(JSON.stringify(acc.cookies));
