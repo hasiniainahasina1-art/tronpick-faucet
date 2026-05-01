@@ -46,5 +46,13 @@
     "success": false,
     "message": "Cannot destructure property 'browser' of '(intermediate value)' as it is undefined.",
     "bonus": 0
+  },
+  {
+    "email": "rivoniainafinoana123@gmail.com",
+    "platform": "tronpick",
+    "timestamp": 1777628266638,
+    "success": false,
+    "message": "Cannot destructure property 'browser' of '(intermediate value)' as it is undefined.",
+    "bonus": 0
   }
 ]
