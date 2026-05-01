@@ -30,5 +30,13 @@
     "success": false,
     "message": "Cannot destructure property 'browser' of '(intermediate value)' as it is undefined.",
     "bonus": 0
+  },
+  {
+    "email": "rivoniainafinoana123@gmail.com",
+    "platform": "solpick",
+    "timestamp": 1777628083788,
+    "success": false,
+    "message": "Cannot destructure property 'browser' of '(intermediate value)' as it is undefined.",
+    "bonus": 0
   }
 ]
