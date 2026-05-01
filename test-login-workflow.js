@@ -22,7 +22,7 @@ if (!CRYPTO_SECRET || !USER_ID) {
     process.exit(1);
 }
 
-const USER_FILE = `accounts_${USER_ID}.json`;
+const USER_FILE = `account_${USER_ID}_${platform}_${email}.json`;
 const KEY = crypto.createHash('sha256').update(CRYPTO_SECRET).digest();
 
 function encrypt(text) {
