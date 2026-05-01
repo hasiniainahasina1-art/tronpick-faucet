@@ -78,13 +78,68 @@ function parseProxyUrl(proxyUrl) {
     };
 }
 
-// --- Fonctions Puppeteer (inchangées) ---
-async function fillField(page, selector, value, fieldName) { /* ... */ }
-async function humanScrollToClaim(page) { /* ... */ }
-async function addRedDot(page, x, y) { /* ... */ }
-async function humanClickAt(page, coords) { /* ... */ }
+// --- Fonctions Puppeteer (identiques à votre ancien script) ---
+async function fillField(page, selector, value, fieldName) {
+    await page.waitForSelector(selector, { timeout: 10000 });
+    await page.click(selector, { clickCount: 3 });
+    await page.keyboard.press('Backspace');
+    await delay(100);
+    await page.evaluate((sel, val) => { const el = document.querySelector(sel); if (el) el.value = val; }, selector, value);
+    await delay(300);
+    let actual = await page.$eval(selector, el => el.value);
+    if (actual !== value) {
+        await page.click(selector, { clickCount: 3 });
+        await page.keyboard.press('Backspace');
+        for (const char of value) await page.keyboard.type(char, { delay: 30 });
+    }
+}
 
-// --- Chargement / Sauvegarde d'un fichier individuel ---
+async function humanScrollToClaim(page) {
+    const coords = await page.evaluate(() => {
+        const btn = document.querySelector('#process_claim_hourly_faucet');
+        if (!btn) return null;
+        const rect = btn.getBoundingClientRect();
+        return { y: rect.y + window.scrollY };
+    });
+    if (!coords) throw new Error('Bouton CLAIM introuvable');
+    const startY = await page.evaluate(() => window.scrollY);
+    const targetY = Math.max(0, coords.y - 200);
+    const steps = 20;
+    for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        const currentY = startY + (targetY - startY) * t;
+        await page.evaluate((y) => window.scrollTo(0, y), currentY);
+        await delay(50 + Math.random() * 100);
+    }
+}
+
+async function addRedDot(page, x, y) {
+    await page.evaluate((x, y) => {
+        const dot = document.createElement('div');
+        dot.style.position = 'fixed'; dot.style.left = (x - 5) + 'px'; dot.style.top = (y - 5) + 'px';
+        dot.style.width = '10px'; dot.style.height = '10px'; dot.style.borderRadius = '50%';
+        dot.style.backgroundColor = 'red'; dot.style.zIndex = '99999'; dot.style.pointerEvents = 'none';
+        dot.id = 'click-dot'; document.body.appendChild(dot);
+        setTimeout(() => dot.remove(), 2000);
+    }, x, y);
+}
+
+async function humanClickAt(page, coords) {
+    await addRedDot(page, coords.x, coords.y);
+    const start = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
+    const steps = 20;
+    for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        const cp = { x: start.x + (Math.random() - 0.5) * 100, y: start.y + (Math.random() - 0.5) * 100 };
+        const x = Math.pow(1 - t, 2) * start.x + 2 * (1 - t) * t * cp.x + Math.pow(t, 2) * coords.x;
+        const y = Math.pow(1 - t, 2) * start.y + 2 * (1 - t) * t * cp.y + Math.pow(t, 2) * coords.y;
+        await page.mouse.move(x, y); await delay(15);
+    }
+    await page.mouse.click(coords.x, coords.y);
+    console.log(`🖱️ Clic à (${coords.x}, ${coords.y})`);
+}
+
+// --- Chargement / Sauvegarde ---
 async function loadAccounts() {
     try {
         const res = await octokit.repos.getContent({
@@ -98,13 +153,139 @@ async function loadAccounts() {
     }
 }
 
-async function saveAccounts(accounts, modifiedAccount = null) { /* ... */ }
+async function saveAccounts(accounts, modifiedAccount = null) {
+    const account = accounts[0];
+    const maxRetries = 30;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            let sha = null;
+            try {
+                const res = await octokit.repos.getContent({
+                    owner: GH_USERNAME, repo: GH_REPO, path: USER_FILE, ref: GH_BRANCH
+                });
+                sha = res.data.sha;
+            } catch (e) {}
+            const content = Buffer.from(JSON.stringify(account, null, 2)).toString('base64');
+            await octokit.repos.createOrUpdateFileContents({
+                owner: GH_USERNAME, repo: GH_REPO, path: USER_FILE,
+                message: 'Mise à jour automatique', content, branch: GH_BRANCH, sha
+            });
+            console.log(`💾 Sauvegarde réussie (tentative ${attempt})`);
+            return;
+        } catch (e) {
+            if (e.status === 409) {
+                console.warn(`⚠️ Conflit 409 – tentative ${attempt}/${maxRetries}`);
+                if (attempt < maxRetries) {
+                    const waitTime = 1000 + Math.random() * 4000;
+                    await new Promise(r => setTimeout(r, waitTime));
+                    try {
+                        const res = await octokit.repos.getContent({
+                            owner: GH_USERNAME, repo: GH_REPO, path: USER_FILE, ref: GH_BRANCH
+                        });
+                        const latest = JSON.parse(Buffer.from(res.data.content, 'base64').toString('utf8'));
+                        if (modifiedAccount) {
+                            account = { ...latest, ...modifiedAccount };
+                        }
+                    } catch (reloadErr) {}
+                } else {
+                    console.error('❌ Trop de conflits, abandon.');
+                    throw e;
+                }
+            } else {
+                throw e;
+            }
+        }
+    }
+    throw new Error('Échec sauvegarde après plusieurs tentatives');
+}
 
-async function connectWithProxy(proxyUrl) { /* ... */ }
+// --- Connexion proxy (votre version stable) ---
+async function connectWithProxy(proxyUrl) {
+    const proxyConfig = parseProxyUrl(proxyUrl);
+    if (!proxyConfig) throw new Error('Proxy invalide');
+    console.log(`🔄 Connexion avec proxy : ${proxyConfig.server}`);
 
-async function performLoginAndCaptureCookies(account) { /* ... */ }
+    const options = {
+        headless: false,
+        turnstile: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+    };
 
-// ✅ Nouvelle version robuste de claimWithCookies
+    if (proxyConfig.username && proxyConfig.password) {
+        options.proxy = `${proxyConfig.server.replace('://', '://' + proxyConfig.username + ':' + proxyConfig.password + '@')}`;
+    } else {
+        options.proxy = proxyConfig.server;
+    }
+
+    const { browser, page } = await connect(options);
+    return { browser, page };
+}
+
+// --- Login (identique à votre version fonctionnelle) ---
+async function performLoginAndCaptureCookies(account) {
+    const { email, password, platform } = account;
+    console.log(`🔐 Login pour ${email} sur ${platform}...`);
+    const siteUrls = {
+        tronpick: 'https://tronpick.io/login.php',
+        litepick: 'https://litepick.io/login.php',
+        dogepick: 'https://dogepick.io/login.php',
+        solpick: 'https://solpick.io/login.php',
+        bnbpick: 'https://bnbpick.io/login.php'
+    };
+    const loginUrl = siteUrls[platform];
+    if (!loginUrl) throw new Error('Plateforme inconnue');
+
+    let browser;
+    try {
+        const { browser: br, page } = await connectWithProxy(PRIMARY_PROXY);
+        browser = br;
+        await page.setViewport({ width: 1280, height: 720 });
+        await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+
+        await fillField(page, 'input[type="email"], input[name="email"]', email, 'email');
+        await fillField(page, 'input[type="password"]', password, 'password');
+        await delay(2000);
+
+        const frame = await page.waitForFrame(
+            f => f.url().includes('challenges.cloudflare.com/turnstile'),
+            { timeout: 15000 }
+        ).catch(() => null);
+
+        if (frame) {
+            console.log('✅ Iframe Turnstile trouvée (login), clic checkbox');
+            await frame.click('input[type="checkbox"]');
+            await delay(8000);
+        } else {
+            console.log('⚠️ Iframe non trouvée, fallback coordonné');
+            await humanClickAt(page, TURNSTILE_LOGIN_COORDS);
+            await delay(10000);
+        }
+
+        const loginClicked = await page.evaluate(() => {
+            const btns = [...document.querySelectorAll('button')];
+            const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
+            if (loginBtn) { loginBtn.click(); return true; }
+            return false;
+        });
+        if (!loginClicked) throw new Error('Bouton Log in introuvable');
+
+        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
+        await delay(5000);
+        if (page.url().includes('login.php')) {
+            const errorMsg = await page.evaluate(() => {
+                const el = document.querySelector('.alert-danger, .error');
+                return el ? el.textContent.trim() : null;
+            });
+            throw new Error(errorMsg || 'Échec connexion');
+        }
+        const cookies = await page.cookies();
+        return cookies;
+    } finally {
+        if (browser) await browser.close().catch(() => {});
+    }
+}
+
+// --- Claim (votre version stable, avec réessais) ---
 async function claimWithCookies(account) {
     const { email, cookies, platform } = account;
     console.log(`🍪 Claim pour ${email} sur ${platform} via cookies`);
@@ -128,7 +309,6 @@ async function claimWithCookies(account) {
             const { browser: br, page } = await connectWithProxy(PRIMARY_PROXY);
             browser = br;
             await page.setCookie(...cookies);
-            console.log('🌐 Navigation vers faucet...');
             await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 90000 });
             await delay(5000);
             if (page.url().includes('login.php')) throw new Error('Cookies expirés');
@@ -143,7 +323,6 @@ async function claimWithCookies(account) {
             await delay(20000);
             await page.screenshot({ path: path.join(screenshotsDir, `02_after_wait_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-            console.log('🔄 Scroll vers le bouton CLAIM...');
             await humanScrollToClaim(page);
             await delay(2000);
             await page.screenshot({ path: path.join(screenshotsDir, `03_turnstile_visible_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
@@ -172,7 +351,6 @@ async function claimWithCookies(account) {
             await delay(5000);
             await page.screenshot({ path: path.join(screenshotsDir, `07_after_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
-            // Récupération des messages et de l'état du bouton
             const messages = await page.evaluate(() => {
                 return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [role="alert"], .alert, .message, .notification'))
                     .map(el => el.textContent.trim()).filter(t => t);
@@ -212,18 +390,8 @@ async function claimWithCookies(account) {
 
             return { success, message: resultMessage, siteTimer: nextTimerMinutes };
         } catch (error) {
-            // Capture d'écran d'erreur pour diagnostic
-            try {
-                if (browser) {
-                    const page = (await browser.pages())[0] || (await browser.defaultBrowserContext()).newPage();
-                    await page.screenshot({ path: path.join(screenshotsDir, `error_${email.replace(/[^a-zA-Z0-9]/g, '_')}_attempt${attempt}.png`), fullPage: true });
-                }
-            } catch (e) {}
-
-            console.error(`❌ Erreur tentative ${attempt} : ${error.message}`);
-
             if (attempt < maxAttempts && error.message.includes('timeout')) {
-                console.warn(`⚠️ Timeout navigation, on réessaie...`);
+                console.warn(`⚠️ Timeout navigation (tentative ${attempt}/${maxAttempts}), on réessaie...`);
                 if (browser) await browser.close().catch(() => {});
                 await delay(5000);
                 continue;
@@ -242,8 +410,8 @@ async function claimWithCookies(account) {
                     return { success: false, message: `Échec reconnexion: ${loginError.message}`, siteTimer: null };
                 }
             }
-            // Autre erreur → on retourne un message explicite
-            return { success: false, message: error.message || 'Erreur inconnue pendant le claim', siteTimer: null };
+            console.error(`❌ Erreur claim : ${error.message}`);
+            return { success: false, message: error.message, siteTimer: null };
         } finally {
             if (browser) await browser.close().catch(() => {});
         }
@@ -252,7 +420,7 @@ async function claimWithCookies(account) {
     return { success: false, message: 'Échec après plusieurs tentatives', siteTimer: null };
 }
 
-// 📜 Sauvegarde de l'historique
+// 📜 Sauvegarde de l'historique (NOUVEAU)
 async function saveHistory(account, success, message) {
     const historyFile = `history_${USER_ID}.json`;
     const octokit = new Octokit({ auth: GH_TOKEN });
@@ -289,12 +457,13 @@ async function saveHistory(account, success, message) {
             owner: GH_USERNAME, repo: GH_REPO, path: historyFile,
             message: 'Historique claim', content, branch: GH_BRANCH, sha
         });
+        console.log('📜 Historique sauvegardé.');
     } catch (err) {
         console.error('❌ Erreur sauvegarde historique :', err.message);
     }
 }
 
-// --- Main (avec appel à saveHistory et gestion améliorée) ---
+// --- Main (avec appel à l'historique) ---
 (async () => {
     try {
         let accounts = await loadAccounts();
@@ -356,7 +525,7 @@ async function saveHistory(account, success, message) {
         let result = { success: false, message: 'Erreur inconnue', siteTimer: null };
         try {
             result = await claimWithCookies(targetAccount);
-            if (!result) result = { success: false, message: 'Erreur inconnue (résultat vide)', siteTimer: null };
+            if (!result) result = { success: false, message: 'Erreur inconnue', siteTimer: null };
         } catch (e) {
             console.error('Exception lors du claim :', e.message);
             result = { success: false, message: e.message, siteTimer: null };
@@ -395,15 +564,14 @@ async function saveHistory(account, success, message) {
             }
         }
 
-        // 📜 Enregistrer dans l'historique (toujours, succès ou échec)
-        await saveHistory(targetAccount, result.success, result.message || 'Erreur inconnue');
+        // 📜 Enregistrer dans l'historique (toujours)
+        await saveHistory(targetAccount, result.success, result.message || '');
 
         // Délai aléatoire avant sauvegarde
         const waitBeforeSave = 2000 + Math.random() * 5000;
         console.log(`⏳ Pause de ${Math.round(waitBeforeSave/1000)}s avant sauvegarde...`);
         await new Promise(r => setTimeout(r, waitBeforeSave));
 
-        // Rechiffrer et sauvegarder le compte
         for (const acc of accounts) {
             if (acc.password && !acc.password.includes(':')) acc.password = encrypt(acc.password);
             if (acc.cookies && typeof acc.cookies === 'object') acc.cookies = encrypt(JSON.stringify(acc.cookies));
