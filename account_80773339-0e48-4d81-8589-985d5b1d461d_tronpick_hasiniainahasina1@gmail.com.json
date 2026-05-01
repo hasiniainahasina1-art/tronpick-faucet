@@ -9,5 +9,6 @@
   "lastClaim": 1777616588974,
   "timer": 1,
   "claimResult": null,
-  "pendingClaim": false
+  "pendingClaim": true,
+  "pendingClaimSince": 1777617022116
 }
