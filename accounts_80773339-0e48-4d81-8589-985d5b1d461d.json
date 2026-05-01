@@ -33,5 +33,17 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777610742566,
     "timer": 1
+  },
+  {
+    "email": "hasiniainahasina1@gmail.com",
+    "password": "5e98f1387bba3849d6c97ed0f3e4804e:a5c5da518d7530187f5ad2f0a8808b94",
+    "platform": "dogepick",
+    "proxyIndex": 1,
+    "enabled": false,
+    "cookies": "94aa9bdce63b28bc0cf18945b9ef34de:518aa112c45c6b7220d87f725481ab50",
+    "cookiesStatus": "failed",
+    "errorMessage": "Échec connexion",
+    "lastClaim": 0,
+    "timer": 60
   }
 ]
