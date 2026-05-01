@@ -79,65 +79,10 @@ function parseProxyUrl(proxyUrl) {
 }
 
 // --- Fonctions Puppeteer (inchangées) ---
-async function fillField(page, selector, value, fieldName) {
-    await page.waitForSelector(selector, { timeout: 10000 });
-    await page.click(selector, { clickCount: 3 });
-    await page.keyboard.press('Backspace');
-    await delay(100);
-    await page.evaluate((sel, val) => { const el = document.querySelector(sel); if (el) el.value = val; }, selector, value);
-    await delay(300);
-    let actual = await page.$eval(selector, el => el.value);
-    if (actual !== value) {
-        await page.click(selector, { clickCount: 3 });
-        await page.keyboard.press('Backspace');
-        for (const char of value) await page.keyboard.type(char, { delay: 30 });
-    }
-}
-
-async function humanScrollToClaim(page) {
-    const coords = await page.evaluate(() => {
-        const btn = document.querySelector('#process_claim_hourly_faucet');
-        if (!btn) return null;
-        const rect = btn.getBoundingClientRect();
-        return { y: rect.y + window.scrollY };
-    });
-    if (!coords) throw new Error('Bouton CLAIM introuvable');
-    const startY = await page.evaluate(() => window.scrollY);
-    const targetY = Math.max(0, coords.y - 200);
-    const steps = 20;
-    for (let i = 1; i <= steps; i++) {
-        const t = i / steps;
-        const currentY = startY + (targetY - startY) * t;
-        await page.evaluate((y) => window.scrollTo(0, y), currentY);
-        await delay(50 + Math.random() * 100);
-    }
-}
-
-async function addRedDot(page, x, y) {
-    await page.evaluate((x, y) => {
-        const dot = document.createElement('div');
-        dot.style.position = 'fixed'; dot.style.left = (x - 5) + 'px'; dot.style.top = (y - 5) + 'px';
-        dot.style.width = '10px'; dot.style.height = '10px'; dot.style.borderRadius = '50%';
-        dot.style.backgroundColor = 'red'; dot.style.zIndex = '99999'; dot.style.pointerEvents = 'none';
-        dot.id = 'click-dot'; document.body.appendChild(dot);
-        setTimeout(() => dot.remove(), 2000);
-    }, x, y);
-}
-
-async function humanClickAt(page, coords) {
-    await addRedDot(page, coords.x, coords.y);
-    const start = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
-    const steps = 20;
-    for (let i = 1; i <= steps; i++) {
-        const t = i / steps;
-        const cp = { x: start.x + (Math.random() - 0.5) * 100, y: start.y + (Math.random() - 0.5) * 100 };
-        const x = Math.pow(1 - t, 2) * start.x + 2 * (1 - t) * t * cp.x + Math.pow(t, 2) * coords.x;
-        const y = Math.pow(1 - t, 2) * start.y + 2 * (1 - t) * t * cp.y + Math.pow(t, 2) * coords.y;
-        await page.mouse.move(x, y); await delay(15);
-    }
-    await page.mouse.click(coords.x, coords.y);
-    console.log(`🖱️ Clic à (${coords.x}, ${coords.y})`);
-}
+async function fillField(page, selector, value, fieldName) { /* ... */ }
+async function humanScrollToClaim(page) { /* ... */ }
+async function addRedDot(page, x, y) { /* ... */ }
+async function humanClickAt(page, coords) { /* ... */ }
 
 // --- Chargement / Sauvegarde d'un fichier individuel ---
 async function loadAccounts() {
@@ -153,78 +98,161 @@ async function loadAccounts() {
     }
 }
 
-async function saveAccounts(accounts, modifiedAccount = null) {
-    const account = accounts[0];
-    const maxRetries = 30;
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+async function saveAccounts(accounts, modifiedAccount = null) { /* ... */ }
+
+async function connectWithProxy(proxyUrl) { /* ... */ }
+
+async function performLoginAndCaptureCookies(account) { /* ... */ }
+
+// ✅ Nouvelle version robuste de claimWithCookies
+async function claimWithCookies(account) {
+    const { email, cookies, platform } = account;
+    console.log(`🍪 Claim pour ${email} sur ${platform} via cookies`);
+    const siteUrls = {
+        tronpick: 'https://tronpick.io/faucet.php',
+        litepick: 'https://litepick.io/faucet.php',
+        dogepick: 'https://dogepick.io/faucet.php',
+        solpick: 'https://solpick.io/faucet.php',
+        bnbpick: 'https://bnbpick.io/faucet.php'
+    };
+    const faucetUrl = siteUrls[platform] || 'https://tronpick.io/faucet.php';
+
+    let browser;
+    let attempt = 0;
+    const maxAttempts = 3;
+
+    while (attempt < maxAttempts) {
+        attempt++;
         try {
-            let sha = null;
-            try {
-                const res = await octokit.repos.getContent({
-                    owner: GH_USERNAME, repo: GH_REPO, path: USER_FILE, ref: GH_BRANCH
-                });
-                sha = res.data.sha;
-            } catch (e) {}
-            const content = Buffer.from(JSON.stringify(account, null, 2)).toString('base64');
-            await octokit.repos.createOrUpdateFileContents({
-                owner: GH_USERNAME, repo: GH_REPO, path: USER_FILE,
-                message: 'Mise à jour automatique', content, branch: GH_BRANCH, sha
+            console.log(`🔄 Tentative ${attempt}/${maxAttempts}`);
+            const { browser: br, page } = await connectWithProxy(PRIMARY_PROXY);
+            browser = br;
+            await page.setCookie(...cookies);
+            console.log('🌐 Navigation vers faucet...');
+            await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 90000 });
+            await delay(5000);
+            if (page.url().includes('login.php')) throw new Error('Cookies expirés');
+
+            console.log('⏳ Attente de 5 secondes...');
+            await delay(5000);
+            console.log('🔄 Actualisation de la page faucet...');
+            await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
+            await page.screenshot({ path: path.join(screenshotsDir, `01_after_reload_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+            console.log('⏳ Attente de 20 secondes...');
+            await delay(20000);
+            await page.screenshot({ path: path.join(screenshotsDir, `02_after_wait_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+            console.log('🔄 Scroll vers le bouton CLAIM...');
+            await humanScrollToClaim(page);
+            await delay(2000);
+            await page.screenshot({ path: path.join(screenshotsDir, `03_turnstile_visible_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+            console.log('🖱️ Premier clic sur Turnstile faucet');
+            await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
+            await page.screenshot({ path: path.join(screenshotsDir, `04_after_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+            console.log('⏳ Attente de 10 secondes...');
+            await delay(10000);
+
+            console.log('🖱️ Second clic sur Turnstile faucet');
+            await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
+            await page.screenshot({ path: path.join(screenshotsDir, `05_after_second_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+            console.log('⏳ Attente de 10 secondes...');
+            await delay(10000);
+
+            console.log('⏳ Attente de 10 secondes avant le clic sur CLAIM...');
+            await delay(10000);
+            await page.screenshot({ path: path.join(screenshotsDir, `06_before_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+            console.log('🖱️ Clic sur CLAIM');
+            await humanClickAt(page, CLAIM_COORDS);
+            await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
+            await delay(5000);
+            await page.screenshot({ path: path.join(screenshotsDir, `07_after_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+            // Récupération des messages et de l'état du bouton
+            const messages = await page.evaluate(() => {
+                return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [role="alert"], .alert, .message, .notification'))
+                    .map(el => el.textContent.trim()).filter(t => t);
             });
-            console.log(`💾 Sauvegarde réussie (tentative ${attempt})`);
-            return;
-        } catch (e) {
-            if (e.status === 409) {
-                console.warn(`⚠️ Conflit 409 – tentative ${attempt}/${maxRetries}`);
-                if (attempt < maxRetries) {
-                    const waitTime = 1000 + Math.random() * 4000;
-                    await new Promise(r => setTimeout(r, waitTime));
-                    try {
-                        const res = await octokit.repos.getContent({
-                            owner: GH_USERNAME, repo: GH_REPO, path: USER_FILE, ref: GH_BRANCH
-                        });
-                        const latest = JSON.parse(Buffer.from(res.data.content, 'base64').toString('utf8'));
-                        if (modifiedAccount) {
-                            account = { ...latest, ...modifiedAccount };
+            const btnDisabled = await page.evaluate(() => {
+                const btn = document.querySelector('#process_claim_hourly_faucet');
+                return btn ? btn.disabled : false;
+            });
+
+            let nextTimerMinutes = null;
+            try {
+                nextTimerMinutes = await page.evaluate(() => {
+                    const timerEl = document.querySelector('#next_claim_timer, .countdown, [id*="timer"], [class*="timer"]');
+                    if (timerEl) {
+                        const txt = timerEl.textContent.trim();
+                        const hMatch = txt.match(/(\d+)\s*h/i);
+                        const mMatch = txt.match(/(\d+)\s*m/i);
+                        if (hMatch || mMatch) {
+                            const hours = hMatch ? parseInt(hMatch[1]) : 0;
+                            const minutes = mMatch ? parseInt(mMatch[1]) : 0;
+                            return hours * 60 + minutes;
                         }
-                    } catch (reloadErr) {}
-                } else {
-                    console.error('❌ Trop de conflits, abandon.');
-                    throw e;
+                        const colonMatch = txt.match(/(\d+):(\d+)/);
+                        if (colonMatch) {
+                            return parseInt(colonMatch[1]) + parseInt(colonMatch[2]) / 60;
+                        }
+                    }
+                    return null;
+                });
+            } catch (e) {}
+
+            const success = btnDisabled || messages.some(m => /success|claimed|reward|sent|received|thanks/i.test(m));
+            const resultMessage = messages[0] || (btnDisabled ? 'Bouton désactivé (succès présumé)' : 'Aucune réaction');
+            console.log(`📢 Messages détectés : ${messages.join(' | ')}`);
+            console.log(`🔘 Bouton désactivé : ${btnDisabled}`);
+            if (nextTimerMinutes !== null) console.log(`⏱️ Timer site : ${nextTimerMinutes.toFixed(1)} min`);
+
+            return { success, message: resultMessage, siteTimer: nextTimerMinutes };
+        } catch (error) {
+            // Capture d'écran d'erreur pour diagnostic
+            try {
+                if (browser) {
+                    const page = (await browser.pages())[0] || (await browser.defaultBrowserContext()).newPage();
+                    await page.screenshot({ path: path.join(screenshotsDir, `error_${email.replace(/[^a-zA-Z0-9]/g, '_')}_attempt${attempt}.png`), fullPage: true });
                 }
-            } else {
-                throw e;
+            } catch (e) {}
+
+            console.error(`❌ Erreur tentative ${attempt} : ${error.message}`);
+
+            if (attempt < maxAttempts && error.message.includes('timeout')) {
+                console.warn(`⚠️ Timeout navigation, on réessaie...`);
+                if (browser) await browser.close().catch(() => {});
+                await delay(5000);
+                continue;
             }
+            if (error.message.includes('Cookies expirés')) {
+                console.log(`🔄 Cookies expirés pour ${email} (${platform}), reconnexion...`);
+                try {
+                    const newCookies = await performLoginAndCaptureCookies(account);
+                    account.cookies = newCookies;
+                    account.cookiesStatus = 'valid';
+                    console.log(`✅ Nouveaux cookies capturés. Relance du claim.`);
+                    return await claimWithCookies(account);
+                } catch (loginError) {
+                    console.error(`❌ Échec reconnexion : ${loginError.message}`);
+                    account.cookiesStatus = 'failed';
+                    return { success: false, message: `Échec reconnexion: ${loginError.message}`, siteTimer: null };
+                }
+            }
+            // Autre erreur → on retourne un message explicite
+            return { success: false, message: error.message || 'Erreur inconnue pendant le claim', siteTimer: null };
+        } finally {
+            if (browser) await browser.close().catch(() => {});
         }
     }
-    throw new Error('Échec sauvegarde après plusieurs tentatives');
+
+    return { success: false, message: 'Échec après plusieurs tentatives', siteTimer: null };
 }
 
-async function connectWithProxy(proxyUrl) {
-    const proxyConfig = parseProxyUrl(proxyUrl);
-    if (!proxyConfig) throw new Error('Proxy invalide');
-    console.log(`🔄 Connexion avec proxy : ${proxyConfig.server}`);
-
-    const options = {
-        headless: false,
-        turnstile: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-    };
-
-    if (proxyConfig.username && proxyConfig.password) {
-        options.proxy = `${proxyConfig.server.replace('://', '://' + proxyConfig.username + ':' + proxyConfig.password + '@')}`;
-    } else {
-        options.proxy = proxyConfig.server;
-    }
-
-    const { browser, page } = await connect(options);
-    return { browser, page };
-}
-
-async function performLoginAndCaptureCookies(account) { /* ... identique ... */ }
-
-async function claimWithCookies(account) { /* ... identique ... */ }
-
-// 📜 NOUVELLE FONCTION : sauvegarde de l'historique
+// 📜 Sauvegarde de l'historique
 async function saveHistory(account, success, message) {
     const historyFile = `history_${USER_ID}.json`;
     const octokit = new Octokit({ auth: GH_TOKEN });
@@ -266,7 +294,7 @@ async function saveHistory(account, success, message) {
     }
 }
 
-// --- Main (avec appel à saveHistory) ---
+// --- Main (avec appel à saveHistory et gestion améliorée) ---
 (async () => {
     try {
         let accounts = await loadAccounts();
@@ -328,7 +356,7 @@ async function saveHistory(account, success, message) {
         let result = { success: false, message: 'Erreur inconnue', siteTimer: null };
         try {
             result = await claimWithCookies(targetAccount);
-            if (!result) result = { success: false, message: 'Erreur inconnue', siteTimer: null };
+            if (!result) result = { success: false, message: 'Erreur inconnue (résultat vide)', siteTimer: null };
         } catch (e) {
             console.error('Exception lors du claim :', e.message);
             result = { success: false, message: e.message, siteTimer: null };
@@ -367,14 +395,15 @@ async function saveHistory(account, success, message) {
             }
         }
 
-        // 📜 Enregistrer dans l'historique
-        await saveHistory(targetAccount, result.success, result.message || '');
+        // 📜 Enregistrer dans l'historique (toujours, succès ou échec)
+        await saveHistory(targetAccount, result.success, result.message || 'Erreur inconnue');
 
         // Délai aléatoire avant sauvegarde
         const waitBeforeSave = 2000 + Math.random() * 5000;
         console.log(`⏳ Pause de ${Math.round(waitBeforeSave/1000)}s avant sauvegarde...`);
         await new Promise(r => setTimeout(r, waitBeforeSave));
 
+        // Rechiffrer et sauvegarder le compte
         for (const acc of accounts) {
             if (acc.password && !acc.password.includes(':')) acc.password = encrypt(acc.password);
             if (acc.cookies && typeof acc.cookies === 'object') acc.cookies = encrypt(JSON.stringify(acc.cookies));
