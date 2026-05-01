@@ -8,21 +8,28 @@ export default async function handler(req, res) {
     const userId = req.query.userId;
     const platform = req.query.platform;
     const email = req.query.email;
+    const ghPath = req.query.path;      // ex: /repos/.../contents/... ou /repos/.../actions/workflows/.../dispatches
 
-    // Construction du chemin individuel
-    let filePath;
-    if (userId && platform && email) {
-        filePath = `account_${userId}_${platform}_${email}.json`;
-    } else if (userId) {
-        // Pour lister tous les comptes d'un utilisateur (dashboard)
-        filePath = null; // on utilisera une autre méthode
+    if (!ghPath) return res.status(400).json({ error: 'path manquant' });
+
+    // --- Déterminer le type de requête ---
+    const isWorkflowDispatch = ghPath.includes('/actions/workflows/');
+    const isListRequest = (req.method === 'GET' && ghPath === '/' && userId);
+
+    let url;
+    if (isWorkflowDispatch) {
+        // Pour les dispatchs, on ne modifie pas le chemin
+        url = `https://api.github.com${ghPath}`;
+    } else if (isListRequest) {
+        // Liste des fichiers pour un utilisateur
+        url = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/contents/?ref=${GH_BRANCH}`;
+    } else if (userId && platform && email) {
+        // Fichier individuel d'un compte
+        const filePath = `account_${userId}_${platform}_${email}.json`;
+        url = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/contents/${filePath}?ref=${GH_BRANCH}`;
     } else {
-        return res.status(400).json({ error: 'Paramètres manquants' });
+        return res.status(400).json({ error: 'Paramètres insuffisants (userId, platform, email requis pour un fichier)' });
     }
-
-    const url = filePath
-        ? `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/contents/${filePath}?ref=${GH_BRANCH}`
-        : `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/contents/?ref=${GH_BRANCH}`; // pour lister
 
     const options = {
         method: req.method,
@@ -38,23 +45,21 @@ export default async function handler(req, res) {
     }
 
     try {
-        if (req.method === 'GET' && !filePath) {
-            // Listage des fichiers du répertoire pour un utilisateur
-            const listUrl = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/contents/?ref=${GH_BRANCH}`;
-            const listRes = await fetch(listUrl, { headers: options.headers });
-            if (!listRes.ok) throw new Error(`Listage échoué : ${listRes.status}`);
-            const files = await listRes.json();
-            // Filtrer les fichiers commençant par "account_{userId}_"
-            const userFiles = files.filter(f => f.name.startsWith(`account_${userId}_`));
-            return res.status(200).json(userFiles);
-        }
-
         const response = await fetch(url, options);
         const status = response.status;
         if (status === 204) return res.status(204).end();
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.message || `HTTP ${status}`);
-        return res.status(status).json(data);
+
+        if (isListRequest) {
+            const files = await response.json();
+            if (!response.ok) throw new Error(files.message || `HTTP ${status}`);
+            // Filtrer les fichiers commençant par "account_{userId}_"
+            const userFiles = files.filter(f => f.name.startsWith(`account_${userId}_`));
+            return res.status(200).json(userFiles);
+        } else {
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message || `HTTP ${status}`);
+            return res.status(status).json(data);
+        }
     } catch (error) {
         return res.status(500).json({ error: error.message });
     }
