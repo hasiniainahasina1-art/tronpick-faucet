@@ -8,7 +8,7 @@ export default async function handler(req, res) {
     const userId = req.query.userId;
     const platform = req.query.platform;
     const email = req.query.email;
-    const ghPath = req.query.path;      // ex: /repos/.../contents/... ou /repos/.../actions/workflows/.../dispatches
+    const ghPath = req.query.path;
 
     if (!ghPath) return res.status(400).json({ error: 'path manquant' });
 
@@ -22,13 +22,14 @@ export default async function handler(req, res) {
     } else if (isListRequest) {
         url = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/contents/?ref=${GH_BRANCH}`;
     } else if (isFileAccess) {
-        // Lecture d'un fichier individuel déjà nommé
-        url = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/contents/${ghPath.split('/').pop()}?ref=${GH_BRANCH}`;
+        // Extraction du nom de fichier depuis le chemin
+        const fileName = ghPath.split('/').pop().split('?')[0]; // enlever d'éventuels query string
+        url = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/contents/${fileName}?ref=${GH_BRANCH}`;
     } else if (userId && platform && email) {
         const filePath = `account_${userId}_${platform}_${email}.json`;
         url = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/contents/${filePath}?ref=${GH_BRANCH}`;
     } else {
-        return res.status(400).json({ error: 'Paramètres insuffisants (userId, platform, email requis pour un fichier)' });
+        return res.status(400).json({ error: 'Paramètres insuffisants' });
     }
 
     const options = {
