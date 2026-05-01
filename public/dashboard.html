@@ -45,7 +45,8 @@
             background: #f8fafc; border-radius: 6px; border: 1px solid var(--border); flex-wrap: wrap; gap: 10px;
         }
         .account-info { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; flex: 1; }
-        .account-email { font-weight: 600; font-size: 0.9rem; min-width: 150px; }
+        .account-email { font-weight: 600; font-size: 0.9rem; min-width: 150px; cursor: pointer; }
+        .account-email:hover { color: var(--primary); text-decoration: underline; }
         .account-site {
             color: var(--text-secondary); font-size: 0.8rem; background: #e2e8f0; padding: 2px 8px; border-radius: 4px;
         }
@@ -92,6 +93,19 @@
             border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); background: #fff;
         }
         .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+        /* Modale historique */
+        .history-modal {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px);
+            z-index: 2000; align-items: center; justify-content: center;
+        }
+        .history-modal.active { display: flex; }
+        .history-content {
+            background: var(--card-bg); border-radius: var(--radius); padding: 20px;
+            width: 90%; max-width: 400px; box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+            animation: fadeSlide 0.2s ease;
+        }
+        .history-content p { margin-bottom: 10px; }
     </style>
 </head>
 <body>
@@ -133,59 +147,23 @@
             </form>
         </div>
     </div>
+
     <!-- Modale Historique -->
-<div class="history-modal" id="historyModal">
-    <div class="history-content">
-        <h3 id="historyTitle">📊 Historique 24h</h3>
-        <p id="historyEmail"></p>
-        <p id="historySuccess"></p>
-        <p id="historyBonus"></p>
-        <button class="btn btn-primary" onclick="document.getElementById('historyModal').classList.remove('active')">Fermer</button>
+    <div class="history-modal" id="historyModal">
+        <div class="history-content">
+            <h3>📊 Historique 24h</h3>
+            <p id="historyEmail"></p>
+            <p id="historySuccess">Chargement...</p>
+            <p id="historyBonus"></p>
+            <button class="btn btn-primary" onclick="document.getElementById('historyModal').classList.remove('active')">Fermer</button>
+        </div>
     </div>
-</div>
 
     <div class="toast" id="toast"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
-
-        // Après renderAccounts, attacher les clics sur les emails
-function attachHistoryClicks() {
-    document.querySelectorAll('.account-email').forEach(span => {
-        span.style.cursor = 'pointer';
-        span.addEventListener('click', (e) => {
-            const item = span.closest('.account-item');
-            const idx = parseInt(item.dataset.index);
-            const acc = currentAccounts.filter(a => a.cookiesStatus !== 'failed')[idx];
-            showHistory(acc);
-        });
-    });
-}
-
-async function showHistory(account) {
-    const modal = document.getElementById('historyModal');
-    document.getElementById('historyEmail').textContent = `${account.email} (${account.platform})`;
-    document.getElementById('historySuccess').textContent = 'Chargement...';
-    document.getElementById('historyBonus').textContent = '';
-    modal.classList.add('active');
-
-    try {
-        const res = await fetch(`/api/history?userId=${currentUserId}`);
-        const data = await res.json();
-        const accountEntries = data.entries.filter(e => e.email === account.email && e.platform === account.platform);
-        const successCount = accountEntries.filter(e => e.success).length;
-        const totalBonus = accountEntries.reduce((sum, e) => sum + (e.bonus || 0), 0);
-        document.getElementById('historySuccess').textContent = `✅ Claims réussis (24h) : ${successCount}`;
-        document.getElementById('historyBonus').textContent = `💰 Total bonus : ${totalBonus}`;
-    } catch (err) {
-        document.getElementById('historySuccess').textContent = '❌ Erreur';
-        document.getElementById('historyBonus').textContent = '';
-    }
-}
-
-// Dans la fonction renderAccounts(), après avoir ajouté les éléments, appelez :
-attachHistoryClicks();
-        // --- Initialisation sécurisée de Supabase ---
+        // --- Initialisation Supabase via /api/config ---
         function initWhenSupabaseReady() {
             if (typeof window.supabase === 'undefined') {
                 setTimeout(initWhenSupabaseReady, 300);
@@ -280,7 +258,7 @@ attachHistoryClicks();
             const LOGIN_WORKFLOW_ID = 'test-account.yml';
             const LOGOUT_WORKFLOW_ID = 'logout.yml';
 
-            // --- API proxy ---
+            // --- API Proxy ---
             async function githubApi(method, path, body = null, isList = false) {
                 let url = `/api/data?path=${encodeURIComponent(path)}&userId=${currentUserId}`;
                 if (isList) {
@@ -298,7 +276,6 @@ attachHistoryClicks();
             // --- Chargement des comptes (fichiers individuels) ---
             async function loadAccounts() {
                 try {
-                    // Liste des fichiers de l'utilisateur
                     const files = await githubApi('GET', '/', null, true);
                     if (!Array.isArray(files)) return [];
 
@@ -326,7 +303,7 @@ attachHistoryClicks();
                 await githubApi('POST', apiPath, payload);
             }
 
-            // --- Modale ---
+            // --- Modale Ajout ---
             function openModal(title, account = null) {
                 document.getElementById('modalTitle').textContent = title;
                 if (account) {
@@ -463,6 +440,9 @@ attachHistoryClicks();
                         }
                     });
                 });
+
+                // ✅ Attacher les clics pour l'historique
+                attachHistoryClicks();
             }
 
             async function refreshAccounts() {
@@ -471,6 +451,41 @@ attachHistoryClicks();
                     renderAccounts();
                 } catch (e) {
                     showToast(`Erreur chargement: ${e.message}`, 'error');
+                }
+            }
+
+            // --- Historique ---
+            function attachHistoryClicks() {
+                document.querySelectorAll('.account-email').forEach(span => {
+                    span.style.cursor = 'pointer';
+                    span.addEventListener('click', (e) => {
+                        const item = span.closest('.account-item');
+                        const idx = parseInt(item.dataset.index);
+                        const visibleAccounts = currentAccounts.filter(acc => acc.cookiesStatus !== 'failed');
+                        const acc = visibleAccounts[idx];
+                        if (acc) showHistory(acc);
+                    });
+                });
+            }
+
+            async function showHistory(account) {
+                const modal = document.getElementById('historyModal');
+                document.getElementById('historyEmail').textContent = `${account.email} (${account.platform})`;
+                document.getElementById('historySuccess').textContent = 'Chargement...';
+                document.getElementById('historyBonus').textContent = '';
+                modal.classList.add('active');
+
+                try {
+                    const res = await fetch(`/api/history?userId=${currentUserId}`);
+                    const data = await res.json();
+                    const accountEntries = data.entries.filter(e => e.email === account.email && e.platform === account.platform);
+                    const successCount = accountEntries.filter(e => e.success).length;
+                    const totalBonus = accountEntries.reduce((sum, e) => sum + (e.bonus || 0), 0);
+                    document.getElementById('historySuccess').textContent = `✅ Claims réussis (24h) : ${successCount}`;
+                    document.getElementById('historyBonus').textContent = `💰 Total bonus : ${totalBonus}`;
+                } catch (err) {
+                    document.getElementById('historySuccess').textContent = '❌ Erreur';
+                    document.getElementById('historyBonus').textContent = '';
                 }
             }
 
