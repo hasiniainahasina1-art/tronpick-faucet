@@ -80,10 +80,34 @@ function timeStrToMinutes(str) {
 }
 
 // --- Fonctions Puppeteer (identiques à script.js) ---
-async function fillField(page, selector, value, fieldName) { /* ... */ }
-async function humanScrollToClaim(page) { /* ... */ }
-async function addRedDot(page, x, y) { /* ... */ }
-async function humanClickAt(page, coords) { /* ... */ }
+async function fillField(page, selector, value, fieldName) {
+    await page.waitForSelector(selector, { timeout: 10000 });
+    await page.click(selector, { clickCount: 3 });
+    await page.keyboard.press('Backspace');
+    await delay(100);
+    await page.evaluate((sel, val) => { const el = document.querySelector(sel); if (el) el.value = val; }, selector, value);
+    await delay(300);
+    let actual = await page.$eval(selector, el => el.value);
+    if (actual !== value) {
+        await page.click(selector, { clickCount: 3 });
+        await page.keyboard.press('Backspace');
+        for (const char of value) await page.keyboard.type(char, { delay: 30 });
+    }
+}
+
+async function humanClickAt(page, coords) {
+    const start = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
+    const steps = 20;
+    for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        const cp = { x: start.x + (Math.random() - 0.5) * 100, y: start.y + (Math.random() - 0.5) * 100 };
+        const x = Math.pow(1 - t, 2) * start.x + 2 * (1 - t) * t * cp.x + Math.pow(t, 2) * coords.x;
+        const y = Math.pow(1 - t, 2) * start.y + 2 * (1 - t) * t * cp.y + Math.pow(t, 2) * coords.y;
+        await page.mouse.move(x, y); await delay(15);
+    }
+    await page.mouse.click(coords.x, coords.y);
+    console.log(`🖱️ Clic à (${coords.x}, ${coords.y})`);
+}
 
 // --- Connexion proxy ---
 async function connectWithProxy(proxyUrl) {
@@ -125,9 +149,15 @@ async function performLogin(page, email, password) {
         await delay(10000);
     }
 
-    const loginBtn = (await page.$x("//button[contains(text(),'Log in')]"))[0];
-    if (!loginBtn) throw new Error('Bouton Log in introuvable');
-    await loginBtn.click();
+    // ✅ CORRECTION : remplacer $x par evaluate (compatible puppeteer-real-browser)
+    const loginClicked = await page.evaluate(() => {
+        const btns = [...document.querySelectorAll('button')];
+        const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
+        if (loginBtn) { loginBtn.click(); return true; }
+        return false;
+    });
+    if (!loginClicked) throw new Error('Bouton Log in introuvable');
+
     await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
     await delay(5000);
 
@@ -204,7 +234,7 @@ async function run() {
             enabled: true,
             cookies: encrypt(JSON.stringify(cookies)),
             cookiesStatus: 'valid',
-            lastClaim: Date.now(),   // on enregistre la date actuelle pour démarrer le timer
+            lastClaim: Date.now(),
             timer: timerValue,
             claimResult: null,
             pendingClaim: false
@@ -215,7 +245,7 @@ async function run() {
         process.exit(0);
     } catch (err) {
         console.error('❌ Erreur fatale :', err.message);
-        // En cas d'échec, on enregistre quand même un compte "failed" (comme avant)
+        // En cas d'échec, on enregistre quand même un compte "failed"
         try {
             const octokit = new Octokit({ auth: GH_TOKEN });
             const normalizedEmail = email.trim().toLowerCase();
