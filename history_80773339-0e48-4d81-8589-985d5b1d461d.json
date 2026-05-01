@@ -110,5 +110,13 @@
     "success": true,
     "message": "×Success!You got 0.00000075 BNB!",
     "bonus": 7.5e-7
+  },
+  {
+    "email": "rivoniainafinoana123@gmail.com",
+    "platform": "solpick",
+    "timestamp": 1777632707680,
+    "success": true,
+    "message": "×Success!You got 0.000001000 SOL!",
+    "bonus": 0.000001
   }
 ]
