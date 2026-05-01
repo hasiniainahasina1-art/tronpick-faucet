@@ -235,7 +235,7 @@
                     const accounts = [];
                     for (const file of files) {
                         // 2. Pour chaque fichier, lire son contenu (en passant le vrai chemin)
-                        const filePath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/${file.name}?ref=${BRANCH}`;
+                        const filePath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/${file.name};
                         const fileData = await githubApi('GET', filePath);
                         const content = atob(fileData.content);
                         try {
