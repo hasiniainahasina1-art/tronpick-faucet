@@ -51,8 +51,8 @@
     "cookiesStatus": "valid",
     "lastClaim": 1777599652293,
     "timer": 62,
-    "pendingClaim": false,
+    "pendingClaim": true,
     "claimResult": "❌ ×Error!Something went wrong! Please try again in 10 minutes!",
-    "pendingClaimSince": 1777596127184
+    "pendingClaimSince": 1777603386038
   }
 ]
