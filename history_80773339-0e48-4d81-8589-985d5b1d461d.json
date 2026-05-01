@@ -118,5 +118,13 @@
     "success": true,
     "message": "×Success!You got 0.000001000 SOL!",
     "bonus": 0.000001
+  },
+  {
+    "email": "rivoniainafinoana123@gmail.com",
+    "platform": "litepick",
+    "timestamp": 1777636178481,
+    "success": false,
+    "message": "×Error!Something went wrong! Please try again in 10 minutes!",
+    "bonus": 0
   }
 ]
