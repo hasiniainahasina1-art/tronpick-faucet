@@ -80,7 +80,7 @@ function timeStrToMinutes(str) {
     return mins + secs / 60;
 }
 
-// --- Fonctions Puppeteer (identiques à script.js) ---
+// --- Fonctions Puppeteer ---
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -110,26 +110,34 @@ async function humanClickAt(page, coords) {
     console.log(`🖱️ Clic à (${coords.x}, ${coords.y})`);
 }
 
-// --- Connexion proxy ---
+// --- Connexion proxy robuste ---
 async function connectWithProxy(proxyUrl) {
     const proxyConfig = parseProxyUrl(proxyUrl);
     if (!proxyConfig) throw new Error('Proxy invalide');
     console.log(`🔄 Connexion avec proxy : ${proxyConfig.server}`);
+
     const options = {
         headless: false,
         turnstile: true,
         args: ['--no-sandbox', '--disable-setuid-sandbox']
     };
+
     if (proxyConfig.username && proxyConfig.password) {
         options.proxy = `${proxyConfig.server.replace('://', '://' + proxyConfig.username + ':' + proxyConfig.password + '@')}`;
     } else {
         options.proxy = proxyConfig.server;
     }
-    const { browser, page } = await connect(options);
-    return { browser, page };
+
+    try {
+        const { browser, page } = await connect(options);
+        return { browser, page };
+    } catch (err) {
+        console.error('❌ Échec de connexion au proxy :', err.message);
+        throw new Error('Impossible de se connecter au proxy');
+    }
 }
 
-// ✅ Nouveau performLogin (robuste)
+// --- Login robuste ---
 async function performLogin(page, email, password) {
     await fillField(page, 'input[type="email"], input[name="email"]', email, 'email');
     await fillField(page, 'input[type="password"]', password, 'password');
@@ -150,7 +158,6 @@ async function performLogin(page, email, password) {
         await delay(10000);
     }
 
-    // Clic sur le bouton "Log in"
     const loginClicked = await page.evaluate(() => {
         const btns = [...document.querySelectorAll('button')];
         const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
@@ -160,7 +167,6 @@ async function performLogin(page, email, password) {
 
     if (!loginClicked) throw new Error('Bouton Log in introuvable');
 
-    // Attendre la navigation (jusqu'à 40s)
     try {
         await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 40000 });
     } catch (navError) {
@@ -175,7 +181,6 @@ async function performLogin(page, email, password) {
         }
     }
 
-    // Vérification finale
     if (page.url().includes('login.php')) {
         const errorMsg = await page.evaluate(() => {
             const el = document.querySelector('.alert-danger, .error');
@@ -185,7 +190,7 @@ async function performLogin(page, email, password) {
     }
 }
 
-// ✅ Vérification globale
+// --- Vérification globale ---
 async function isAccountAlreadyTaken(email, platform, octokit) {
     try {
         const res = await octokit.repos.getContent({
@@ -201,7 +206,7 @@ async function isAccountAlreadyTaken(email, platform, octokit) {
     }
 }
 
-// ✅ Ajout à la liste globale
+// --- Ajout à la liste globale ---
 async function addToGlobalList(email, platform, normalizedEmail) {
     const octokit = new Octokit({ auth: GH_TOKEN });
     try {
@@ -242,7 +247,7 @@ async function addToGlobalList(email, platform, normalizedEmail) {
     }
 }
 
-// --- Sauvegarde d'un compte individuel ---
+// --- Sauvegarde d'un compte réussi ---
 async function saveAccount(accountData) {
     const octokit = new Octokit({ auth: GH_TOKEN });
     let sha = null;
@@ -293,18 +298,15 @@ async function run() {
         await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 60000 });
         await page.screenshot({ path: path.join(screenshotsDir, '01_login_page.png'), fullPage: true });
 
-        // ✅ Connexion robuste
         await performLogin(page, email, password);
         console.log('✅ Login réussi');
 
-        // Récupérer les cookies
         const cookies = await page.cookies();
         console.log(`🍪 Cookies récupérés : ${cookies.length}`);
 
         await page.screenshot({ path: path.join(screenshotsDir, '02_login_success.png'), fullPage: true });
         await browser.close();
 
-        // Préparer le compte
         const timerValue = timeStrToMinutes(initialTimerStr);
         const account = {
             email: normalizedEmail,
@@ -323,45 +325,11 @@ async function run() {
         await saveAccount(account);
         console.log(`✅ Compte ${normalizedEmail} enregistré avec succès (timer = ${initialTimerStr})`);
 
-        // ✅ Ajouter à la liste globale APRÈS avoir sauvegardé le compte
         await addToGlobalList(email, platform, normalizedEmail);
-
         process.exit(0);
     } catch (err) {
         console.error('❌ Erreur fatale :', err.message);
-        // En cas d'échec, on enregistre quand même un compte "failed"
-        try {
-            const octokit = new Octokit({ auth: GH_TOKEN });
-            const normalizedEmail = email.trim().toLowerCase();
-            const failedAccount = {
-                email: normalizedEmail,
-                password: encrypt(password),
-                platform,
-                proxyIndex,
-                enabled: false,
-                cookies: encrypt('[]'),
-                cookiesStatus: 'failed',
-                errorMessage: err.message,
-                lastClaim: 0,
-                timer: 60
-            };
-            const content = Buffer.from(JSON.stringify(failedAccount, null, 2)).toString('base64');
-            let sha = null;
-            try {
-                const res = await octokit.repos.getContent({ owner: GH_USERNAME, repo: GH_REPO, path: USER_FILE, ref: GH_BRANCH });
-                sha = res.data.sha;
-            } catch (e) {}
-            await octokit.repos.createOrUpdateFileContents({
-                owner: GH_USERNAME,
-                repo: GH_REPO,
-                path: USER_FILE,
-                message: `Échec login pour ${normalizedEmail}`,
-                content,
-                branch: GH_BRANCH,
-                sha
-            });
-            console.log(`❌ État d'échec sauvegardé pour ${normalizedEmail}`);
-        } catch (saveErr) {}
+        // 🚫 Aucune sauvegarde en cas d'échec
         if (browser) {
             try {
                 const screenshotPath = path.join(screenshotsDir, 'error.png');
