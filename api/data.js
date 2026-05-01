@@ -22,8 +22,7 @@ export default async function handler(req, res) {
     } else if (isListRequest) {
         url = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/contents/?ref=${GH_BRANCH}`;
     } else if (isFileAccess) {
-        // Extraction du nom de fichier depuis le chemin
-        const fileName = ghPath.split('/').pop().split('?')[0]; // enlever d'éventuels query string
+        const fileName = ghPath.split('/').pop().split('?')[0];
         url = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/contents/${fileName}?ref=${GH_BRANCH}`;
     } else if (userId && platform && email) {
         const filePath = `account_${userId}_${platform}_${email}.json`;
