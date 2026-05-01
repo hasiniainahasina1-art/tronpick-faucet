@@ -66,12 +66,17 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 function parseProxyUrl(proxyUrl) {
     if (!proxyUrl) return null;
     proxyUrl = proxyUrl.trim();
-    const match = proxyUrl.match(/^http:\/\/([^:]+):([^@]+)@([^:]+):(\d+)$/);
+    const isSocks = proxyUrl.startsWith('socks5://') || proxyUrl.startsWith('socks://');
+    const protocol = isSocks ? 'socks5' : 'http';
+    const match = proxyUrl.match(/^(socks5?:\/\/)?(?:([^:]+):([^@]+)@)?([^:]+):(\d+)$/);
     if (!match) { console.error('❌ Format HTTP invalide'); return null; }
-    return { server: `http://${match[3]}:${match[4]}`, username: match[1], password: match[2] };
+    return {
+        server: `${protocol}://${match[4]}:${match[5]}`,
+        username: match[2] || null,
+        password: match[3] || null
+    };
 }
 
-// --- Fonctions Puppeteer (inchangées) ---
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -202,10 +207,20 @@ async function connectWithProxy(proxyUrl) {
     const proxyConfig = parseProxyUrl(proxyUrl);
     if (!proxyConfig) throw new Error('Proxy invalide');
     console.log(`🔄 Connexion avec proxy : ${proxyConfig.server}`);
-    const { browser, page } = await connect({
-        headless: false, turnstile: true, proxy: proxyConfig,
+
+    const options = {
+        headless: false,
+        turnstile: true,
         args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
+    };
+
+    if (proxyConfig.username && proxyConfig.password) {
+        options.proxy = `${proxyConfig.server.replace('://', '://' + proxyConfig.username + ':' + proxyConfig.password + '@')}`;
+    } else {
+        options.proxy = proxyConfig.server;
+    }
+
+    const { browser, page } = await connect(options);
     return { browser, page };
 }
 
@@ -217,7 +232,7 @@ async function performLoginAndCaptureCookies(account) {
         litepick: 'https://litepick.io/login.php',
         dogepick: 'https://dogepick.io/login.php',
         solpick: 'https://solpick.io/login.php',
-        binpick: 'https://binpick.io/login.php'
+        bnbpick: 'https://bnbpick.io/login.php'
     };
     const loginUrl = siteUrls[platform];
     if (!loginUrl) throw new Error('Plateforme inconnue');
@@ -280,122 +295,133 @@ async function claimWithCookies(account) {
         litepick: 'https://litepick.io/faucet.php',
         dogepick: 'https://dogepick.io/faucet.php',
         solpick: 'https://solpick.io/faucet.php',
-        binpick: 'https://binpick.io/faucet.php'
+        bnbpick: 'https://bnbpick.io/faucet.php'
     };
     const faucetUrl = siteUrls[platform] || 'https://tronpick.io/faucet.php';
 
     let browser;
-    try {
-        const { browser: br, page } = await connectWithProxy(PRIMARY_PROXY);
-        browser = br;
-        await page.setCookie(...cookies);
-        await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-        await delay(5000);
-        if (page.url().includes('login.php')) throw new Error('Cookies expirés');
+    let attempt = 0;
+    const maxAttempts = 3;
 
-        console.log('⏳ Attente de 5 secondes...');
-        await delay(5000);
-        console.log('🔄 Actualisation de la page faucet...');
-        await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
-        await page.screenshot({ path: path.join(screenshotsDir, `01_after_reload_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-
-        console.log('⏳ Attente de 20 secondes...');
-        await delay(20000);
-        await page.screenshot({ path: path.join(screenshotsDir, `02_after_wait_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-
-        await humanScrollToClaim(page);
-        await delay(2000);
-        await page.screenshot({ path: path.join(screenshotsDir, `03_turnstile_visible_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-
-        console.log('🖱️ Premier clic sur Turnstile faucet');
-        await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
-        await page.screenshot({ path: path.join(screenshotsDir, `04_after_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-
-        console.log('⏳ Attente de 10 secondes...');
-        await delay(10000);
-
-        console.log('🖱️ Second clic sur Turnstile faucet');
-        await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
-        await page.screenshot({ path: path.join(screenshotsDir, `05_after_second_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-
-        console.log('⏳ Attente de 10 secondes...');
-        await delay(10000);
-
-        console.log('⏳ Attente de 10 secondes avant le clic sur CLAIM...');
-        await delay(10000);
-        await page.screenshot({ path: path.join(screenshotsDir, `06_before_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-
-        console.log('🖱️ Clic sur CLAIM');
-        await humanClickAt(page, CLAIM_COORDS);
-        await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
-        await delay(5000);
-        await page.screenshot({ path: path.join(screenshotsDir, `07_after_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
-
-        // Récupération des messages et du timer affiché
-        const messages = await page.evaluate(() => {
-            return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [role="alert"], .alert, .message, .notification'))
-                .map(el => el.textContent.trim()).filter(t => t);
-        });
-        const btnDisabled = await page.evaluate(() => {
-            const btn = document.querySelector('#process_claim_hourly_faucet');
-            return btn ? btn.disabled : false;
-        });
-
-        // Essayer d'extraire le temps restant (format "XX:XX" ou "Xh XXm")
-        let nextTimerMinutes = null;
+    while (attempt < maxAttempts) {
+        attempt++;
         try {
-            nextTimerMinutes = await page.evaluate(() => {
-                // Chercher un élément contenant le temps restant (souvent '#next_claim_timer', '.countdown', etc.)
-                const timerEl = document.querySelector('#next_claim_timer, .countdown, [id*="timer"], [class*="timer"]');
-                if (timerEl) {
-                    const txt = timerEl.textContent.trim();
-                    // Formats possibles : "60:00", "1h 0min", "60 min"
-                    const hMatch = txt.match(/(\d+)\s*h/i);
-                    const mMatch = txt.match(/(\d+)\s*m/i);
-                    if (hMatch || mMatch) {
-                        const hours = hMatch ? parseInt(hMatch[1]) : 0;
-                        const minutes = mMatch ? parseInt(mMatch[1]) : 0;
-                        return hours * 60 + minutes;
-                    }
-                    const colonMatch = txt.match(/(\d+):(\d+)/);
-                    if (colonMatch) {
-                        return parseInt(colonMatch[1]) + parseInt(colonMatch[2]) / 60;
-                    }
-                }
-                return null;
+            console.log(`🔄 Tentative ${attempt}/${maxAttempts}`);
+            const { browser: br, page } = await connectWithProxy(PRIMARY_PROXY);
+            browser = br;
+            await page.setCookie(...cookies);
+            await page.goto(faucetUrl, { waitUntil: 'networkidle2', timeout: 90000 });
+            await delay(5000);
+            if (page.url().includes('login.php')) throw new Error('Cookies expirés');
+
+            console.log('⏳ Attente de 5 secondes...');
+            await delay(5000);
+            console.log('🔄 Actualisation de la page faucet...');
+            await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
+            await page.screenshot({ path: path.join(screenshotsDir, `01_after_reload_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+            console.log('⏳ Attente de 20 secondes...');
+            await delay(20000);
+            await page.screenshot({ path: path.join(screenshotsDir, `02_after_wait_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+            await humanScrollToClaim(page);
+            await delay(2000);
+            await page.screenshot({ path: path.join(screenshotsDir, `03_turnstile_visible_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+            console.log('🖱️ Premier clic sur Turnstile faucet');
+            await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
+            await page.screenshot({ path: path.join(screenshotsDir, `04_after_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+            console.log('⏳ Attente de 10 secondes...');
+            await delay(10000);
+
+            console.log('🖱️ Second clic sur Turnstile faucet');
+            await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
+            await page.screenshot({ path: path.join(screenshotsDir, `05_after_second_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+            console.log('⏳ Attente de 10 secondes...');
+            await delay(10000);
+
+            console.log('⏳ Attente de 10 secondes avant le clic sur CLAIM...');
+            await delay(10000);
+            await page.screenshot({ path: path.join(screenshotsDir, `06_before_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+            console.log('🖱️ Clic sur CLAIM');
+            await humanClickAt(page, CLAIM_COORDS);
+            await page.waitForNetworkIdle({ timeout: 20000 }).catch(() => {});
+            await delay(5000);
+            await page.screenshot({ path: path.join(screenshotsDir, `07_after_claim_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
+
+            const messages = await page.evaluate(() => {
+                return Array.from(document.querySelectorAll('[class*="toast"], [class*="alert"], [role="alert"], .alert, .message, .notification'))
+                    .map(el => el.textContent.trim()).filter(t => t);
             });
-        } catch (e) { /* ignorer */ }
+            const btnDisabled = await page.evaluate(() => {
+                const btn = document.querySelector('#process_claim_hourly_faucet');
+                return btn ? btn.disabled : false;
+            });
 
-        const success = btnDisabled || messages.some(m => /success|claimed|reward|sent|received|thanks/i.test(m));
-        const resultMessage = messages[0] || (btnDisabled ? 'Bouton désactivé (succès présumé)' : 'Aucune réaction');
-        console.log(`📢 Messages détectés : ${messages.join(' | ')}`);
-        console.log(`🔘 Bouton désactivé : ${btnDisabled}`);
-        if (nextTimerMinutes !== null) console.log(`⏱️ Timer site : ${nextTimerMinutes.toFixed(1)} min`);
-
-        return { success, message: resultMessage, siteTimer: nextTimerMinutes };
-    } catch (error) {
-        if (error.message.includes('Cookies expirés')) {
-            console.log(`🔄 Cookies expirés pour ${email} (${platform}), reconnexion...`);
+            let nextTimerMinutes = null;
             try {
-                const newCookies = await performLoginAndCaptureCookies(account);
-                account.cookies = newCookies;
-                account.cookiesStatus = 'valid';
-                console.log(`✅ Nouveaux cookies capturés. Relance du claim.`);
-                return await claimWithCookies(account);
-            } catch (loginError) {
-                console.error(`❌ Échec reconnexion : ${loginError.message}`);
-                account.cookiesStatus = 'failed';
-                return { success: false, message: `Échec reconnexion: ${loginError.message}`, siteTimer: null };
+                nextTimerMinutes = await page.evaluate(() => {
+                    const timerEl = document.querySelector('#next_claim_timer, .countdown, [id*="timer"], [class*="timer"]');
+                    if (timerEl) {
+                        const txt = timerEl.textContent.trim();
+                        const hMatch = txt.match(/(\d+)\s*h/i);
+                        const mMatch = txt.match(/(\d+)\s*m/i);
+                        if (hMatch || mMatch) {
+                            const hours = hMatch ? parseInt(hMatch[1]) : 0;
+                            const minutes = mMatch ? parseInt(mMatch[1]) : 0;
+                            return hours * 60 + minutes;
+                        }
+                        const colonMatch = txt.match(/(\d+):(\d+)/);
+                        if (colonMatch) {
+                            return parseInt(colonMatch[1]) + parseInt(colonMatch[2]) / 60;
+                        }
+                    }
+                    return null;
+                });
+            } catch (e) {}
+
+            const success = btnDisabled || messages.some(m => /success|claimed|reward|sent|received|thanks/i.test(m));
+            const resultMessage = messages[0] || (btnDisabled ? 'Bouton désactivé (succès présumé)' : 'Aucune réaction');
+            console.log(`📢 Messages détectés : ${messages.join(' | ')}`);
+            console.log(`🔘 Bouton désactivé : ${btnDisabled}`);
+            if (nextTimerMinutes !== null) console.log(`⏱️ Timer site : ${nextTimerMinutes.toFixed(1)} min`);
+
+            return { success, message: resultMessage, siteTimer: nextTimerMinutes };
+        } catch (error) {
+            if (attempt < maxAttempts && error.message.includes('timeout')) {
+                console.warn(`⚠️ Timeout navigation (tentative ${attempt}/${maxAttempts}), on réessaie...`);
+                if (browser) await browser.close().catch(() => {});
+                await delay(5000);
+                continue;
             }
+            if (error.message.includes('Cookies expirés')) {
+                console.log(`🔄 Cookies expirés pour ${email} (${platform}), reconnexion...`);
+                try {
+                    const newCookies = await performLoginAndCaptureCookies(account);
+                    account.cookies = newCookies;
+                    account.cookiesStatus = 'valid';
+                    console.log(`✅ Nouveaux cookies capturés. Relance du claim.`);
+                    return await claimWithCookies(account);
+                } catch (loginError) {
+                    console.error(`❌ Échec reconnexion : ${loginError.message}`);
+                    account.cookiesStatus = 'failed';
+                    return { success: false, message: `Échec reconnexion: ${loginError.message}`, siteTimer: null };
+                }
+            }
+            console.error(`❌ Erreur claim : ${error.message}`);
+            return { success: false, message: error.message, siteTimer: null };
+        } finally {
+            if (browser) await browser.close().catch(() => {});
         }
-        console.error(`❌ Erreur claim : ${error.message}`);
-        return { success: false, message: error.message, siteTimer: null };
-    } finally {
-        if (browser) await browser.close().catch(() => {});
     }
+
+    return { success: false, message: 'Échec après plusieurs tentatives', siteTimer: null };
 }
 
-// --- Main (avec les 3 conditions) ---
+// --- Main ---
 (async () => {
     try {
         let accounts = await loadAccounts();
@@ -423,7 +449,6 @@ async function claimWithCookies(account) {
         const intervalMs = (targetAccount.timer || 60) * 60 * 1000;
         if ((now - lastClaim) < intervalMs) {
             console.log('⏳ Pas encore éligible');
-            targetAccount.pendingClaim = false;
             targetAccount.claimResult = null;
             for (const acc of accounts) {
                 if (acc.password && !acc.password.includes(':')) acc.password = encrypt(acc.password);
@@ -444,7 +469,6 @@ async function claimWithCookies(account) {
             } catch (e) {
                 targetAccount.cookiesStatus = 'failed';
                 targetAccount.claimResult = `❌ ${e.message}`;
-                targetAccount.pendingClaim = false;
                 console.log(`❌ Échec login : ${e.message}`);
                 for (const acc of accounts) {
                     if (acc.password && !acc.password.includes(':')) acc.password = encrypt(acc.password);
@@ -467,9 +491,7 @@ async function claimWithCookies(account) {
 
         console.log(`📋 Résultat du claim : success=${result.success}, message="${result.message}"`);
 
-        // ---- Application des 3 conditions ----
         if (result.success) {
-            // Condition 3 : succès → timer à 62 minutes
             targetAccount.lastClaim = now;
             targetAccount.timer = 62;
             targetAccount.claimResult = `✅ ${result.message || 'Claim réussi'}`;
@@ -478,37 +500,27 @@ async function claimWithCookies(account) {
             const msg = (result.message || '').toLowerCase();
 
             if (msg.includes('try again in 10 minutes')) {
-                // Condition 2 : erreur “try again in 10 minutes” → pause 2 heures
                 const deuxHeuresMs = 2 * 60 * 60 * 1000;
                 targetAccount.lastClaim = now + deuxHeuresMs - ((targetAccount.timer || 60) * 60 * 1000);
                 targetAccount.claimResult = `❌ ${result.message}`;
                 console.log('⏰ Erreur site, prochain claim repoussé de 2 heures');
             } else if (msg.includes('aucun résultat') || msg.includes('aucune réaction') || (!result.message && !msg)) {
-                // Condition 1 : aucun résultat → utiliser le timer du site
                 if (result.siteTimer !== null && result.siteTimer > 0) {
-                    // On utilise le timer affiché sur le site
                     targetAccount.lastClaim = now;
                     targetAccount.timer = result.siteTimer;
                     targetAccount.claimResult = `✅ (timer site) ${result.siteTimer.toFixed(1)} min`;
                     console.log(`ℹ️ Aucun message, timer site appliqué : ${result.siteTimer.toFixed(1)} min`);
                 } else {
-                    // Fallback : 60 minutes par défaut
                     targetAccount.lastClaim = now;
                     targetAccount.timer = 60;
                     targetAccount.claimResult = '✅ (timer par défaut) 60 min';
                     console.log('ℹ️ Aucun message, timer par défaut 60 min');
                 }
             } else {
-                // Autre échec (ex: ECONNREFUSED) → ne pas toucher au timer
                 targetAccount.claimResult = `❌ ${result.message}`;
                 console.log('❌ Échec non traité, compte laissé en l\'état');
             }
         }
-
-        // Délai aléatoire avant sauvegarde
-        const waitBeforeSave = 2000 + Math.random() * 5000;
-        console.log(`⏳ Pause de ${Math.round(waitBeforeSave/1000)}s avant sauvegarde...`);
-        await new Promise(r => setTimeout(r, waitBeforeSave));
 
         targetAccount.pendingClaim = false;
 
