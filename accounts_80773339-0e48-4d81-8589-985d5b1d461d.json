@@ -38,15 +38,16 @@
   },
   {
     "email": "hasiniainahasina1@gmail.com",
-    "password": "5e98f1387bba3849d6c97ed0f3e4804e:a5c5da518d7530187f5ad2f0a8808b94",
+    "password": "348501c02a14d8b6e82a9a199e5a3acb:e1a9885cf984af00c44f94fa52f7a834",
     "platform": "dogepick",
     "proxyIndex": 1,
     "enabled": false,
-    "cookies": "94aa9bdce63b28bc0cf18945b9ef34de:518aa112c45c6b7220d87f725481ab50",
+    "cookies": "3d0019c6be9ecfcf6bff914610bed63e:23a2bc79e23d8f44362c3631c134fcdd",
     "cookiesStatus": "failed",
     "errorMessage": "Échec connexion",
     "lastClaim": 0,
-    "timer": 60
+    "timer": 60,
+    "pendingLogout": true
   },
   {
     "email": "hasiniainahasina1@gmail.com",
