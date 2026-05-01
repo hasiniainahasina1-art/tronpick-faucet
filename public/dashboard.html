@@ -230,21 +230,34 @@
 
              
 // Fonction pour charger tous les comptes d'un utilisateur
-async function loadAccounts() {
-    const apiPath = `/repos/${GH_USERNAME}/${GH_REPO}/contents/?ref=${BRANCH}`;
+            async function loadAccounts() {
+    // Appeler l'API de liste via le proxy
+    const listUrl = `/api/data?path=&userId=${currentUserId}`;
     try {
-        // Récupérer la liste de tous les fichiers du dépôt
-        const files = await githubApi('GET', apiPath);
-        // Filtrer ceux qui commencent par "account_{currentUserId}_"
-        const userFiles = files.filter(f => f.name.startsWith(`account_${currentUserId}_`));
+        const response = await fetch(listUrl);
+        if (!response.ok) {
+            if (response.status === 404) return [];
+            throw new Error('Erreur lors du listage des fichiers');
+        }
+        const files = await response.json();
+        // 'files' est un tableau d'objets GitHub (name, url, etc.)
         const accounts = [];
-        for (const file of userFiles) {
-            const content = atob(file.content);
-            accounts.push(JSON.parse(content));
+        for (const file of files) {
+            // Pour chaque fichier, on récupère son contenu
+            const contentUrl = `/api/data?path=/repos/${GH_USERNAME}/${GH_REPO}/contents/${file.name}?ref=${BRANCH}&userId=${currentUserId}&platform=&email=`;
+            const fileRes = await fetch(contentUrl);
+            if (!fileRes.ok) continue;
+            const fileData = await fileRes.json();
+            const content = atob(fileData.content);
+            try {
+                const account = JSON.parse(content);
+                accounts.push(account);
+            } catch (e) { /* ignorer les fichiers mal formés */ }
         }
         return accounts;
     } catch (e) {
-        return [];
+        if (e.message.includes('404')) return [];
+        throw e;
     }
             }
 
