@@ -38,8 +38,8 @@
     "lastClaim": 1777598803652,
     "timer": 62,
     "pendingClaim": true,
-    "pendingClaimSince": 1777602546362,
-    "claimResult": "❌ ×Error!Something went wrong! Please try again in 10 minutes!"
+    "claimResult": "❌ ×Error!Something went wrong! Please try again in 10 minutes!",
+    "pendingClaimSince": 1777602846927
   },
   {
     "email": "rivoniainafinoana123@gmail.com",
