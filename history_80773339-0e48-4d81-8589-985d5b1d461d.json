@@ -14,5 +14,13 @@
     "success": false,
     "message": "Erreur inconnue",
     "bonus": 0
+  },
+  {
+    "email": "rivoniainafinoana123@gmail.com",
+    "platform": "solpick",
+    "timestamp": 1777627735060,
+    "success": false,
+    "message": "Cannot destructure property 'browser' of '(intermediate value)' as it is undefined.",
+    "bonus": 0
   }
 ]
