@@ -43,7 +43,7 @@ function decrypt(encryptedText) {
     } catch (e) { return encryptedText; }
 }
 
-const USER_FILE = `accounts_${USER_ID}.json`;
+const USER_FILE = `account_${process.env.USER_ID}_${process.env.CLAIM_PLATFORM}_${process.env.CLAIM_EMAIL}.json`;
 
 const octokit = new Octokit({ auth: GH_TOKEN });
 
