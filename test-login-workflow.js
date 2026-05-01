@@ -21,6 +21,7 @@ if (!CRYPTO_SECRET || !USER_ID) {
     process.exit(1);
 }
 
+// ✅ Fichier individuel par compte
 const USER_FILE = `account_${USER_ID}_${platform}_${email}.json`;
 const GLOBAL_FILE = 'global_accounts.json';
 const KEY = crypto.createHash('sha256').update(CRYPTO_SECRET).digest();
@@ -80,8 +81,34 @@ function timeStrToMinutes(str) {
 }
 
 // --- Fonctions Puppeteer (identiques à script.js) ---
-async function fillField(page, selector, value, fieldName) { /* ... */ }
-async function humanClickAt(page, coords) { /* ... */ }
+async function fillField(page, selector, value, fieldName) {
+    await page.waitForSelector(selector, { timeout: 10000 });
+    await page.click(selector, { clickCount: 3 });
+    await page.keyboard.press('Backspace');
+    await delay(100);
+    await page.evaluate((sel, val) => { const el = document.querySelector(sel); if (el) el.value = val; }, selector, value);
+    await delay(300);
+    let actual = await page.$eval(selector, el => el.value);
+    if (actual !== value) {
+        await page.click(selector, { clickCount: 3 });
+        await page.keyboard.press('Backspace');
+        for (const char of value) await page.keyboard.type(char, { delay: 30 });
+    }
+}
+
+async function humanClickAt(page, coords) {
+    const start = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
+    const steps = 20;
+    for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        const cp = { x: start.x + (Math.random() - 0.5) * 100, y: start.y + (Math.random() - 0.5) * 100 };
+        const x = Math.pow(1 - t, 2) * start.x + 2 * (1 - t) * t * cp.x + Math.pow(t, 2) * coords.x;
+        const y = Math.pow(1 - t, 2) * start.y + 2 * (1 - t) * t * cp.y + Math.pow(t, 2) * coords.y;
+        await page.mouse.move(x, y); await delay(15);
+    }
+    await page.mouse.click(coords.x, coords.y);
+    console.log(`🖱️ Clic à (${coords.x}, ${coords.y})`);
+}
 
 // --- Connexion proxy ---
 async function connectWithProxy(proxyUrl) {
@@ -102,7 +129,7 @@ async function connectWithProxy(proxyUrl) {
     return { browser, page };
 }
 
-// --- Login ---
+// ✅ Nouveau performLogin (robuste)
 async function performLogin(page, email, password) {
     await fillField(page, 'input[type="email"], input[name="email"]', email, 'email');
     await fillField(page, 'input[type="password"]', password, 'password');
@@ -123,17 +150,32 @@ async function performLogin(page, email, password) {
         await delay(10000);
     }
 
+    // Clic sur le bouton "Log in"
     const loginClicked = await page.evaluate(() => {
         const btns = [...document.querySelectorAll('button')];
         const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
         if (loginBtn) { loginBtn.click(); return true; }
         return false;
     });
+
     if (!loginClicked) throw new Error('Bouton Log in introuvable');
 
-    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
-    await delay(5000);
+    // Attendre la navigation (jusqu'à 40s)
+    try {
+        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 40000 });
+    } catch (navError) {
+        console.warn('⚠️ Navigation après login non détectée, vérification manuelle...');
+        await delay(5000);
+        if (page.url().includes('login.php')) {
+            const errorMsg = await page.evaluate(() => {
+                const el = document.querySelector('.alert-danger, .error');
+                return el ? el.textContent.trim() : null;
+            });
+            throw new Error(errorMsg || 'Échec connexion (pas de redirection)');
+        }
+    }
 
+    // Vérification finale
     if (page.url().includes('login.php')) {
         const errorMsg = await page.evaluate(() => {
             const el = document.querySelector('.alert-danger, .error');
@@ -143,7 +185,7 @@ async function performLogin(page, email, password) {
     }
 }
 
-// ✅ Nouvelle fonction : vérification globale avant écriture
+// ✅ Vérification globale
 async function isAccountAlreadyTaken(email, platform, octokit) {
     try {
         const res = await octokit.repos.getContent({
@@ -155,12 +197,11 @@ async function isAccountAlreadyTaken(email, platform, octokit) {
         const entries = JSON.parse(Buffer.from(res.data.content, 'base64').toString('utf8'));
         return entries.some(e => e.email === email && e.platform === platform);
     } catch (e) {
-        // Si le fichier n'existe pas, le compte est libre
         return false;
     }
 }
 
-// ✅ Nouvelle fonction : ajout à la liste globale
+// ✅ Ajout à la liste globale
 async function addToGlobalList(email, platform, normalizedEmail) {
     const octokit = new Octokit({ auth: GH_TOKEN });
     try {
@@ -186,7 +227,6 @@ async function addToGlobalList(email, platform, normalizedEmail) {
 
         const content = Buffer.from(JSON.stringify(entries, null, 2)).toString('base64');
         const message = `Ajout de ${normalizedEmail} (${platform}) à la liste globale`;
-
         await octokit.repos.createOrUpdateFileContents({
             owner: GH_USERNAME,
             repo: GH_REPO,
@@ -202,7 +242,7 @@ async function addToGlobalList(email, platform, normalizedEmail) {
     }
 }
 
-// --- Sauvegarde (gère l'absence de fichier) ---
+// --- Sauvegarde d'un compte individuel ---
 async function saveAccount(accountData) {
     const octokit = new Octokit({ auth: GH_TOKEN });
     let sha = null;
@@ -253,7 +293,7 @@ async function run() {
         await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 60000 });
         await page.screenshot({ path: path.join(screenshotsDir, '01_login_page.png'), fullPage: true });
 
-        // Login
+        // ✅ Connexion robuste
         await performLogin(page, email, password);
         console.log('✅ Login réussi');
 
@@ -289,7 +329,7 @@ async function run() {
         process.exit(0);
     } catch (err) {
         console.error('❌ Erreur fatale :', err.message);
-        // En cas d'échec, on enregistre quand même un compte "failed" (comme avant)
+        // En cas d'échec, on enregistre quand même un compte "failed"
         try {
             const octokit = new Octokit({ auth: GH_TOKEN });
             const normalizedEmail = email.trim().toLowerCase();
