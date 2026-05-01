@@ -12,19 +12,19 @@ export default async function handler(req, res) {
 
     if (!ghPath) return res.status(400).json({ error: 'path manquant' });
 
-    // --- Déterminer le type de requête ---
     const isWorkflowDispatch = ghPath.includes('/actions/workflows/');
     const isListRequest = (req.method === 'GET' && ghPath === '/' && userId);
+    const isFileAccess = userId && ghPath.includes(`/account_${userId}_`);
 
     let url;
     if (isWorkflowDispatch) {
-        // Pour les dispatchs, on ne modifie pas le chemin
         url = `https://api.github.com${ghPath}`;
     } else if (isListRequest) {
-        // Liste des fichiers pour un utilisateur
         url = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/contents/?ref=${GH_BRANCH}`;
+    } else if (isFileAccess) {
+        // Lecture d'un fichier individuel déjà nommé
+        url = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/contents/${ghPath.split('/').pop()}?ref=${GH_BRANCH}`;
     } else if (userId && platform && email) {
-        // Fichier individuel d'un compte
         const filePath = `account_${userId}_${platform}_${email}.json`;
         url = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/contents/${filePath}?ref=${GH_BRANCH}`;
     } else {
@@ -52,7 +52,6 @@ export default async function handler(req, res) {
         if (isListRequest) {
             const files = await response.json();
             if (!response.ok) throw new Error(files.message || `HTTP ${status}`);
-            // Filtrer les fichiers commençant par "account_{userId}_"
             const userFiles = files.filter(f => f.name.startsWith(`account_${userId}_`));
             return res.status(200).json(userFiles);
         } else {
