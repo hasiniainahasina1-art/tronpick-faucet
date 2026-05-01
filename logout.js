@@ -8,11 +8,11 @@ const email = process.env.LOGOUT_EMAIL;
 const password = process.env.LOGOUT_PASSWORD;
 const platform = process.env.LOGOUT_PLATFORM;
 const proxyIndex = process.env.LOGOUT_PROXY_INDEX !== undefined ? parseInt(process.env.LOGOUT_PROXY_INDEX) : 0;
+
 const GH_TOKEN = process.env.GH_TOKEN;
 const GH_USERNAME = process.env.GH_USERNAME;
 const GH_REPO = process.env.GH_REPO;
 const GH_BRANCH = process.env.GH_BRANCH || 'main';
-const GH_FILE_PATH = process.env.GH_FILE_PATH || 'accounts.json';
 const USER_ID = process.env.USER_ID;
 const CRYPTO_SECRET = process.env.CRYPTO_SECRET;
 
@@ -21,7 +21,9 @@ if (!CRYPTO_SECRET || !USER_ID) {
     process.exit(1);
 }
 
+// ✅ Fichier individuel
 const USER_FILE = `account_${USER_ID}_${platform}_${email}.json`;
+const GLOBAL_FILE = 'global_accounts.json';
 const KEY = crypto.createHash('sha256').update(CRYPTO_SECRET).digest();
 
 function encrypt(text) {
@@ -31,7 +33,6 @@ function encrypt(text) {
     encrypted += cipher.final('hex');
     return iv.toString('hex') + ':' + encrypted;
 }
-
 function decrypt(encryptedText) {
     const parts = encryptedText.split(':');
     if (parts.length !== 2) return encryptedText;
@@ -42,9 +43,16 @@ function decrypt(encryptedText) {
         let decrypted = decipher.update(encrypted, 'hex', 'utf8');
         decrypted += decipher.final('utf8');
         return decrypted;
-    } catch (e) {
-        return encryptedText;
-    }
+    } catch (e) { return encryptedText; }
+}
+
+if (!email || !password || !platform) {
+    console.error('❌ LOGOUT_EMAIL, LOGOUT_PASSWORD et LOGOUT_PLATFORM sont requis.');
+    process.exit(1);
+}
+if (!GH_TOKEN || !GH_USERNAME || !GH_REPO) {
+    console.error('❌ Variables GitHub manquantes');
+    process.exit(1);
 }
 
 const JP_PROXY_LIST = (process.env.JP_PROXY_LIST || '').split(',').filter(p => p.trim() !== '');
@@ -62,19 +70,19 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 function parseProxyUrl(proxyUrl) {
     if (!proxyUrl) return null;
     proxyUrl = proxyUrl.trim();
-    const match = proxyUrl.match(/^http:\/\/([^:]+):([^@]+)@([^:]+):(\d+)$/);
-    if (!match) {
-        console.error('❌ Format HTTP invalide :', proxyUrl);
-        return null;
-    }
+    const isSocks = proxyUrl.startsWith('socks5://') || proxyUrl.startsWith('socks://');
+    const protocol = isSocks ? 'socks5' : 'http';
+    const match = proxyUrl.match(/^(socks5?:\/\/)?(?:([^:]+):([^@]+)@)?([^:]+):(\d+)$/);
+    if (!match) { console.error('❌ Format HTTP invalide'); return null; }
     return {
-        server: `http://${match[3]}:${match[4]}`,
-        username: match[1],
-        password: match[2]
+        server: `${protocol}://${match[4]}:${match[5]}`,
+        username: match[2] || null,
+        password: match[3] || null
     };
 }
 
-async function loadAccounts() {
+// ✅ Chargement du compte individuel
+async function loadAccount() {
     try {
         const res = await octokit.repos.getContent({
             owner: GH_USERNAME,
@@ -84,13 +92,13 @@ async function loadAccounts() {
         });
         return JSON.parse(Buffer.from(res.data.content, 'base64').toString('utf8'));
     } catch (e) {
-        if (e.status === 404) return [];
+        if (e.status === 404) return null;   // fichier inexistant
         throw e;
     }
 }
 
-async function saveAccounts(accounts) {
-    let sha = null;
+// ✅ Suppression du fichier individuel
+async function deleteAccountFile() {
     try {
         const res = await octokit.repos.getContent({
             owner: GH_USERNAME,
@@ -98,23 +106,27 @@ async function saveAccounts(accounts) {
             path: USER_FILE,
             ref: GH_BRANCH
         });
-        sha = res.data.sha;
-    } catch (e) {}
-    const content = Buffer.from(JSON.stringify(accounts, null, 2)).toString('base64');
-    await octokit.repos.createOrUpdateFileContents({
-        owner: GH_USERNAME,
-        repo: GH_REPO,
-        path: USER_FILE,
-        message: `Déconnexion – suppression de ${email}`,
-        content,
-        branch: GH_BRANCH,
-        sha
-    });
+        const sha = res.data.sha;
+        await octokit.repos.deleteFile({
+            owner: GH_USERNAME,
+            repo: GH_REPO,
+            path: USER_FILE,
+            message: `Suppression du compte ${email}`,
+            sha,
+            branch: GH_BRANCH
+        });
+        console.log(`🗑️ Fichier ${USER_FILE} supprimé.`);
+    } catch (e) {
+        if (e.status === 404) {
+            console.log('ℹ️ Le fichier individuel n\'existe pas, rien à supprimer.');
+        } else {
+            console.error('❌ Erreur suppression fichier :', e.message);
+        }
+    }
 }
 
-// --- Suppression de la liste globale ---
+// ✅ Suppression de la liste globale
 async function removeFromGlobalList(email, platform) {
-    const GLOBAL_FILE = 'global_accounts.json';
     try {
         let entries = [];
         let sha = null;
@@ -154,6 +166,7 @@ async function removeFromGlobalList(email, platform) {
     }
 }
 
+// --- Fonctions Puppeteer (identiques à script.js) ---
 async function humanClickAt(page, coords) {
     const start = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
     const steps = 20;
@@ -179,19 +192,26 @@ async function extractCsrfToken(page) {
     return token;
 }
 
+// --- Déconnexion humaine ---
 async function performNormalLogout(accountCookies) {
     const proxyUrl = JP_PROXY_LIST[proxyIndex] || JP_PROXY_LIST[0];
     const proxyConfig = parseProxyUrl(proxyUrl);
     if (!proxyConfig) throw new Error('Proxy invalide');
 
-    console.log(`🔌 Déconnexion humaine de ${email} sur ${platform}.io via proxy ${proxyConfig.server}`);
+    console.log(`🔌 Déconnexion de ${email} sur ${platform}.io via proxy ${proxyConfig.server}`);
 
-    const { browser, page } = await connect({
+    const options = {
         headless: false,
         turnstile: false,
-        proxy: proxyConfig,
         args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
+    };
+    if (proxyConfig.username && proxyConfig.password) {
+        options.proxy = `${proxyConfig.server.replace('://', '://' + proxyConfig.username + ':' + proxyConfig.password + '@')}`;
+    } else {
+        options.proxy = proxyConfig.server;
+    }
+
+    const { browser, page } = await connect(options);
 
     try {
         await page.setViewport({ width: 1280, height: 720 });
@@ -213,6 +233,7 @@ async function performNormalLogout(accountCookies) {
 
         await page.screenshot({ path: path.join(screenshotsDir, `01_before_logout_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
+        // Chercher le bouton de déconnexion
         const logoutCoords = await page.evaluate(() => {
             const candidates = [...document.querySelectorAll('button, a, div[role="button"], input[type="submit"]')];
             const btn = candidates.find(el => {
@@ -280,55 +301,40 @@ async function performNormalLogout(accountCookies) {
     }
 }
 
-// --- Main (supprime aussi de la liste globale) ---
+// --- Main ---
 (async () => {
     try {
-        let accounts = await loadAccounts();
-        const normalizedEmail = email.trim().toLowerCase();
-        const idx = accounts.findIndex(a => a.email.toLowerCase() === normalizedEmail && a.platform === platform);
-        if (idx === -1) {
-            console.log(`ℹ️ Le compte ${normalizedEmail} n'existe pas dans la base.`);
+        // 1. Charger le compte individuel
+        const account = await loadAccount();
+        if (!account) {
+            console.log(`ℹ️ Le compte ${email} n'existe pas dans la base.`);
             process.exit(0);
         }
 
-        const account = accounts[idx];
         console.log(`🔍 Compte trouvé : ${account.email}`);
 
-        // Déchiffrer les champs sensibles
+        // 2. Déchiffrer les champs sensibles
         if (account.password) account.password = decrypt(account.password);
         if (typeof account.cookies === 'string' && account.cookies) {
             try { account.cookies = JSON.parse(decrypt(account.cookies)); } catch {}
         }
 
-        if (!account.cookies || account.cookiesStatus === 'expired') {
-            console.log('⏩ Cookies déjà expirés, suppression directe.');
-        } else {
+        // 3. Déconnexion réelle si les cookies sont valides
+        if (account.cookies && account.cookies.length > 0 && account.cookiesStatus !== 'expired') {
             account.pendingLogout = true;
-            for (const acc of accounts) {
-                if (acc.password && !acc.password.includes(':')) acc.password = encrypt(acc.password);
-                if (acc.cookies && typeof acc.cookies === 'object') acc.cookies = encrypt(JSON.stringify(acc.cookies));
-            }
-            await saveAccounts(accounts);
-            console.log(`🏷️ Compte marqué pendingLogout.`);
-
-            if (typeof account.cookies === 'string') {
-                try { account.cookies = JSON.parse(decrypt(account.cookies)); } catch {}
-            }
+            // Pas besoin de sauvegarder le flag ici car nous allons supprimer le fichier après
             await performNormalLogout(account.cookies);
+        } else {
+            console.log('⏩ Cookies déjà expirés ou absents, pas de déconnexion nécessaire.');
         }
 
-        // Supprimer le compte du fichier utilisateur
-        accounts.splice(idx, 1);
-        for (const acc of accounts) {
-            if (acc.password && !acc.password.includes(':')) acc.password = encrypt(acc.password);
-            if (acc.cookies && typeof acc.cookies === 'object') acc.cookies = encrypt(JSON.stringify(acc.cookies));
-        }
-        await saveAccounts(accounts);
-        console.log(`🗑️ Compte ${normalizedEmail} supprimé avec succès.`);
+        // 4. Supprimer le fichier individuel
+        await deleteAccountFile();
 
-        // 🔥 Supprimer aussi de la liste globale
+        // 5. Retirer de la liste globale
         await removeFromGlobalList(email, platform);
 
+        console.log(`✅ Compte ${email} entièrement supprimé.`);
         process.exit(0);
     } catch (err) {
         console.error('❌ Erreur fatale :', err.message);
