@@ -278,5 +278,13 @@
     "success": true,
     "message": "×Success!You got 0.020000 TRX!",
     "bonus": 0.02
+  },
+  {
+    "email": "rivoniainafinoana123@gmail.com",
+    "platform": "tronpick",
+    "timestamp": 1777662089775,
+    "success": false,
+    "message": "×Error!Something went wrong! Please try again in 10 minutes!",
+    "bonus": 0
   }
 ]
