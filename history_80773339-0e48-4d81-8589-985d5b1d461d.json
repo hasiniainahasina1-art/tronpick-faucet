@@ -62,5 +62,13 @@
     "success": false,
     "message": "Cannot destructure property 'browser' of '(intermediate value)' as it is undefined.",
     "bonus": 0
+  },
+  {
+    "email": "finoanarivoniaina@gmail.com",
+    "platform": "bnbpick",
+    "timestamp": 1777628670976,
+    "success": true,
+    "message": "×Success!You got 0.00000075 BNB!",
+    "bonus": 7.5e-7
   }
 ]
