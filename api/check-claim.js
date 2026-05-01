@@ -1,4 +1,4 @@
-// api/check-claim.js – PARALLÉLISME TOTAL (pas de cooldown entre plateformes)
+// api/check-claim.js – LIT LES FICHIERS INDIVIDUELS
 export default async function handler(req, res) {
     const SECRET = process.env.CRON_SECRET;
     const headerSecret = req.headers['x-cron-secret'];
@@ -31,48 +31,47 @@ export default async function handler(req, res) {
 
         for (const profile of profiles) {
             const userId = profile.id;
-            const filePath = `accounts_${userId}.json`;
-            const fileUrl = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/contents/${filePath}?ref=${GH_BRANCH}`;
-
-            const fileRes = await fetch(fileUrl, {
+            // Lister tous les fichiers du dépôt
+            const listUrl = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/contents/?ref=${GH_BRANCH}`;
+            const listRes = await fetch(listUrl, {
                 headers: { Authorization: `token ${GH_TOKEN}`, Accept: 'application/vnd.github.v3+json' }
             });
-            if (fileRes.status === 404) continue;
-            if (!fileRes.ok) continue;
+            if (!listRes.ok) continue;
+            const files = await listRes.json();
+            const userFiles = files.filter(f => f.name.startsWith(`account_${userId}_`));
 
-            const fileData = await fileRes.json();
-            const content = decodeURIComponent(
-                Array.from(atob(fileData.content), c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')
-            );
-            const accounts = JSON.parse(content);
-            const now = Date.now();
-            const EXPIRATION_MS = 10 * 60 * 1000; // nettoyage des flags expirés après 10 min
+            for (const file of userFiles) {
+                const fileUrl = file.url;
+                const fileRes = await fetch(fileUrl, {
+                    headers: { Authorization: `token ${GH_TOKEN}`, Accept: 'application/vnd.github.v3+json' }
+                });
+                if (!fileRes.ok) continue;
+                const fileData = await fileRes.json();
+                const content = decodeURIComponent(
+                    Array.from(atob(fileData.content), c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')
+                );
+                const account = JSON.parse(content);
+                const now = Date.now();
+                const EXPIRATION_MS = 10 * 60 * 1000;
 
-            // Nettoyer les flags trop vieux
-            for (const acc of accounts) {
-                if (acc.pendingClaim === true && acc.pendingClaimSince && (now - acc.pendingClaimSince >= EXPIRATION_MS)) {
-                    acc.pendingClaim = false;
-                    delete acc.pendingClaimSince;
-                    console.log(`🧹 Flag expiré pour ${acc.email}`);
+                // Nettoyage flag expiré
+                if (account.pendingClaim === true && account.pendingClaimSince && (now - account.pendingClaimSince >= EXPIRATION_MS)) {
+                    account.pendingClaim = false;
+                    delete account.pendingClaimSince;
                 }
-            }
 
-            // Filtrer les comptes éligibles (indépendamment les uns des autres)
-            const eligibleAccounts = accounts.filter(acc => {
-                if (acc.enabled === false) return false;
-                if (acc.pendingLogout === true) return false;
-                // Si le compte a déjà un flag actif, on l'ignore (protection anti‑doublon pour ce compte)
-                if (acc.pendingClaim === true && acc.pendingClaimSince && (now - acc.pendingClaimSince < EXPIRATION_MS)) return false;
-                const last = acc.lastClaim || 0;
-                const intervalMs = (acc.timer || 60) * 60 * 1000;
-                return (now - last) >= intervalMs;
-            });
+                // Vérifier éligibilité
+                if (account.enabled === false) continue;
+                if (account.pendingLogout === true) continue;
+                if (account.pendingClaim === true) continue;
+                const last = account.lastClaim || 0;
+                const intervalMs = (account.timer || 60) * 60 * 1000;
+                if ((now - last) < intervalMs) continue;
 
-            for (const eligibleAccount of eligibleAccounts) {
-                // Poser le flag
-                eligibleAccount.pendingClaim = true;
-                eligibleAccount.pendingClaimSince = now;
-                await updateAccountFile(userId, accounts, GH_USERNAME, GH_REPO, GH_BRANCH, GH_TOKEN);
+                // Poser le flag et sauvegarder
+                account.pendingClaim = true;
+                account.pendingClaimSince = now;
+                await updateIndividualFile(file.name, account, GH_USERNAME, GH_REPO, GH_BRANCH, GH_TOKEN);
 
                 // Déclencher le workflow
                 const dispatchUrl = `https://api.github.com/repos/${GH_USERNAME}/${GH_REPO}/actions/workflows/${CLAIM_WORKFLOW_ID}/dispatches`;
@@ -86,20 +85,20 @@ export default async function handler(req, res) {
                     body: JSON.stringify({
                         ref: GH_BRANCH,
                         inputs: {
-                            email: eligibleAccount.email,
-                            platform: eligibleAccount.platform,
+                            email: account.email,
+                            platform: account.platform,
                             userId: userId
                         }
                     })
                 });
 
                 if (dispatchRes.ok) {
-                    triggered.push(`${eligibleAccount.email} (${eligibleAccount.platform})`);
+                    triggered.push(`${account.email} (${account.platform})`);
                 } else {
-                    // Retirer le flag en cas d'échec
-                    eligibleAccount.pendingClaim = false;
-                    delete eligibleAccount.pendingClaimSince;
-                    await updateAccountFile(userId, accounts, GH_USERNAME, GH_REPO, GH_BRANCH, GH_TOKEN);
+                    // Retirer le flag
+                    account.pendingClaim = false;
+                    delete account.pendingClaimSince;
+                    await updateIndividualFile(file.name, account, GH_USERNAME, GH_REPO, GH_BRANCH, GH_TOKEN);
                 }
             }
         }
@@ -111,16 +110,15 @@ export default async function handler(req, res) {
     }
 }
 
-async function updateAccountFile(userId, accounts, owner, repo, branch, token) {
-    const filePath = `accounts_${userId}.json`;
-    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`;
+async function updateIndividualFile(fileName, data, owner, repo, branch, token) {
+    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${fileName}?ref=${branch}`;
     const getRes = await fetch(url, {
         headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github.v3+json' }
     });
     if (!getRes.ok) return;
-    const data = await getRes.json();
-    const sha = data.sha;
-    const content = btoa(unescape(encodeURIComponent(JSON.stringify(accounts, null, 2))));
+    const fileData = await getRes.json();
+    const sha = fileData.sha;
+    const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
     await fetch(url, {
         method: 'PUT',
         headers: {
@@ -128,6 +126,6 @@ async function updateAccountFile(userId, accounts, owner, repo, branch, token) {
             Accept: 'application/vnd.github.v3+json',
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ message: 'Flag pendingClaim', content, branch, sha })
+        body: JSON.stringify({ message: 'Mise à jour compte individuel', content, branch, sha })
     });
 }
