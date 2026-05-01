@@ -318,5 +318,13 @@
     "success": false,
     "message": "×Error!Something went wrong! Please try again in 10 minutes!",
     "bonus": 0
+  },
+  {
+    "email": "finoanarivoniaina@gmail.com",
+    "platform": "bnbpick",
+    "timestamp": 1777669706980,
+    "success": false,
+    "message": "×Error!Something went wrong! Please try again in 10 minutes!",
+    "bonus": 0
   }
 ]
