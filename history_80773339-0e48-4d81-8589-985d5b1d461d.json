@@ -414,5 +414,13 @@
     "success": false,
     "message": "×Error!Something went wrong! Please try again in 10 minutes!",
     "bonus": 0
+  },
+  {
+    "email": "finoanarivoniaina@gmail.com",
+    "platform": "tronpick",
+    "timestamp": 1777689935721,
+    "success": false,
+    "message": "×Error!Invalid captcha code. Please try again!",
+    "bonus": 0
   }
 ]
