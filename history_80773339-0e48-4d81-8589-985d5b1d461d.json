@@ -454,5 +454,13 @@
     "success": true,
     "message": "×Success!You got 0.020000 TRX!",
     "bonus": 0.02
+  },
+  {
+    "email": "finoanarivoniaina@gmail.com",
+    "platform": "bnbpick",
+    "timestamp": 1777695285168,
+    "success": false,
+    "message": "×Error!Something went wrong! Please try again in 10 minutes!",
+    "bonus": 0
   }
 ]
