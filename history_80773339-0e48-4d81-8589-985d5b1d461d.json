@@ -86,5 +86,13 @@
     "success": false,
     "message": "Aucune réaction",
     "bonus": 0
+  },
+  {
+    "email": "finoanarivoniaina@gmail.com",
+    "platform": "tronpick",
+    "timestamp": 1777830784218,
+    "success": false,
+    "message": "Aucune réaction",
+    "bonus": 0
   }
 ]
