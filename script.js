@@ -78,7 +78,7 @@ function parseProxyUrl(proxyUrl) {
     };
 }
 
-// --- Fonctions Puppeteer (identiques à votre ancien script) ---
+// --- Fonctions Puppeteer ---
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -199,7 +199,7 @@ async function saveAccounts(accounts, modifiedAccount = null) {
     throw new Error('Échec sauvegarde après plusieurs tentatives');
 }
 
-// --- Connexion proxy (votre version stable) ---
+// --- Connexion proxy (version stable) ---
 async function connectWithProxy(proxyUrl) {
     const proxyConfig = parseProxyUrl(proxyUrl);
     if (!proxyConfig) throw new Error('Proxy invalide');
@@ -221,7 +221,6 @@ async function connectWithProxy(proxyUrl) {
     return { browser, page };
 }
 
-// --- Login (identique à votre version fonctionnelle) ---
 async function performLoginAndCaptureCookies(account) {
     const { email, password, platform } = account;
     console.log(`🔐 Login pour ${email} sur ${platform}...`);
@@ -285,7 +284,6 @@ async function performLoginAndCaptureCookies(account) {
     }
 }
 
-// --- Claim (votre version stable, avec réessais) ---
 async function claimWithCookies(account) {
     const { email, cookies, platform } = account;
     console.log(`🍪 Claim pour ${email} sur ${platform} via cookies`);
@@ -420,7 +418,7 @@ async function claimWithCookies(account) {
     return { success: false, message: 'Échec après plusieurs tentatives', siteTimer: null };
 }
 
-// 📜 Sauvegarde de l'historique (NOUVEAU)
+// 📜 Sauvegarde de l'historique
 async function saveHistory(account, success, message) {
     const historyFile = `history_${USER_ID}.json`;
     const octokit = new Octokit({ auth: GH_TOKEN });
@@ -463,7 +461,7 @@ async function saveHistory(account, success, message) {
     }
 }
 
-// --- Main (avec appel à l'historique) ---
+// --- Main (avec gestion de la période 24h) ---
 (async () => {
     try {
         let accounts = await loadAccounts();
@@ -564,7 +562,16 @@ async function saveHistory(account, success, message) {
             }
         }
 
-        // 📜 Enregistrer dans l'historique (toujours)
+        // ✅ Gestion de la période 24h (uniquement si le claim a réussi ou "aucun résultat")
+        if (result.success || (result.message && result.message.toLowerCase().includes('aucun résultat'))) {
+            const PERIOD_DURATION = 24 * 60 * 60 * 1000;
+            if (!targetAccount.periodStart || (now - targetAccount.periodStart > PERIOD_DURATION)) {
+                targetAccount.periodStart = now;
+                console.log('🔄 Nouvelle période de 24h démarrée.');
+            }
+        }
+
+        // 📜 Enregistrer dans l'historique
         await saveHistory(targetAccount, result.success, result.message || '');
 
         // Délai aléatoire avant sauvegarde
