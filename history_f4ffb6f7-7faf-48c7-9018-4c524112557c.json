@@ -86,5 +86,13 @@
     "success": false,
     "message": "Aucune réaction",
     "bonus": 0
+  },
+  {
+    "email": "capedra@mail.com",
+    "platform": "tronpick",
+    "timestamp": 1777838552733,
+    "success": false,
+    "message": "Aucune réaction",
+    "bonus": 0
   }
 ]
