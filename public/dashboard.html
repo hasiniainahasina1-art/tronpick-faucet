@@ -163,7 +163,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
-        // --- Initialisation Supabase via /api/config ---
         function initWhenSupabaseReady() {
             if (typeof window.supabase === 'undefined') {
                 setTimeout(initWhenSupabaseReady, 300);
@@ -185,7 +184,6 @@
             const GH_REPO = config.ghRepo;
             const BRANCH = config.ghBranch || 'main';
 
-            // Éléments DOM
             const btnAdd = document.getElementById('btnAddAccount');
             const logoutBtn = document.getElementById('logoutBtn');
             const refreshBtn = document.getElementById('refreshBtn');
@@ -234,7 +232,6 @@
                 if (spinner) spinner.remove();
             }
 
-            // --- Authentification ---
             async function getUserId() {
                 const token = localStorage.getItem('auth_token');
                 if (!token) {
@@ -258,7 +255,6 @@
             const LOGIN_WORKFLOW_ID = 'test-account.yml';
             const LOGOUT_WORKFLOW_ID = 'logout.yml';
 
-            // --- API Proxy ---
             async function githubApi(method, path, body = null, isList = false) {
                 let url = `/api/data?path=${encodeURIComponent(path)}&userId=${currentUserId}`;
                 if (isList) {
@@ -273,7 +269,6 @@
                 return data;
             }
 
-            // --- Chargement des comptes (fichiers individuels) ---
             async function loadAccounts() {
                 try {
                     const files = await githubApi('GET', '/', null, true);
@@ -288,7 +283,7 @@
                         try {
                             const account = JSON.parse(content);
                             accounts.push(account);
-                        } catch (e) { /* ignorer JSON invalide */ }
+                        } catch (e) {}
                     }
                     return accounts;
                 } catch (e) {
@@ -303,7 +298,6 @@
                 await githubApi('POST', apiPath, payload);
             }
 
-            // --- Modale Ajout ---
             function openModal(title, account = null) {
                 document.getElementById('modalTitle').textContent = title;
                 if (account) {
@@ -323,7 +317,6 @@
 
             function closeModal() { modal.classList.remove('active'); }
 
-            // --- Rendu des comptes ---
             function renderAccounts() {
                 countdownIntervals.forEach(clearInterval);
                 countdownIntervals = [];
@@ -378,7 +371,6 @@
                     }
                 });
 
-                // Suppression avec loader 90s
                 document.querySelectorAll('.btn-delete').forEach(btn => {
                     btn.addEventListener('click', async (e) => {
                         const item = btn.closest('.account-item');
@@ -441,7 +433,6 @@
                     });
                 });
 
-                // ✅ Attacher les clics pour l'historique
                 attachHistoryClicks();
             }
 
@@ -454,7 +445,6 @@
                 }
             }
 
-            // --- Historique ---
             function attachHistoryClicks() {
                 document.querySelectorAll('.account-email').forEach(span => {
                     span.style.cursor = 'pointer';
@@ -469,14 +459,15 @@
             }
 
             async function showHistory(account) {
-                const modal = document.getElementById('historyModal');
+                const histModal = document.getElementById('historyModal');
                 document.getElementById('historyEmail').textContent = `${account.email} (${account.platform})`;
                 document.getElementById('historySuccess').textContent = 'Chargement...';
                 document.getElementById('historyBonus').textContent = '';
-                modal.classList.add('active');
+                histModal.classList.add('active');
 
                 try {
-                    const res = await fetch(`/api/history?userId=${currentUserId}`);
+                    const periodStart = account.periodStart || 0;
+                    const res = await fetch(`/api/history?userId=${currentUserId}&periodStart=${periodStart}`);
                     const data = await res.json();
                     const accountEntries = data.entries.filter(e => e.email === account.email && e.platform === account.platform);
                     const successCount = accountEntries.filter(e => e.success).length;
@@ -489,7 +480,6 @@
                 }
             }
 
-            // --- Événements ---
             btnAdd.addEventListener('click', () => openModal('➕ Ajouter un compte'));
             btnCancel.addEventListener('click', closeModal);
             modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
@@ -507,13 +497,11 @@
                 const timerStr = document.getElementById('initialTimer').value.trim();
                 const timerValue = timeStrToMinutes(timerStr);
 
-                // Vérification locale
                 if (currentAccounts.some(a => a.email === email && a.platform === platform)) {
                     showToast('❌ Ce compte existe déjà dans votre liste.', 'error');
                     return;
                 }
 
-                // Vérification globale (via API)
                 try {
                     const checkRes = await fetch(`/api/check-account?email=${encodeURIComponent(email)}&platform=${encodeURIComponent(platform)}`);
                     const checkData = await checkRes.json();
@@ -564,7 +552,6 @@
                 }
             });
 
-            // --- Lancement ---
             (async function start() {
                 currentUserId = await getUserId();
                 if (!currentUserId) return;
