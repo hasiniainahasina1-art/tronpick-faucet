@@ -22,5 +22,13 @@
     "success": true,
     "message": "×Success!You got 0.002000 TRX!",
     "bonus": 0.002
+  },
+  {
+    "email": "capedra@mail.com",
+    "platform": "tronpick",
+    "timestamp": 1777808798878,
+    "success": true,
+    "message": "×Success!You got 0.002000 TRX!",
+    "bonus": 0.002
   }
 ]
