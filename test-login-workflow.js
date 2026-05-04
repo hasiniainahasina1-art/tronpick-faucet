@@ -2,6 +2,7 @@ const { connect } = require('puppeteer-real-browser');
 const { Octokit } = require('@octokit/rest');
 const fs = require('fs');
 const path = require('path');
+const { spawn } = require('child_process');
 
 // ---------- Variables d'environnement ----------
 const email = process.env.TEST_EMAIL;
@@ -28,7 +29,7 @@ if (JP_PROXY_LIST.length === 0) {
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
-// ✅ Nouvelles coordonnées pour le login
+// Coordonnées de la séquence
 const STEP1_COORDS = { x: 700, y: 550 };
 const STEP2_COORDS = { x: 700, y: 800 };
 const STEP3_COORDS = { x: 651, y: 450 };
@@ -58,7 +59,7 @@ function timeStrToMinutes(str) {
     return mins + secs / 60;
 }
 
-// --- Fonctions Puppeteer (avec point rouge) ---
+// --- Fonctions Puppeteer ---
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -81,7 +82,7 @@ async function addRedDot(page, x, y) {
         dot.style.width = '10px'; dot.style.height = '10px'; dot.style.borderRadius = '50%';
         dot.style.backgroundColor = 'red'; dot.style.zIndex = '99999'; dot.style.pointerEvents = 'none';
         dot.id = 'click-dot'; document.body.appendChild(dot);
-        setTimeout(() => dot.remove(), 5000);
+        setTimeout(() => dot.remove(), 5000); // garder le point 5 secondes
     }, x, y);
 }
 
@@ -141,11 +142,43 @@ async function saveAccount(accountData) {
     });
 }
 
-// --- Nouvelle séquence CAPTCHA (login avec vidéo) ---
+// --- 🎥 NOUVELLE CAPTURE VIDÉO (ffmpeg) ---
+function startFFmpeg(videoPath) {
+    const display = process.env.DISPLAY || ':99';   // défini par xvfb-run
+    const args = [
+        '-f', 'x11grab',
+        '-video_size', '1280x720',
+        '-i', display,
+        '-c:v', 'libx264',
+        '-preset', 'ultrafast',
+        '-crf', '0',           // qualité maximale
+        '-pix_fmt', 'yuv420p',
+        '-y',                   // écraser si existe
+        videoPath
+    ];
+    const ffmpeg = spawn('ffmpeg', args, { stdio: 'inherit' });
+    console.log(`🎥 FFmpeg démarré sur ${display}, vidéo → ${videoPath}`);
+    return ffmpeg;
+}
+
+function stopFFmpeg(ffmpeg) {
+    return new Promise((resolve) => {
+        ffmpeg.on('close', resolve);
+        ffmpeg.kill('SIGINT');  // demande un arrêt propre
+    });
+}
+
+// --- Nouvelle séquence CAPTCHA (avec vidéo ffmpeg) ---
 async function performLoginWithCaptcha(page, email, password) {
-    const videoPath = path.join(screenshotsDir, `login_${email.replace(/[^a-zA-Z0-9]/g, '_')}.webm`);
-    const recorder = await page.screencast({ path: videoPath, width: 1280, height: 720 });
-    console.log('🎥 Enregistrement vidéo démarré.');
+    // Créer le dossier vidéo si nécessaire
+    if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
+
+    const videoPath = path.join(screenshotsDir, `login_${email.replace(/[^a-zA-Z0-9]/g, '_')}.mp4`);
+    
+    // Démarrer l'enregistrement vidéo avec ffmpeg
+    const ffmpegProcess = startFFmpeg(videoPath);
+    // Laisser 1 seconde à ffmpeg pour s'initialiser
+    await delay(1000);
 
     try {
         await fillField(page, 'input[type="email"], input[name="email"]', email, 'email');
@@ -198,7 +231,8 @@ async function performLoginWithCaptcha(page, email, password) {
             throw new Error(errorMsg || 'Échec connexion');
         }
     } finally {
-        await recorder.stop();
+        // Arrêter ffmpeg proprement
+        await stopFFmpeg(ffmpegProcess);
         console.log('🎥 Vidéo sauvegardée.');
     }
 }
