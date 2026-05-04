@@ -13,8 +13,8 @@ const GH_TOKEN = process.env.GH_TOKEN;
 const GH_USERNAME = process.env.GH_USERNAME;
 const GH_REPO = process.env.GH_REPO;
 const GH_BRANCH = process.env.GH_BRANCH || 'main';
-const USER_ID = process.env.USER_ID;            // optionnel
-const CRYPTO_SECRET = process.env.CRYPTO_SECRET; // optionnel
+const USER_ID = process.env.USER_ID;
+const CRYPTO_SECRET = process.env.CRYPTO_SECRET;
 
 // Fichier individuel par compte
 const USER_FILE = USER_ID
@@ -30,10 +30,10 @@ if (JP_PROXY_LIST.length === 0) {
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
-// Coordonnées pour la nouvelle séquence CAPTCHA
-const INCOCAPTCHA_ICON_COORDS = { x: 645, y: 500 };   // fallback si l'icône n'est pas trouvée
-const VERIFY_HUMAN_COORDS = { x: 645, y: 550 };        // 615 - 65
-const LOGIN_BUTTON_COORDS = { x: 640, y: 615 };        // fallback pour le bouton "Log in"
+// Coordonnées de la nouvelle séquence CAPTCHA (seront ajustées après analyse)
+const INCOCAPTCHA_ICON_COORDS = { x: 645, y: 500 };
+const VERIFY_HUMAN_COORDS = { x: 645, y: 550 };
+const LOGIN_BUTTON_COORDS = { x: 640, y: 615 };
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -82,13 +82,13 @@ async function addRedDot(page, x, y) {
         dot.style.width = '10px'; dot.style.height = '10px'; dot.style.borderRadius = '50%';
         dot.style.backgroundColor = 'red'; dot.style.zIndex = '99999'; dot.style.pointerEvents = 'none';
         dot.id = 'click-dot'; document.body.appendChild(dot);
-        setTimeout(() => dot.remove(), 5000); // garder le point 5 secondes
+        setTimeout(() => dot.remove(), 5000);
     }, x, y);
 }
 
 async function humanClickAt(page, coords) {
     await addRedDot(page, coords.x, coords.y);
-    await delay(200); // laisse le temps au point d'apparaître
+    await delay(200);
     const start = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
     const steps = 20;
     for (let i = 1; i <= steps; i++) {
@@ -147,11 +147,46 @@ async function saveAccount(accountData) {
     });
 }
 
+// --- 🔍 NOUVELLE FONCTION : lister les éléments cliquables ---
+async function listClickableElements(page) {
+    const elements = await page.evaluate(() => {
+        const results = [];
+        const all = document.querySelectorAll('button, a, input[type="submit"], input[type="button"], div[role="button"], span[role="button"]');
+        all.forEach(el => {
+            const rect = el.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) return;
+            const x = Math.round(rect.left + rect.width / 2);
+            const y = Math.round(rect.top + rect.height / 2);
+            const text = el.textContent.trim().substring(0, 50) || '(pas de texte)';
+            const tag = el.tagName.toLowerCase();
+            let selector = tag;
+            if (el.id) {
+                selector = `#${el.id}`;
+            } else if (el.className && typeof el.className === 'string') {
+                const classes = el.className.trim().split(/\s+/).slice(0, 2).join('.');
+                if (classes) selector = `${tag}.${classes}`;
+            }
+            results.push({ tag, text, x, y, selector: selector.length < 40 ? selector : tag });
+        });
+        return results;
+    });
+
+    console.log('📋 Éléments cliquables trouvés sur la page :');
+    console.table(elements);
+    const filePath = path.join(screenshotsDir, 'clickable_elements.json');
+    fs.writeFileSync(filePath, JSON.stringify(elements, null, 2));
+    console.log(`📁 Liste sauvegardée dans ${filePath}`);
+}
+
 // --- Nouvelle séquence CAPTCHA (avec captures immédiates) ---
 async function performLoginWithCaptcha(page, email, password) {
     await fillField(page, 'input[type="email"], input[name="email"]', email, 'email');
     await fillField(page, 'input[type="password"]', password, 'password');
     await delay(2000);
+
+    // Lister les éléments cliquables AVANT le premier clic
+    await listClickableElements(page);
+    await page.screenshot({ path: path.join(screenshotsDir, '00_before_captcha.png'), fullPage: true });
 
     // 1er clic : icône Incocaptcha
     console.log('🔍 Recherche icône Incocaptcha…');
@@ -168,7 +203,7 @@ async function performLoginWithCaptcha(page, email, password) {
     });
     if (!incocaptchaClicked) {
         console.log('⚠️ Icône Incocaptcha non trouvée, fallback coordonné (645,500)');
-        await humanClickAt(page, VERIFY_HUMAN_COORDS);
+        await humanClickAt(page, INCOCAPTCHA_ICON_COORDS);
     } else {
         console.log('✅ Icône Incocaptcha cliquée');
     }
@@ -196,7 +231,7 @@ async function performLoginWithCaptcha(page, email, password) {
     await page.screenshot({ path: path.join(screenshotsDir, '03_verify_human_click.png'), fullPage: true });
     await delay(10000);
 
-    // 4e clic : bouton Log in (recherche par texte puis fallback coordonné)
+    // 4e clic : bouton Log in
     console.log('🖱️ Clic sur le bouton Log in');
     const loginClicked = await page.evaluate(() => {
         const btns = [...document.querySelectorAll('button')];
