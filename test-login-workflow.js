@@ -30,8 +30,7 @@ if (JP_PROXY_LIST.length === 0) {
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
-// Coordonnées de la séquence (login)
-const CAPTCHA_ICON_COORDS = { x: 700, y: 550 };   // double‑clic ici
+// Coordonnées fixes des étapes suivantes (popup)
 const STEP2_COORDS = { x: 700, y: 800 };
 const STEP3_COORDS = { x: 651, y: 450 };
 const STEP4_COORDS = { x: 651, y: 682 };
@@ -60,7 +59,7 @@ function timeStrToMinutes(str) {
     return mins + secs / 60;
 }
 
-// --- Fonctions Puppeteer (identiques à votre ancien script) ---
+// --- Fonctions Puppeteer ---
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -169,7 +168,7 @@ function stopFFmpeg(ffmpeg) {
     });
 }
 
-// --- Séquence de login avec double‑clic et captures ---
+// --- Nouvelle séquence de login avec adaptation dynamique ---
 async function performLoginWithCaptcha(page, email, password) {
     if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
     const videoPath = path.join(screenshotsDir, `login_${email.replace(/[^a-zA-Z0-9]/g, '_')}.mp4`);
@@ -177,38 +176,61 @@ async function performLoginWithCaptcha(page, email, password) {
     await delay(1000);
 
     try {
-        // Remplir les champs
         await fillField(page, 'input[type="email"], input[name="email"]', email, 'email');
         await fillField(page, 'input[type="password"]', password, 'password');
         await delay(2000);
 
-        // --- Scroll pour amener le captcha dans la vue ---
+        // --- Scroll vers le bas pour rendre le captcha visible ---
         console.log('📜 Scroll vers le captcha...');
         await page.evaluate(() => window.scrollBy(0, 400));
         await delay(1000);
 
-        // --- 1er CLIC : double‑clic sur l'icône captcha (700,550) ---
-        console.log('🖱️ Premier clic sur l\'icône captcha (700,550)');
-        await humanClickAt(page, CAPTCHA_ICON_COORDS);
-        await delay(2000);   // intervalle 2 secondes
-        console.log('🖱️ Second clic sur l\'icône captcha (700,550)');
-        await humanClickAt(page, CAPTCHA_ICON_COORDS);
-        await page.screenshot({ path: path.join(screenshotsDir, '01_doubleclick_captcha.png'), fullPage: true });
-        await delay(5000);   // attendre l'apparition du Turnstile
+        // --- Récupérer les coordonnées du bouton "Log in" ---
+        let loginCoords = await page.evaluate(() => {
+            const btns = [...document.querySelectorAll('button')];
+            const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
+            if (!loginBtn) return null;
+            const rect = loginBtn.getBoundingClientRect();
+            return {
+                x: Math.round(rect.left + rect.width / 2),
+                y: Math.round(rect.top + rect.height / 2)
+            };
+        });
 
-        // --- 2e CLIC (700,800) ---
+        if (!loginCoords) {
+            // Fallback sur les anciennes coordonnées si le bouton n'est pas trouvé
+            console.warn('⚠️ Bouton Log in non trouvé, utilisation des coordonnées par défaut');
+            loginCoords = { x: 640, y: 615 };
+        }
+        console.log(`📍 Bouton Log in trouvé à (${loginCoords.x}, ${loginCoords.y})`);
+
+        // Calcul du premier clic (captcha) : même X, Y = loginY - 132
+        const captchaCoords = {
+            x: loginCoords.x,
+            y: loginCoords.y - 132
+        };
+        console.log(`🖱️ Coordonnées adaptées pour le captcha : (${captchaCoords.x}, ${captchaCoords.y})`);
+
+        // --- 1er CLIC : double‑clic sur l'icône captcha ---
+        console.log('🖱️ Premier clic sur l\'icône captcha');
+        await humanClickAt(page, captchaCoords);
+        await delay(2000);
+        console.log('🖱️ Second clic sur l\'icône captcha');
+        await humanClickAt(page, captchaCoords);
+        await page.screenshot({ path: path.join(screenshotsDir, '01_doubleclick_captcha.png'), fullPage: true });
+        await delay(5000);
+
+        // --- Les étapes suivantes restent inchangées (coordonnées fixes) ---
         console.log('🖱️ Étape 2 : clic (700,800)');
         await humanClickAt(page, STEP2_COORDS);
         await page.screenshot({ path: path.join(screenshotsDir, '02_step2.png'), fullPage: true });
         await delay(7000);
 
-        // --- 3e CLIC (651,450) ---
         console.log('🖱️ Étape 3 : clic (651,450)');
         await humanClickAt(page, STEP3_COORDS);
         await page.screenshot({ path: path.join(screenshotsDir, '03_step3.png'), fullPage: true });
         await delay(15000);
 
-        // --- 4e CLIC (651,682) ---
         console.log('🖱️ Étape 4 : clic (651,682)');
         await humanClickAt(page, STEP4_COORDS);
         await page.screenshot({ path: path.join(screenshotsDir, '04_step4.png'), fullPage: true });
@@ -225,7 +247,7 @@ async function performLoginWithCaptcha(page, email, password) {
                     const el = document.querySelector('.alert-danger, .error');
                     return el ? el.textContent.trim() : null;
                 });
-                throw new Error(errorMsg || 'Échec connexion (pas de redirection)');
+                throw new Error(errorMsg || 'Échec connexion');
             }
         }
         if (page.url().includes('login.php')) {
