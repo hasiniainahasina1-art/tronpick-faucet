@@ -3,6 +3,7 @@ const { Octokit } = require('@octokit/rest');
 const fs = require('fs');
 const path = require('path');
 
+// ---------- Variables d'environnement ----------
 const email = process.env.TEST_EMAIL;
 const password = process.env.TEST_PASSWORD;
 const platform = process.env.TEST_PLATFORM;
@@ -13,7 +14,6 @@ const GH_USERNAME = process.env.GH_USERNAME;
 const GH_REPO = process.env.GH_REPO;
 const GH_BRANCH = process.env.GH_BRANCH || 'main';
 const USER_ID = process.env.USER_ID;
-const CRYPTO_SECRET = process.env.CRYPTO_SECRET;
 
 const USER_FILE = USER_ID
     ? `account_${USER_ID}_${platform}_${email}.json`
@@ -28,9 +28,11 @@ if (JP_PROXY_LIST.length === 0) {
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
-const INCOCAPTCHA_ICON_COORDS = { x: 870, y: 630 };
-const VERIFY_HUMAN_COORDS = { x: 645, y: 550 };
-const LOGIN_BUTTON_COORDS = { x: 640, y: 615 };
+// ✅ Nouvelles coordonnées pour le login
+const STEP1_COORDS = { x: 700, y: 550 };
+const STEP2_COORDS = { x: 700, y: 800 };
+const STEP3_COORDS = { x: 651, y: 450 };
+const STEP4_COORDS = { x: 651, y: 682 };
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -56,6 +58,7 @@ function timeStrToMinutes(str) {
     return mins + secs / 60;
 }
 
+// --- Fonctions Puppeteer (avec point rouge) ---
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -98,7 +101,7 @@ async function humanClickAt(page, coords) {
     console.log(`🖱️ Clic à (${coords.x}, ${coords.y})`);
 }
 
-// ✅ Connexion proxy simple et stable
+// --- Connexion proxy (version simple et stable) ---
 async function connectWithProxy(proxyUrl) {
     const proxyConfig = parseProxyUrl(proxyUrl);
     if (!proxyConfig) throw new Error('Proxy invalide');
@@ -115,6 +118,7 @@ async function connectWithProxy(proxyUrl) {
     return { browser, page };
 }
 
+// --- Sauvegarde du compte ---
 async function saveAccount(accountData) {
     const octokit = new Octokit({ auth: GH_TOKEN });
     let sha = null;
@@ -137,6 +141,7 @@ async function saveAccount(accountData) {
     });
 }
 
+// --- Nouvelle séquence CAPTCHA (login avec vidéo) ---
 async function performLoginWithCaptcha(page, email, password) {
     const videoPath = path.join(screenshotsDir, `login_${email.replace(/[^a-zA-Z0-9]/g, '_')}.webm`);
     const recorder = await page.screencast({ path: videoPath, width: 1280, height: 720 });
@@ -147,44 +152,31 @@ async function performLoginWithCaptcha(page, email, password) {
         await fillField(page, 'input[type="password"]', password, 'password');
         await delay(2000);
 
-        console.log('🖱️ Clic sur l\'icône IconCaptcha');
-        await humanClickAt(page, INCOCAPTCHA_ICON_COORDS);
-        await page.screenshot({ path: path.join(screenshotsDir, '01_iconcaptcha_click.png'), fullPage: true });
+        // 1er clic (700,550)
+        console.log('🖱️ Étape 1 : clic (700,550)');
+        await humanClickAt(page, STEP1_COORDS);
+        await page.screenshot({ path: path.join(screenshotsDir, '01_step1.png'), fullPage: true });
         await delay(5000);
 
-        const frame = await page.waitForFrame(
-            f => f.url().includes('challenges.cloudflare.com/turnstile'),
-            { timeout: 15000 }
-        ).catch(() => null);
-        if (frame) {
-            console.log('✅ Iframe Turnstile trouvée, clic checkbox');
-            await frame.click('input[type="checkbox"]');
-        } else {
-            console.log('⚠️ Iframe Turnstile non trouvée, fallback coordonné (640,615)');
-            await humanClickAt(page, { x: 640, y: 615 });
-        }
-        await page.screenshot({ path: path.join(screenshotsDir, '02_turnstile_click.png'), fullPage: true });
-        await delay(5000);
+        // 2e clic (700,800)
+        console.log('🖱️ Étape 2 : clic (700,800)');
+        await humanClickAt(page, STEP2_COORDS);
+        await page.screenshot({ path: path.join(screenshotsDir, '02_step2.png'), fullPage: true });
+        await delay(7000);
 
-        console.log('🖱️ Clic sur Verify you are human');
-        await humanClickAt(page, VERIFY_HUMAN_COORDS);
-        await page.screenshot({ path: path.join(screenshotsDir, '03_verify_human_click.png'), fullPage: true });
+        // 3e clic (651,450)
+        console.log('🖱️ Étape 3 : clic (651,450)');
+        await humanClickAt(page, STEP3_COORDS);
+        await page.screenshot({ path: path.join(screenshotsDir, '03_step3.png'), fullPage: true });
+        await delay(15000);
+
+        // 4e clic (651,682)
+        console.log('🖱️ Étape 4 : clic (651,682)');
+        await humanClickAt(page, STEP4_COORDS);
+        await page.screenshot({ path: path.join(screenshotsDir, '04_step4.png'), fullPage: true });
         await delay(10000);
 
-        console.log('🖱️ Clic sur le bouton Log in');
-        const loginClicked = await page.evaluate(() => {
-            const btns = [...document.querySelectorAll('button')];
-            const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
-            if (loginBtn) { loginBtn.click(); return true; }
-            return false;
-        });
-        if (!loginClicked) {
-            console.log('⚠️ Bouton Log in non trouvé, fallback coordonné (640,615)');
-            await humanClickAt(page, LOGIN_BUTTON_COORDS);
-        }
-        await page.screenshot({ path: path.join(screenshotsDir, '04_login_click.png'), fullPage: true });
-        await delay(5000);
-
+        // Attendre la navigation
         try {
             await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 40000 });
         } catch (navError) {
