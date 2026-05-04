@@ -31,9 +31,9 @@ const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
 // Coordonnées fixes des étapes suivantes (popup)
-const STEP2_COORDS = { x: 700, y: 800 };
-const STEP3_COORDS = { x: 651, y: 450 };
-const STEP4_COORDS = { x: 651, y: 682 };
+const STEP2_COORDS = { x: 651, y: 300 };
+const STEP3_COORDS = { x: 651, y: 350 };
+const STEP4_COORDS = { x: 651, y: 367 };
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
