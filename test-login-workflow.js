@@ -31,7 +31,7 @@ const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
 // Coordonnées fixes des étapes suivantes (popup)
-const STEP2_COORDS = { x: 651, y: 300 };
+const STEP2_COORDS = { x: 651, y: 358 };
 const STEP3_COORDS = { x: 651, y: 350 };
 const STEP4_COORDS = { x: 651, y: 367 };
 
@@ -218,7 +218,7 @@ async function performLoginWithCaptcha(page, email, password) {
         
 
         // --- Les étapes suivantes restent inchangées (coordonnées fixes) ---
-        console.log('🖱️ Étape 2 : clic (640,550)');
+        console.log('🖱️ Étape 2 : clic (651,358)');
         await humanClickAt(page, STEP2_COORDS);
         await page.screenshot({ path: path.join(screenshotsDir, '02_step2.png'), fullPage: true });
         await delay(7000);
@@ -228,7 +228,7 @@ async function performLoginWithCaptcha(page, email, password) {
         await page.screenshot({ path: path.join(screenshotsDir, '03_step3.png'), fullPage: true });
         await delay(15000);
 
-        console.log('🖱️ Étape 4 : clic (640,615)');
+        console.log('🖱️ Étape 4 : clic (651,367)');
         await humanClickAt(page, STEP4_COORDS);
         await page.screenshot({ path: path.join(screenshotsDir, '04_step4.png'), fullPage: true });
         await delay(10000);
