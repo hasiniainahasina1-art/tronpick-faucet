@@ -26,10 +26,10 @@ if (JP_PROXY_LIST.length === 0) {
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
-// Nouvelles coordonnées pour la séquence CAPTCHA
+// Coordonnées de la nouvelle séquence CAPTCHA
 const INCOCAPTCHA_ICON_COORDS = { x: 645, y: 500 };
 const VERIFY_HUMAN_COORDS = { x: 645, y: 550 }; // 615 - 65
-const CLAIM_COORDS = { x: 645, y: 615 };
+const TURNSTILE_FALLBACK_COORDS = { x: 640, y: 615 };
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 function parseProxyUrl(proxyUrl) {
@@ -106,7 +106,7 @@ async function connectWithProxy(proxyUrl) {
     return { browser, page };
 }
 
-// --- Nouvelle séquence CAPTCHA pour le login ---
+// --- Nouvelle séquence CAPTCHA avec captures d'écran ---
 async function performLoginWithCaptcha(page, email, password) {
     await fillField(page, 'input[type="email"], input[name="email"]', email, 'email');
     await fillField(page, 'input[type="password"]', password, 'password');
@@ -127,7 +127,7 @@ async function performLoginWithCaptcha(page, email, password) {
     });
 
     if (!incocaptchaClicked) {
-        console.log('⚠️ Icône Incocaptcha non trouvée, fallback coordonné (645,500)');
+        console.log('⚠️ Icône non trouvée, fallback coordonné (645,500)');
         await humanClickAt(page, INCOCAPTCHA_ICON_COORDS);
     } else {
         console.log('✅ Icône Incocaptcha cliquée');
@@ -135,7 +135,7 @@ async function performLoginWithCaptcha(page, email, password) {
     await delay(5000);
     await page.screenshot({ path: path.join(screenshotsDir, '01_incocaptcha.png'), fullPage: true });
 
-    // 2e clic : Turnstile (comme avant)
+    // 2e clic : Turnstile (ou fallback)
     const frame = await page.waitForFrame(
         f => f.url().includes('challenges.cloudflare.com/turnstile'),
         { timeout: 15000 }
@@ -146,8 +146,8 @@ async function performLoginWithCaptcha(page, email, password) {
         await frame.click('input[type="checkbox"]');
         await delay(8000);
     } else {
-        console.log('⚠️ Iframe Turnstile non trouvée, fallback coordonné (640,615)');
-        await humanClickAt(page, { x: 640, y: 615 });
+        console.log('⚠️ Iframe non trouvée, fallback coordonné (640,615)');
+        await humanClickAt(page, TURNSTILE_FALLBACK_COORDS);
         await delay(10000);
     }
     await page.screenshot({ path: path.join(screenshotsDir, '02_turnstile.png'), fullPage: true });
@@ -179,7 +179,7 @@ async function performLoginWithCaptcha(page, email, password) {
     }
 }
 
-// --- Sauvegarde du compte ---
+// --- Sauvegarde du compte (non chiffré, comme avant) ---
 async function saveAccount(accountData) {
     const octokit = new Octokit({ auth: GH_TOKEN });
     let sha = null;
@@ -233,11 +233,11 @@ async function run() {
         const normalizedEmail = email.trim().toLowerCase();
         const account = {
             email: normalizedEmail,
-            password,  // non chiffré ici, mais votre ancien script ne chiffrait pas non plus
+            password,
             platform,
             proxyIndex,
             enabled: true,
-            cookies,    // idem
+            cookies,
             cookiesStatus: 'valid',
             lastClaim: Date.now(),
             timer: timerValue
