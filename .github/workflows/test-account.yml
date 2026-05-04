@@ -24,26 +24,30 @@ on:
         type: string
         default: "login"
       userId:
-        required: true
+        required: false
         type: string
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: 📥 Récupérer le code source
+        uses: actions/checkout@v4
+
+      - name: 🟢 Installer Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: sudo apt-get update && sudo apt-get install -y xvfb
 
-      # ✅ Nettoyage complet et réinstallation pour éviter les corruptions
-      - name: Nettoyer et réinstaller les dépendances
+      - name: 📦 Installer les dépendances système (xvfb)
         run: |
-          rm -rf node_modules package-lock.json
-          npm install puppeteer-real-browser @octokit/rest
+          sudo apt-get update
+          sudo apt-get install -y xvfb
 
-      - name: Exécuter le script de login
+      - name: 📦 Installer les dépendances Node.js
+        run: npm install puppeteer-real-browser @octokit/rest
+
+      - name: 🤖 Exécuter le script de login
         env:
           TEST_EMAIL: ${{ github.event.inputs.email }}
           TEST_PASSWORD: ${{ github.event.inputs.password }}
@@ -60,3 +64,10 @@ jobs:
           JP_PROXY_LIST: ${{ secrets.JP_PROXY_LIST }}
           CRYPTO_SECRET: ${{ secrets.CRYPTO_SECRET }}
         run: xvfb-run --auto-servernum node test-login-workflow.js
+
+      - name: 📤 Upload des captures d'écran (artefacts)
+        uses: actions/upload-artifact@v4
+        if: always()   # sauvegarde même en cas d'échec
+        with:
+          name: login-screenshots
+          path: screenshots/
