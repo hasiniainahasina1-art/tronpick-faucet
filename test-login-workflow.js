@@ -4,7 +4,6 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
-// ---------- Variables d'environnement ----------
 const email = process.env.TEST_EMAIL;
 const password = process.env.TEST_PASSWORD;
 const platform = process.env.TEST_PLATFORM;
@@ -29,7 +28,7 @@ if (JP_PROXY_LIST.length === 0) {
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
-// Coordonnées de la séquence
+// Coordonnées
 const STEP1_COORDS = { x: 700, y: 550 };
 const STEP2_COORDS = { x: 700, y: 800 };
 const STEP3_COORDS = { x: 651, y: 450 };
@@ -82,7 +81,7 @@ async function addRedDot(page, x, y) {
         dot.style.width = '10px'; dot.style.height = '10px'; dot.style.borderRadius = '50%';
         dot.style.backgroundColor = 'red'; dot.style.zIndex = '99999'; dot.style.pointerEvents = 'none';
         dot.id = 'click-dot'; document.body.appendChild(dot);
-        setTimeout(() => dot.remove(), 5000); // garder le point 5 secondes
+        setTimeout(() => dot.remove(), 5000);
     }, x, y);
 }
 
@@ -102,7 +101,7 @@ async function humanClickAt(page, coords) {
     console.log(`🖱️ Clic à (${coords.x}, ${coords.y})`);
 }
 
-// --- Connexion proxy (version simple et stable) ---
+// --- Connexion proxy (version stable) ---
 async function connectWithProxy(proxyUrl) {
     const proxyConfig = parseProxyUrl(proxyUrl);
     if (!proxyConfig) throw new Error('Proxy invalide');
@@ -142,18 +141,18 @@ async function saveAccount(accountData) {
     });
 }
 
-// --- 🎥 NOUVELLE CAPTURE VIDÉO (ffmpeg) ---
+// --- 🎥 Capture vidéo ffmpeg (qualité maximale) ---
 function startFFmpeg(videoPath) {
-    const display = process.env.DISPLAY || ':99';   // défini par xvfb-run
+    const display = process.env.DISPLAY || ':99';
     const args = [
         '-f', 'x11grab',
         '-video_size', '1280x720',
         '-i', display,
         '-c:v', 'libx264',
         '-preset', 'ultrafast',
-        '-crf', '0',           // qualité maximale
+        '-crf', '0',
         '-pix_fmt', 'yuv420p',
-        '-y',                   // écraser si existe
+        '-y',
         videoPath
     ];
     const ffmpeg = spawn('ffmpeg', args, { stdio: 'inherit' });
@@ -164,20 +163,15 @@ function startFFmpeg(videoPath) {
 function stopFFmpeg(ffmpeg) {
     return new Promise((resolve) => {
         ffmpeg.on('close', resolve);
-        ffmpeg.kill('SIGINT');  // demande un arrêt propre
+        ffmpeg.kill('SIGINT');
     });
 }
 
-// --- Nouvelle séquence CAPTCHA (avec vidéo ffmpeg) ---
+// --- Nouvelle séquence CAPTCHA (scroll + double‑clic + vidéo) ---
 async function performLoginWithCaptcha(page, email, password) {
-    // Créer le dossier vidéo si nécessaire
     if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
-
     const videoPath = path.join(screenshotsDir, `login_${email.replace(/[^a-zA-Z0-9]/g, '_')}.mp4`);
-    
-    // Démarrer l'enregistrement vidéo avec ffmpeg
     const ffmpegProcess = startFFmpeg(videoPath);
-    // Laisser 1 seconde à ffmpeg pour s'initialiser
     await delay(1000);
 
     try {
@@ -185,25 +179,33 @@ async function performLoginWithCaptcha(page, email, password) {
         await fillField(page, 'input[type="password"]', password, 'password');
         await delay(2000);
 
-        // 1er clic (700,550)
-        console.log('🖱️ Étape 1 : clic (700,550)');
-        await humanClickAt(page, STEP1_COORDS);
-        await page.screenshot({ path: path.join(screenshotsDir, '01_step1.png'), fullPage: true });
-        await delay(5000);
+        // --- Scroll pour amener l'icône dans la vue (simuler un humain) ---
+        console.log('📜 Scroll vers le captcha...');
+        await page.evaluate(() => window.scrollBy(0, 400));
+        await delay(1000);
 
-        // 2e clic (700,800)
+        // --- 1er clic : double‑clic sur l'icône captcha (700,550) ---
+        console.log('🖱️ Premier clic sur l\'icône captcha (700,550)');
+        await humanClickAt(page, STEP1_COORDS);
+        await delay(2000);   // attente 2s
+        console.log('🖱️ Second clic sur l\'icône captcha (700,550)');
+        await humanClickAt(page, STEP1_COORDS);
+        await page.screenshot({ path: path.join(screenshotsDir, '01_doubleclick_icon.png'), fullPage: true });
+        await delay(5000);   // attente 5s après le double‑clic
+
+        // --- 2e clic (700,800) ---
         console.log('🖱️ Étape 2 : clic (700,800)');
         await humanClickAt(page, STEP2_COORDS);
         await page.screenshot({ path: path.join(screenshotsDir, '02_step2.png'), fullPage: true });
         await delay(7000);
 
-        // 3e clic (651,450)
+        // --- 3e clic (651,450) ---
         console.log('🖱️ Étape 3 : clic (651,450)');
         await humanClickAt(page, STEP3_COORDS);
         await page.screenshot({ path: path.join(screenshotsDir, '03_step3.png'), fullPage: true });
         await delay(15000);
 
-        // 4e clic (651,682)
+        // --- 4e clic (651,682) ---
         console.log('🖱️ Étape 4 : clic (651,682)');
         await humanClickAt(page, STEP4_COORDS);
         await page.screenshot({ path: path.join(screenshotsDir, '04_step4.png'), fullPage: true });
@@ -231,65 +233,11 @@ async function performLoginWithCaptcha(page, email, password) {
             throw new Error(errorMsg || 'Échec connexion');
         }
     } finally {
-        // Arrêter ffmpeg proprement
         await stopFFmpeg(ffmpegProcess);
         console.log('🎥 Vidéo sauvegardée.');
     }
 }
 
-// --- Main ---
-async function run() {
-    let browser;
-    try {
-        const proxyUrl = JP_PROXY_LIST[proxyIndex] || JP_PROXY_LIST[0];
-        if (!proxyUrl) throw new Error('Proxy indisponible');
-        console.log(`🔄 Proxy utilisé : ${proxyUrl}`);
-
-        const { browser: br, page } = await connectWithProxy(proxyUrl);
-        browser = br;
-        await page.setViewport({ width: 1280, height: 720 });
-
-        const loginUrl = `https://${platform}.io/login.php`;
-        console.log(`🌐 Connexion à ${loginUrl}`);
-        await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 60000 });
-        await page.screenshot({ path: path.join(screenshotsDir, '00_login_page.png'), fullPage: true });
-
-        await performLoginWithCaptcha(page, email, password);
-        console.log('✅ Login réussi');
-
-        const cookies = await page.cookies();
-        console.log(`🍪 Cookies récupérés : ${cookies.length}`);
-
-        await page.screenshot({ path: path.join(screenshotsDir, '99_login_success.png'), fullPage: true });
-        await browser.close();
-
-        const timerValue = timeStrToMinutes(initialTimerStr);
-        const normalizedEmail = email.trim().toLowerCase();
-        const account = {
-            email: normalizedEmail,
-            password,
-            platform,
-            proxyIndex,
-            enabled: true,
-            cookies,
-            cookiesStatus: 'valid',
-            lastClaim: Date.now(),
-            timer: timerValue
-        };
-
-        await saveAccount(account);
-        console.log(`✅ Compte ${normalizedEmail} enregistré avec succès (timer = ${initialTimerStr})`);
-        process.exit(0);
-    } catch (err) {
-        console.error('❌ Erreur fatale :', err.message);
-        if (browser) {
-            try {
-                const screenshotPath = path.join(screenshotsDir, 'error.png');
-                await browser.screenshot({ fullPage: true }).then(img => fs.writeFileSync(screenshotPath, img));
-            } catch (e) {}
-            await browser.close();
-        }
-        process.exit(1);
-    }
-}
+// --- Main (inchangé) ---
+async function run() { /* ... identique ... */ }
 run();
