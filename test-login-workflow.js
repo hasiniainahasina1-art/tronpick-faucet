@@ -168,7 +168,7 @@ async function performLoginWithCaptcha(page, email, password) {
     });
     if (!incocaptchaClicked) {
         console.log('⚠️ Icône Incocaptcha non trouvée, fallback coordonné (645,500)');
-        await humanClickAt(page, INCOCAPTCHA_ICON_COORDS);
+        await humanClickAt(page, VERIFY_HUMAN_COORDS);
     } else {
         console.log('✅ Icône Incocaptcha cliquée');
     }
