@@ -31,23 +31,13 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: 📥 Récupérer le code source
-        uses: actions/checkout@v4
-
-      - name: 🟢 Installer Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
-
-      - name: 📦 Installer les dépendances système (xvfb et ffmpeg)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb ffmpeg
-
-      - name: 📦 Installer les dépendances Node.js
-        run: npm install puppeteer-real-browser @octokit/rest
-
-      - name: 🤖 Exécuter le script de login
+      - run: sudo apt-get update && sudo apt-get install -y xvfb ffmpeg
+      - run: npm install puppeteer-real-browser @octokit/rest
+      - name: Exécuter le script de login
         env:
           TEST_EMAIL: ${{ github.event.inputs.email }}
           TEST_PASSWORD: ${{ github.event.inputs.password }}
@@ -60,12 +50,9 @@ jobs:
           GH_USERNAME: ${{ secrets.GH_USERNAME }}
           GH_REPO: ${{ secrets.GH_REPO }}
           GH_BRANCH: ${{ secrets.GH_BRANCH || 'main' }}
-          GH_FILE_PATH: ${{ secrets.GH_FILE_PATH || 'accounts.json' }}
           JP_PROXY_LIST: ${{ secrets.JP_PROXY_LIST }}
-          CRYPTO_SECRET: ${{ secrets.CRYPTO_SECRET }}
         run: xvfb-run --auto-servernum node test-login-workflow.js
-
-      - name: 📤 Upload des captures et vidéos
+      - name: Upload des captures et vidéos
         uses: actions/upload-artifact@v4
         if: always()
         with:
