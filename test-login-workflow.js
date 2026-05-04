@@ -214,24 +214,21 @@ async function performLoginWithCaptcha(page, email, password) {
         // --- 1er CLIC : double‑clic sur l'icône captcha ---
         console.log('🖱️ Premier clic sur l\'icône captcha');
         await humanClickAt(page, captchaCoords);
-        await delay(10000);
-        console.log('🖱️ Second clic sur l\'icône captcha');
-        await humanClickAt(page, captchaCoords);
-        await page.screenshot({ path: path.join(screenshotsDir, '01_doubleclick_captcha.png'), fullPage: true });
         await delay(5000);
+        
 
         // --- Les étapes suivantes restent inchangées (coordonnées fixes) ---
-        console.log('🖱️ Étape 2 : clic (700,800)');
+        console.log('🖱️ Étape 2 : clic (640,550)');
         await humanClickAt(page, STEP2_COORDS);
         await page.screenshot({ path: path.join(screenshotsDir, '02_step2.png'), fullPage: true });
         await delay(7000);
 
-        console.log('🖱️ Étape 3 : clic (651,450)');
+        console.log('🖱️ Étape 3 : clic (651,380)');
         await humanClickAt(page, STEP3_COORDS);
         await page.screenshot({ path: path.join(screenshotsDir, '03_step3.png'), fullPage: true });
         await delay(15000);
 
-        console.log('🖱️ Étape 4 : clic (651,682)');
+        console.log('🖱️ Étape 4 : clic (640,615)');
         await humanClickAt(page, STEP4_COORDS);
         await page.screenshot({ path: path.join(screenshotsDir, '04_step4.png'), fullPage: true });
         await delay(10000);
