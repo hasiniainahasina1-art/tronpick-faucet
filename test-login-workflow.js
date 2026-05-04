@@ -3,7 +3,6 @@ const { Octokit } = require('@octokit/rest');
 const fs = require('fs');
 const path = require('path');
 
-// ---------- Variables d'environnement ----------
 const email = process.env.TEST_EMAIL;
 const password = process.env.TEST_PASSWORD;
 const platform = process.env.TEST_PLATFORM;
@@ -16,7 +15,6 @@ const GH_BRANCH = process.env.GH_BRANCH || 'main';
 const USER_ID = process.env.USER_ID;
 const CRYPTO_SECRET = process.env.CRYPTO_SECRET;
 
-// Fichier individuel par compte
 const USER_FILE = USER_ID
     ? `account_${USER_ID}_${platform}_${email}.json`
     : `account_${email}_${platform}.json`;
@@ -30,8 +28,8 @@ if (JP_PROXY_LIST.length === 0) {
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
-// Coordonnées de la nouvelle séquence CAPTCHA (seront ajustées après analyse)
-const INCOCAPTCHA_ICON_COORDS = { x: 645, y: 500 };
+// Coordonnées mises à jour
+const INCOCAPTCHA_ICON_COORDS = { x: 870, y: 630 };   // <-- selon votre relevé
 const VERIFY_HUMAN_COORDS = { x: 645, y: 550 };
 const LOGIN_BUTTON_COORDS = { x: 640, y: 615 };
 
@@ -59,7 +57,7 @@ function timeStrToMinutes(str) {
     return mins + secs / 60;
 }
 
-// --- Fonctions Puppeteer ---
+// --- Fonctions Puppeteer (inchangées) ---
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -82,7 +80,7 @@ async function addRedDot(page, x, y) {
         dot.style.width = '10px'; dot.style.height = '10px'; dot.style.borderRadius = '50%';
         dot.style.backgroundColor = 'red'; dot.style.zIndex = '99999'; dot.style.pointerEvents = 'none';
         dot.id = 'click-dot'; document.body.appendChild(dot);
-        setTimeout(() => dot.remove(), 5000);
+        setTimeout(() => dot.remove(), 5000); // garder le point 5 secondes
     }, x, y);
 }
 
@@ -124,7 +122,7 @@ async function connectWithProxy(proxyUrl) {
     return { browser, page };
 }
 
-// --- Sauvegarde du compte (en clair) ---
+// --- Sauvegarde (en clair) ---
 async function saveAccount(accountData) {
     const octokit = new Octokit({ auth: GH_TOKEN });
     let sha = null;
@@ -147,70 +145,20 @@ async function saveAccount(accountData) {
     });
 }
 
-// --- 🔍 NOUVELLE FONCTION : lister les éléments cliquables ---
-async function listClickableElements(page) {
-    const elements = await page.evaluate(() => {
-        const results = [];
-        const all = document.querySelectorAll('button, a, input[type="submit"], input[type="button"], div[role="button"], span[role="button"]');
-        all.forEach(el => {
-            const rect = el.getBoundingClientRect();
-            if (rect.width === 0 || rect.height === 0) return;
-            const x = Math.round(rect.left + rect.width / 2);
-            const y = Math.round(rect.top + rect.height / 2);
-            const text = el.textContent.trim().substring(0, 50) || '(pas de texte)';
-            const tag = el.tagName.toLowerCase();
-            let selector = tag;
-            if (el.id) {
-                selector = `#${el.id}`;
-            } else if (el.className && typeof el.className === 'string') {
-                const classes = el.className.trim().split(/\s+/).slice(0, 2).join('.');
-                if (classes) selector = `${tag}.${classes}`;
-            }
-            results.push({ tag, text, x, y, selector: selector.length < 40 ? selector : tag });
-        });
-        return results;
-    });
-
-    console.log('📋 Éléments cliquables trouvés sur la page :');
-    console.table(elements);
-    const filePath = path.join(screenshotsDir, 'clickable_elements.json');
-    fs.writeFileSync(filePath, JSON.stringify(elements, null, 2));
-    console.log(`📁 Liste sauvegardée dans ${filePath}`);
-}
-
 // --- Nouvelle séquence CAPTCHA (avec captures immédiates) ---
 async function performLoginWithCaptcha(page, email, password) {
     await fillField(page, 'input[type="email"], input[name="email"]', email, 'email');
     await fillField(page, 'input[type="password"]', password, 'password');
     await delay(2000);
 
-    // Lister les éléments cliquables AVANT le premier clic
-    await listClickableElements(page);
-    await page.screenshot({ path: path.join(screenshotsDir, '00_before_captcha.png'), fullPage: true });
+    // 1er clic : icône IconCaptcha © (870, 630)
+    console.log('🖱️ Clic sur l\'icône IconCaptcha (870,630)');
+    await humanClickAt(page, INCOCAPTCHA_ICON_COORDS);
+    await page.screenshot({ path: path.join(screenshotsDir, '01_iconcaptcha_click.png'), fullPage: true });
+    console.log('⏳ Attente 3 secondes...');
+    await delay(3000); // Attente courte comme vous avez demandé
 
-    // 1er clic : icône Incocaptcha
-    console.log('🔍 Recherche icône Incocaptcha…');
-    const incocaptchaClicked = await page.evaluate(() => {
-        const selectors = [
-            '.incocaptcha', '#incocaptcha', '[id*="incocaptcha"]', '[class*="incocaptcha"]',
-            'img[src*="incocaptcha"]', 'svg[class*="incocaptcha"]'
-        ];
-        for (const sel of selectors) {
-            const el = document.querySelector(sel);
-            if (el) { el.click(); return true; }
-        }
-        return false;
-    });
-    if (!incocaptchaClicked) {
-        console.log('⚠️ Icône Incocaptcha non trouvée, fallback coordonné (645,500)');
-        await humanClickAt(page, INCOCAPTCHA_ICON_COORDS);
-    } else {
-        console.log('✅ Icône Incocaptcha cliquée');
-    }
-    await page.screenshot({ path: path.join(screenshotsDir, '01_incocaptcha_click.png'), fullPage: true });
-    await delay(5000);
-
-    // 2e clic : Turnstile
+    // 2e clic : Turnstile (recherche de l'iframe)
     const frame = await page.waitForFrame(
         f => f.url().includes('challenges.cloudflare.com/turnstile'),
         { timeout: 15000 }
@@ -219,14 +167,14 @@ async function performLoginWithCaptcha(page, email, password) {
         console.log('✅ Iframe Turnstile trouvée, clic checkbox');
         await frame.click('input[type="checkbox"]');
     } else {
-        console.log('⚠️ Iframe Turnstile non trouvée, fallback coordonné (640,615)');
+        console.log('⚠️ Iframe non trouvée, fallback coordonné (640,615)');
         await humanClickAt(page, { x: 640, y: 615 });
     }
     await page.screenshot({ path: path.join(screenshotsDir, '02_turnstile_click.png'), fullPage: true });
     await delay(5000);
 
-    // 3e clic : Verify you are human
-    console.log('🖱️ Clic sur Verify you are human');
+    // 3e clic : Verify you are human (pour l'instant on laisse les anciennes coordonnées)
+    console.log('🖱️ Clic sur Verify you are human (645,550)');
     await humanClickAt(page, VERIFY_HUMAN_COORDS);
     await page.screenshot({ path: path.join(screenshotsDir, '03_verify_human_click.png'), fullPage: true });
     await delay(10000);
@@ -240,24 +188,24 @@ async function performLoginWithCaptcha(page, email, password) {
         return false;
     });
     if (!loginClicked) {
-        console.log('⚠️ Bouton Log in non trouvé par texte, fallback coordonné (640,615)');
+        console.log('⚠️ Bouton non trouvé, fallback coordonné (640,615)');
         await humanClickAt(page, LOGIN_BUTTON_COORDS);
     }
     await page.screenshot({ path: path.join(screenshotsDir, '04_login_click.png'), fullPage: true });
     await delay(5000);
 
-    // Attendre la navigation
+    // Attente de navigation
     try {
         await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 40000 });
     } catch (navError) {
-        console.warn('⚠️ Navigation après login non détectée, vérification manuelle...');
+        console.warn('⚠️ Navigation non détectée, vérification manuelle...');
         await delay(5000);
         if (page.url().includes('login.php')) {
             const errorMsg = await page.evaluate(() => {
                 const el = document.querySelector('.alert-danger, .error');
                 return el ? el.textContent.trim() : null;
             });
-            throw new Error(errorMsg || 'Échec connexion (pas de redirection)');
+            throw new Error(errorMsg || 'Échec connexion');
         }
     }
     if (page.url().includes('login.php')) {
