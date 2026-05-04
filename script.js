@@ -59,6 +59,7 @@ console.log(`🌐 Proxy unique : ${PRIMARY_PROXY}`);
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
+const CAPSAT = { x: 400, y: 50 };
 const TURNSTILE_LOGIN_COORDS = { x: 640, y: 615 };
 const TURNSTILE_FAUCET_COORDS = { x: 400, y: 158 };
 const CLAIM_COORDS = { x: 400, y: 223 };
@@ -326,7 +327,7 @@ async function claimWithCookies(account) {
             await page.screenshot({ path: path.join(screenshotsDir, `03_turnstile_visible_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
             console.log('🖱️ Premier clic sur Turnstile faucet');
-            await humanClickAt(page, TURNSTILE_FAUCET_COORDS);
+            await humanClickAt(page, CAPSAT);
             await page.screenshot({ path: path.join(screenshotsDir, `04_after_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
             console.log('⏳ Attente de 10 secondes...');
