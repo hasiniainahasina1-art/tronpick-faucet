@@ -65,9 +65,9 @@ jobs:
           CRYPTO_SECRET: ${{ secrets.CRYPTO_SECRET }}
         run: xvfb-run --auto-servernum node test-login-workflow.js
 
-      - name: 📤 Upload des captures d'écran (artefacts)
+      - name: 📤 Upload des captures et vidéos
         uses: actions/upload-artifact@v4
-        if: always()   # sauvegarde même en cas d'échec
+        if: always()
         with:
           name: login-screenshots
           path: screenshots/
