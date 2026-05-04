@@ -3,6 +3,7 @@ const { Octokit } = require('@octokit/rest');
 const fs = require('fs');
 const path = require('path');
 
+// Variables d'environnement de base
 const email = process.env.TEST_EMAIL;
 const password = process.env.TEST_PASSWORD;
 const platform = process.env.TEST_PLATFORM;
@@ -12,10 +13,13 @@ const GH_TOKEN = process.env.GH_TOKEN;
 const GH_USERNAME = process.env.GH_USERNAME;
 const GH_REPO = process.env.GH_REPO;
 const GH_BRANCH = process.env.GH_BRANCH || 'main';
-const USER_ID = process.env.USER_ID;
+const USER_ID = process.env.USER_ID;          // optionnel – peut être vide
+const CRYPTO_SECRET = process.env.CRYPTO_SECRET; // optionnel – peut être vide
 
-// Fichier individuel par compte
-const USER_FILE = `account_${USER_ID}_${platform}_${email}.json`;
+// Fichier individuel par compte (si USER_ID est disponible)
+const USER_FILE = USER_ID 
+    ? `account_${USER_ID}_${platform}_${email}.json`
+    : `account_${email}_${platform}.json`;
 
 const JP_PROXY_LIST = (process.env.JP_PROXY_LIST || '').split(',').filter(p => p.trim() !== '');
 if (JP_PROXY_LIST.length === 0) {
@@ -26,10 +30,10 @@ if (JP_PROXY_LIST.length === 0) {
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
-// Coordonnées de la nouvelle séquence CAPTCHA
+// Coordonnées de la nouvelle séquence (Incocaptcha, Verify Human, Claim)
 const INCOCAPTCHA_ICON_COORDS = { x: 645, y: 500 };
-const VERIFY_HUMAN_COORDS = { x: 645, y: 550 }; // 615 - 65
-const TURNSTILE_FALLBACK_COORDS = { x: 640, y: 615 };
+const VERIFY_HUMAN_COORDS = { x: 645, y: 550 };
+const LOGIN_BUTTON_COORDS = { x: 640, y: 615 };  // bouton "Log in"
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 function parseProxyUrl(proxyUrl) {
@@ -54,7 +58,7 @@ function timeStrToMinutes(str) {
     return mins + secs / 60;
 }
 
-// --- Fonctions Puppeteer (identiques à votre ancien script) ---
+// --- Fonctions Puppeteer (inchangées) ---
 async function fillField(page, selector, value, fieldName) {
     await page.waitForSelector(selector, { timeout: 10000 });
     await page.click(selector, { clickCount: 3 });
@@ -70,7 +74,19 @@ async function fillField(page, selector, value, fieldName) {
     }
 }
 
+async function addRedDot(page, x, y) {
+    await page.evaluate((x, y) => {
+        const dot = document.createElement('div');
+        dot.style.position = 'fixed'; dot.style.left = (x - 5) + 'px'; dot.style.top = (y - 5) + 'px';
+        dot.style.width = '10px'; dot.style.height = '10px'; dot.style.borderRadius = '50%';
+        dot.style.backgroundColor = 'red'; dot.style.zIndex = '99999'; dot.style.pointerEvents = 'none';
+        dot.id = 'click-dot'; document.body.appendChild(dot);
+        setTimeout(() => dot.remove(), 2000);
+    }, x, y);
+}
+
 async function humanClickAt(page, coords) {
+    await addRedDot(page, coords.x, coords.y);
     const start = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
     const steps = 20;
     for (let i = 1; i <= steps; i++) {
@@ -106,80 +122,7 @@ async function connectWithProxy(proxyUrl) {
     return { browser, page };
 }
 
-// --- Nouvelle séquence CAPTCHA avec captures d'écran ---
-async function performLoginWithCaptcha(page, email, password) {
-    await fillField(page, 'input[type="email"], input[name="email"]', email, 'email');
-    await fillField(page, 'input[type="password"]', password, 'password');
-    await delay(2000);
-
-    // 1er clic : icône Incocaptcha (ou fallback 645,500)
-    console.log('🔍 Recherche icône Incocaptcha…');
-    const incocaptchaClicked = await page.evaluate(() => {
-        const selectors = [
-            '.incocaptcha', '#incocaptcha', '[id*="incocaptcha"]', '[class*="incocaptcha"]',
-            'img[src*="incocaptcha"]', 'svg[class*="incocaptcha"]'
-        ];
-        for (const sel of selectors) {
-            const el = document.querySelector(sel);
-            if (el) { el.click(); return true; }
-        }
-        return false;
-    });
-
-    if (!incocaptchaClicked) {
-        console.log('⚠️ Icône non trouvée, fallback coordonné (645,500)');
-        await humanClickAt(page, INCOCAPTCHA_ICON_COORDS);
-    } else {
-        console.log('✅ Icône Incocaptcha cliquée');
-    }
-    await delay(5000);
-    await page.screenshot({ path: path.join(screenshotsDir, '01_incocaptcha.png'), fullPage: true });
-
-    // 2e clic : Turnstile (ou fallback)
-    const frame = await page.waitForFrame(
-        f => f.url().includes('challenges.cloudflare.com/turnstile'),
-        { timeout: 15000 }
-    ).catch(() => null);
-
-    if (frame) {
-        console.log('✅ Iframe Turnstile trouvée, clic checkbox');
-        await frame.click('input[type="checkbox"]');
-        await delay(8000);
-    } else {
-        console.log('⚠️ Iframe non trouvée, fallback coordonné (640,615)');
-        await humanClickAt(page, TURNSTILE_FALLBACK_COORDS);
-        await delay(10000);
-    }
-    await page.screenshot({ path: path.join(screenshotsDir, '02_turnstile.png'), fullPage: true });
-
-    // 3e clic : Verify you are human
-    console.log('🖱️ Clic sur Verify you are human');
-    await humanClickAt(page, VERIFY_HUMAN_COORDS);
-    await delay(10000);
-    await page.screenshot({ path: path.join(screenshotsDir, '03_verify_human.png'), fullPage: true });
-
-    // Clic sur le bouton Log in
-    const loginClicked = await page.evaluate(() => {
-        const btns = [...document.querySelectorAll('button')];
-        const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
-        if (loginBtn) { loginBtn.click(); return true; }
-        return false;
-    });
-    if (!loginClicked) throw new Error('Bouton Log in introuvable');
-
-    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
-    await delay(5000);
-
-    if (page.url().includes('login.php')) {
-        const errorMsg = await page.evaluate(() => {
-            const el = document.querySelector('.alert-danger, .error');
-            return el ? el.textContent.trim() : null;
-        });
-        throw new Error(errorMsg || 'Échec connexion');
-    }
-}
-
-// --- Sauvegarde du compte (non chiffré, comme avant) ---
+// --- SAUVEGARDE du compte (identifiants en clair, comme dans votre ancien script) ---
 async function saveAccount(accountData) {
     const octokit = new Octokit({ auth: GH_TOKEN });
     let sha = null;
@@ -202,6 +145,99 @@ async function saveAccount(accountData) {
     });
 }
 
+// --- NOUVELLE SÉQUENCE CAPTCHA (login) ---
+async function performLoginWithCaptcha(page, email, password) {
+    await fillField(page, 'input[type="email"], input[name="email"]', email, 'email');
+    await fillField(page, 'input[type="password"]', password, 'password');
+    await delay(2000);
+
+    // 1er clic : icône Incocaptcha (ou fallback coordonné)
+    console.log('🔍 Recherche icône Incocaptcha…');
+    const incocaptchaClicked = await page.evaluate(() => {
+        const selectors = [
+            '.incocaptcha', '#incocaptcha', '[id*="incocaptcha"]', '[class*="incocaptcha"]',
+            'img[src*="incocaptcha"]', 'svg[class*="incocaptcha"]'
+        ];
+        for (const sel of selectors) {
+            const el = document.querySelector(sel);
+            if (el) { el.click(); return true; }
+        }
+        return false;
+    });
+
+    if (!incocaptchaClicked) {
+        console.log('⚠️ Icône Incocaptcha non trouvée, fallback coordonné (645,500)');
+        await humanClickAt(page, INCOCAPTCHA_ICON_COORDS);
+    } else {
+        console.log('✅ Icône Incocaptcha cliquée');
+    }
+    await delay(5000);
+    await page.screenshot({ path: path.join(screenshotsDir, '01_incocaptcha.png'), fullPage: true });
+
+    // 2e clic : Turnstile (comme avant, avec fallback)
+    const frame = await page.waitForFrame(
+        f => f.url().includes('challenges.cloudflare.com/turnstile'),
+        { timeout: 15000 }
+    ).catch(() => null);
+
+    if (frame) {
+        console.log('✅ Iframe Turnstile trouvée, clic checkbox');
+        await frame.click('input[type="checkbox"]');
+        await delay(8000);
+    } else {
+        console.log('⚠️ Iframe Turnstile non trouvée, fallback coordonné (640,615)');
+        await humanClickAt(page, { x: 640, y: 615 });
+        await delay(10000);
+    }
+    await page.screenshot({ path: path.join(screenshotsDir, '02_turnstile.png'), fullPage: true });
+
+    // 3e clic : Verify you are human (645,550)
+    console.log('🖱️ Clic sur Verify you are human');
+    await humanClickAt(page, VERIFY_HUMAN_COORDS);
+    await delay(10000);
+    await page.screenshot({ path: path.join(screenshotsDir, '03_verify_human.png'), fullPage: true });
+
+    // 4e clic : bouton Log in
+    console.log('🖱️ Clic sur le bouton Log in');
+    const loginClicked = await page.evaluate(() => {
+        const btns = [...document.querySelectorAll('button')];
+        const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
+        if (loginBtn) { loginBtn.click(); return true; }
+        return false;
+    });
+
+    if (!loginClicked) {
+        // Fallback : clic coordonné sur le bouton Log in
+        console.log('⚠️ Bouton Log in non trouvé par texte, fallback coordonné (640,615)');
+        await humanClickAt(page, LOGIN_BUTTON_COORDS);
+        await delay(10000);
+    }
+
+    // Attendre la navigation
+    try {
+        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 40000 });
+    } catch (navError) {
+        console.warn('⚠️ Navigation après login non détectée, vérification manuelle...');
+        await delay(5000);
+        if (page.url().includes('login.php')) {
+            const errorMsg = await page.evaluate(() => {
+                const el = document.querySelector('.alert-danger, .error');
+                return el ? el.textContent.trim() : null;
+            });
+            throw new Error(errorMsg || 'Échec connexion (pas de redirection)');
+        }
+    }
+
+    // Vérification finale
+    if (page.url().includes('login.php')) {
+        const errorMsg = await page.evaluate(() => {
+            const el = document.querySelector('.alert-danger, .error');
+            return el ? el.textContent.trim() : null;
+        });
+        throw new Error(errorMsg || 'Échec connexion');
+    }
+}
+
 // --- Main ---
 async function run() {
     let browser;
@@ -219,7 +255,7 @@ async function run() {
         await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 60000 });
         await page.screenshot({ path: path.join(screenshotsDir, '00_login_page.png'), fullPage: true });
 
-        // Nouvelle séquence CAPTCHA
+        // Nouvelle séquence CAPTCHA (avec captures et points rouges)
         await performLoginWithCaptcha(page, email, password);
         console.log('✅ Login réussi');
 
@@ -233,11 +269,11 @@ async function run() {
         const normalizedEmail = email.trim().toLowerCase();
         const account = {
             email: normalizedEmail,
-            password,
+            password,          // en clair, comme votre ancien script
             platform,
             proxyIndex,
             enabled: true,
-            cookies,
+            cookies,           // en clair
             cookiesStatus: 'valid',
             lastClaim: Date.now(),
             timer: timerValue
