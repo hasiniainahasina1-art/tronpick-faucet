@@ -237,11 +237,15 @@ async function performLoginWithCaptcha(page, email, password) {
 
         const verifyCoords = {
             x: loginCoords.x,
-            y: loginCoords.y - 65
+            y: loginCoords.y - 70
         };
         console.log(`🖱️ Clic sur "Verify you are human" à (${verifyCoords.x}, ${verifyCoords.y})`);
         await humanClickAt(page, verifyCoords);
         await page.screenshot({ path: path.join(screenshotsDir, '02_verify_clicked.png'), fullPage: true });
+        await delay(10000);
+        console.log(`🖱️ Clic sur "Verify you are human" à (${verifyCoords.x}, ${verifyCoords.y})`);
+        await humanClickAt(page, verifyCoords);
+        await page.screenshot({ path: path.join(screenshotsDir, '05_verify_clicked.png'), fullPage: true });
         await delay(10000);
 
         // 5. Clic sur le bouton "Log in"
