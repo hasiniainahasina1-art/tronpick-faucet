@@ -9,7 +9,7 @@
   "lastClaim": 1777965597748,
   "timer": 62,
   "pendingClaim": true,
-  "pendingClaimSince": 1777965546407,
   "claimResult": "✅ ×Success!You got 0.00000075 BNB!",
-  "periodStart": 1777965597748
+  "periodStart": 1777965597748,
+  "pendingClaimSince": 1777969327096
 }
