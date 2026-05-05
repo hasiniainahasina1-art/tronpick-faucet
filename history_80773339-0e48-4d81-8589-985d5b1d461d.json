@@ -334,5 +334,13 @@
     "success": true,
     "message": "×Success!You got 0.000001000 SOL!",
     "bonus": 0.000001
+  },
+  {
+    "email": "rivoniainafinoana123@gmail.com",
+    "platform": "litepick",
+    "timestamp": 1777969477976,
+    "success": true,
+    "message": "×Success!You got 0.00000250 LTC!",
+    "bonus": 0.0000025
   }
 ]
