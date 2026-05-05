@@ -9,7 +9,7 @@
   "lastClaim": 1777963009632,
   "timer": 62,
   "pendingClaim": true,
-  "pendingClaimSince": 1777962967219,
   "claimResult": "✅ ×Success!You got 0.020000 TRX!",
-  "periodStart": 1777963009632
+  "periodStart": 1777963009632,
+  "pendingClaimSince": 1777966745890
 }
