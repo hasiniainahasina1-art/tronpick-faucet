@@ -218,10 +218,15 @@ async function performLoginWithCaptcha(page, email, password) {
         
 
         // --- Les étapes suivantes restent inchangées (coordonnées fixes) ---
-        console.log('🖱️ Étape 2 : clic (651,340)');
-        await humanClickAt(page, STEP2_COORDS);
-        await page.screenshot({ path: path.join(screenshotsDir, '02_step2.png'), fullPage: true });
-        await delay(7000);
+        from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+# 1. Attendre que l'option soit visible et cliquable
+option = WebDriverWait(driver, 10).until(
+    EC.element_to_be_clickable((By.XPATH, "//*[text()='Cloudflare Turnstile']"))
+)
+option.click()
 
         console.log('🖱️ Étape 3 : clic (651,380)');
         await humanClickAt(page, STEP3_COORDS);
