@@ -32,6 +32,9 @@ if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: tr
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Fonction utilitaire pour un délai aléatoire
+const randomDelay = (min, max) => delay(Math.floor(Math.random() * (max - min + 1) + min));
+
 function parseProxyUrl(proxyUrl) {
     if (!proxyUrl) return null;
     proxyUrl = proxyUrl.trim();
@@ -54,36 +57,52 @@ function timeStrToMinutes(str) {
     return mins + secs / 60;
 }
 
-// --- Fonctions Puppeteer ---
-async function fillField(page, selector, value, fieldName) {
-    await page.waitForSelector(selector, { timeout: 10000 });
+// --- Remplissage humain des champs ---
+async function fillFieldHuman(page, selector, value, fieldName) {
+    console.log(`⌨️ Remplissage humain de ${fieldName}...`);
+    await page.waitForSelector(selector, { visible: true, timeout: 10000 });
+    // Effacement
     await page.click(selector, { clickCount: 3 });
     await page.keyboard.press('Backspace');
-    await delay(100);
-    await page.evaluate((sel, val) => { const el = document.querySelector(sel); if (el) el.value = val; }, selector, value);
-    await delay(300);
+    await randomDelay(100, 200);
+    // Saisie caractère par caractère avec délai aléatoire
+    for (const char of value) {
+        await page.keyboard.type(char, { delay: Math.floor(Math.random() * 70) + 30 }); // 30-100ms par caractère
+    }
+    await randomDelay(200, 500);
+    // Vérification
     let actual = await page.$eval(selector, el => el.value);
     if (actual !== value) {
+        console.warn(`⚠️ Correction du champ ${fieldName}, nouvelle tentative`);
         await page.click(selector, { clickCount: 3 });
         await page.keyboard.press('Backspace');
-        for (const char of value) await page.keyboard.type(char, { delay: 30 });
+        for (const char of value) await page.keyboard.type(char, { delay: Math.floor(Math.random() * 50) + 40 });
     }
 }
 
+// --- Ajout d'un point rouge (debug) ---
 async function addRedDot(page, x, y) {
     await page.evaluate((x, y) => {
         const dot = document.createElement('div');
-        dot.style.position = 'fixed'; dot.style.left = (x - 5) + 'px'; dot.style.top = (y - 5) + 'px';
-        dot.style.width = '10px'; dot.style.height = '10px'; dot.style.borderRadius = '50%';
-        dot.style.backgroundColor = 'red'; dot.style.zIndex = '99999'; dot.style.pointerEvents = 'none';
-        dot.id = 'click-dot'; document.body.appendChild(dot);
+        dot.style.position = 'fixed';
+        dot.style.left = (x - 5) + 'px';
+        dot.style.top = (y - 5) + 'px';
+        dot.style.width = '10px';
+        dot.style.height = '10px';
+        dot.style.borderRadius = '50%';
+        dot.style.backgroundColor = 'red';
+        dot.style.zIndex = '99999';
+        dot.style.pointerEvents = 'none';
+        dot.id = 'click-dot';
+        document.body.appendChild(dot);
         setTimeout(() => dot.remove(), 5000);
     }, x, y);
 }
 
+// --- Clic humain avec trajectoire courbe ---
 async function humanClickAt(page, coords) {
     await addRedDot(page, coords.x, coords.y);
-    await delay(200);
+    await randomDelay(150, 300);
     const start = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
     const steps = 20;
     for (let i = 1; i <= steps; i++) {
@@ -91,30 +110,29 @@ async function humanClickAt(page, coords) {
         const cp = { x: start.x + (Math.random() - 0.5) * 100, y: start.y + (Math.random() - 0.5) * 100 };
         const x = Math.pow(1 - t, 2) * start.x + 2 * (1 - t) * t * cp.x + Math.pow(t, 2) * coords.x;
         const y = Math.pow(1 - t, 2) * start.y + 2 * (1 - t) * t * cp.y + Math.pow(t, 2) * coords.y;
-        await page.mouse.move(x, y); await delay(15);
+        await page.mouse.move(x, y);
+        await delay(15);
     }
     await page.mouse.click(coords.x, coords.y);
     console.log(`🖱️ Clic à (${coords.x}, ${coords.y})`);
 }
 
-// --- Connexion proxy (version stable) ---
+// --- Connexion proxy ---
 async function connectWithProxy(proxyUrl) {
     const proxyConfig = parseProxyUrl(proxyUrl);
     if (!proxyConfig) throw new Error('Proxy invalide');
     console.log(`🔄 Connexion avec proxy : ${proxyConfig.server}`);
-
     const options = {
         headless: false,
-        turnstile: true,                 // solver automatique Turnstile
+        turnstile: true,                 // solver intégré
         proxy: proxyConfig,
         args: ['--no-sandbox', '--disable-setuid-sandbox']
     };
-
     const { browser, page } = await connect(options);
     return { browser, page };
 }
 
-// --- Sauvegarde du compte (en clair) ---
+// --- Sauvegarde GitHub ---
 async function saveAccount(accountData) {
     const octokit = new Octokit({ auth: GH_TOKEN });
     let sha = null;
@@ -124,7 +142,6 @@ async function saveAccount(accountData) {
         });
         sha = res.data.sha;
     } catch (e) {}
-
     const content = Buffer.from(JSON.stringify(accountData, null, 2)).toString('base64');
     await octokit.repos.createOrUpdateFileContents({
         owner: GH_USERNAME,
@@ -137,7 +154,7 @@ async function saveAccount(accountData) {
     });
 }
 
-// --- 🎥 Capture vidéo nette (ffmpeg) ---
+// --- FFmpeg ---
 function startFFmpeg(videoPath) {
     const display = process.env.DISPLAY || ':99';
     const args = [
@@ -155,7 +172,6 @@ function startFFmpeg(videoPath) {
     console.log(`🎥 FFmpeg démarré sur ${display}, vidéo → ${videoPath}`);
     return ffmpeg;
 }
-
 function stopFFmpeg(ffmpeg) {
     return new Promise((resolve) => {
         ffmpeg.on('close', resolve);
@@ -163,7 +179,7 @@ function stopFFmpeg(ffmpeg) {
     });
 }
 
-// --- Nouvelle séquence de login avec sélection fiable de "Cloudflare Turnstile" ---
+// --- 🧠 NOUVELLE SÉQUENCE DE LOGIN HUMAINE ---
 async function performLoginWithCaptcha(page, email, password) {
     if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
     const videoPath = path.join(screenshotsDir, `login_${email.replace(/[^a-zA-Z0-9]/g, '_')}.mp4`);
@@ -171,81 +187,93 @@ async function performLoginWithCaptcha(page, email, password) {
     await delay(1000);
 
     try {
-        // Remplissage des champs
-        await fillField(page, 'input[type="email"], input[name="email"]', email, 'email');
-        await fillField(page, 'input[type="password"]', password, 'password');
-        await delay(2000);
+        // 1. Remplissage humain
+        await fillFieldHuman(page, 'input[type="email"], input[name="email"]', email, 'email');
+        await fillFieldHuman(page, 'input[type="password"]', password, 'password');
+        await randomDelay(500, 1000);
 
-        // Scroll pour rendre le captcha visible
-        console.log('📜 Scroll vers le captcha...');
-        await page.evaluate(() => window.scrollBy(0, 400));
-        await delay(1000);
+        // 2. Scroll jusqu’au bouton "Log in"
+        console.log('📜 Scroll jusqu’au bouton Log in...');
+        await page.evaluate(() => {
+            const btns = [...document.querySelectorAll('button')];
+            const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
+            if (loginBtn) loginBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+        await delay(3000);  // pause de 3 secondes
 
-        // ---------- 🔥 SÉLECTION DU TYPE DE CAPTCHA (méthode 100% compatible) ----------
-        console.log('🔍 Recherche du menu de sélection CAPTCHA...');
-        const selectSelector = 'select';   // À adapter si la balise est différente (ex: .captcha-select)
+        // 3. Sélection de Cloudflare Turnstile
+        console.log('🔍 Sélection du type de captcha...');
+        const selectSelector = 'select';
         await page.waitForSelector(selectSelector, { visible: true, timeout: 10000 });
-
-        // Récupérer toutes les options sous forme de texte + valeur
         const availableOptions = await page.$$eval(`${selectSelector} option`, opts =>
             opts.map(o => ({ text: o.textContent.trim(), value: o.value }))
         );
-        console.log('📋 Options trouvées :', availableOptions);
+        console.log('📋 Options disponibles :', availableOptions);
 
-        const targetOptionText = 'Cloudflare Turnstile';   // 🔍 exactement comme sur ta capture
+        const targetOptionText = 'Cloudflare Turnstile';
         const target = availableOptions.find(o => o.text === targetOptionText);
-        if (!target) {
-            throw new Error(
-                `❌ Option "${targetOptionText}" introuvable. Options disponibles : ${JSON.stringify(availableOptions.map(o => o.text))}`
-            );
-        }
-
-        // Sélectionner l'option par sa valeur
+        if (!target) throw new Error(`Option "${targetOptionText}" introuvable`);
         await page.select(selectSelector, target.value);
-        console.log(`✅ Option "${targetOptionText}" sélectionnée (value="${target.value}")`);
+        console.log(`✅ Option "${targetOptionText}" sélectionnée`);
         await page.screenshot({ path: path.join(screenshotsDir, '01_option_selected.png'), fullPage: true });
-        await delay(2000);
+        await delay(5000);  // pause de 5 secondes
 
-        // ---------- ATTENTE DU CHARGEMENT DU WIDGET TURNSTILE ----------
-        console.log('⏳ Attente de l’apparition du widget Turnstile...');
-        try {
-            // Turnstile apparaît souvent dans une iframe dédiée
-            await page.waitForSelector('iframe[src*="turnstile"]', { visible: true, timeout: 15000 });
-            console.log('🎯 Widget Turnstile détecté, le solver automatique (turnstile: true) va travailler');
-        } catch (e) {
-            console.warn('⚠️ Widget Turnstile non détecté via iframe, on continue malgré tout');
+        // 4. Clic sur "Verify you are human" (dans l'iframe Turnstile si nécessaire)
+        console.log('🕵️ Recherche du texte "Verify you are human"...');
+        const verifyText = 'Verify you are human';
+        let clicked = false;
+
+        // Chercher d'abord dans le frame principal
+        const [elementInMain] = await page.$x(`//*[contains(text(), "${verifyText}")]`);
+        if (elementInMain) {
+            console.log('✅ Trouvé dans le DOM principal');
+            await elementInMain.click();
+            clicked = true;
+        } else {
+            // Chercher dans les iframes
+            const frames = page.frames();
+            for (const frame of frames) {
+                try {
+                    const [elementInFrame] = await frame.$x(`//*[contains(text(), "${verifyText}")]`);
+                    if (elementInFrame) {
+                        console.log(`✅ Trouvé dans une iframe (url: ${frame.url()})`);
+                        await elementInFrame.click();
+                        clicked = true;
+                        break;
+                    }
+                } catch (e) {}
+            }
         }
 
-        // Laisser le temps au solver pour résoudre le challenge
-        console.log('⏳ Pause de 15 secondes pour la résolution automatique...');
-        await delay(15000);   // Ajustable si le challenge est plus long
+        if (!clicked) {
+            console.warn('⚠️ Texte "Verify you are human" introuvable, on continue sans clic');
+        } else {
+            console.log('🖱️ Clic effectué sur "Verify you are human"');
+        }
+        await page.screenshot({ path: path.join(screenshotsDir, '02_verify_clicked.png'), fullPage: true });
+        await delay(10000); // pause de 10 secondes pour résolution
 
-        // ---------- CLIC SUR LE BOUTON "LOG IN" ----------
-        console.log('📍 Recherche du bouton "Log in"...');
+        // 5. Clic sur le bouton "Log in"
+        console.log('📍 Clic sur le bouton Log in...');
         let loginCoords = await page.evaluate(() => {
             const btns = [...document.querySelectorAll('button')];
             const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
             if (!loginBtn) return null;
             const rect = loginBtn.getBoundingClientRect();
-            return {
-                x: Math.round(rect.left + rect.width / 2),
-                y: Math.round(rect.top + rect.height / 2)
-            };
+            return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
         });
-
         if (!loginCoords) {
-            console.warn('⚠️ Bouton "Log in" non trouvé, utilisation des coordonnées par défaut');
+            console.warn('⚠️ Bouton Log in non trouvé, fallback (640,615)');
             loginCoords = { x: 640, y: 615 };
         }
-        console.log(`🖱️ Clic sur "Log in" à (${loginCoords.x}, ${loginCoords.y})`);
         await humanClickAt(page, loginCoords);
-        await delay(2000);
+        await randomDelay(2000, 3000);
 
         // Vérification de la connexion
         try {
             await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 40000 });
         } catch (navError) {
-            console.warn('⚠️ Navigation après login non détectée, vérification manuelle...');
+            console.warn('⚠️ Navigation non détectée, vérification manuelle...');
             await delay(5000);
             if (page.url().includes('login.php')) {
                 const errorMsg = await page.evaluate(() => {
@@ -262,6 +290,8 @@ async function performLoginWithCaptcha(page, email, password) {
             });
             throw new Error(errorMsg || 'Échec connexion');
         }
+
+        console.log('✅ Connexion réussie');
     } finally {
         await stopFFmpeg(ffmpegProcess);
         console.log('🎥 Vidéo sauvegardée.');
@@ -315,8 +345,8 @@ async function run() {
         console.error('❌ Erreur fatale :', err.message);
         if (browser) {
             try {
-                const screenshotPath = path.join(screenshotsDir, 'error.png');
-                await browser.screenshot({ fullPage: true }).then(img => fs.writeFileSync(screenshotPath, img));
+                const ss = await browser.screenshot({ fullPage: true });
+                fs.writeFileSync(path.join(screenshotsDir, 'error.png'), ss);
             } catch (e) {}
             await browser.close();
         }
