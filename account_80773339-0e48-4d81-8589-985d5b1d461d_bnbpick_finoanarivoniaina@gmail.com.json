@@ -1,0 +1,103 @@
+{
+  "email": "finoanarivoniaina@gmail.com",
+  "password": "Finoana123.",
+  "platform": "bnbpick",
+  "proxyIndex": 1,
+  "enabled": true,
+  "cookies": [
+    {
+      "name": "remember_token",
+      "value": "adf88afa52b187714584de78bc3804c3",
+      "domain": "bnbpick.io",
+      "path": "/",
+      "expires": 1780557473.213915,
+      "size": 46,
+      "httpOnly": false,
+      "secure": false,
+      "session": false,
+      "priority": "Medium",
+      "sourceScheme": "Secure"
+    },
+    {
+      "name": "fp",
+      "value": "QxHUMdidkNDQtDWb",
+      "domain": "bnbpick.io",
+      "path": "/",
+      "expires": 1809501453,
+      "size": 18,
+      "httpOnly": false,
+      "secure": false,
+      "session": false,
+      "priority": "Medium",
+      "sourceScheme": "Secure"
+    },
+    {
+      "name": "user_session",
+      "value": "gh50gh7kck428oh24ec0mai70929u2d6",
+      "domain": "bnbpick.io",
+      "path": "/",
+      "expires": 1778051875.131172,
+      "size": 44,
+      "httpOnly": true,
+      "secure": false,
+      "session": false,
+      "priority": "Medium",
+      "sourceScheme": "Secure"
+    },
+    {
+      "name": "_ga",
+      "value": "GA1.1.833007080.1777965454",
+      "domain": ".bnbpick.io",
+      "path": "/",
+      "expires": 1812525474.537309,
+      "size": 29,
+      "httpOnly": false,
+      "secure": false,
+      "session": false,
+      "priority": "Medium",
+      "sourceScheme": "Secure"
+    },
+    {
+      "name": "csrf_cookie_name",
+      "value": "758e64401526193c5482f5f957905534",
+      "domain": "bnbpick.io",
+      "path": "/",
+      "expires": 1777972675.131073,
+      "size": 48,
+      "httpOnly": false,
+      "secure": false,
+      "session": false,
+      "priority": "Medium",
+      "sourceScheme": "Secure"
+    },
+    {
+      "name": "_ga_TX2791YJ2M",
+      "value": "GS2.1.s1777965453$o1$g1$t1777965474$j39$l0$h0",
+      "domain": ".bnbpick.io",
+      "path": "/",
+      "expires": 1812525474.541498,
+      "size": 59,
+      "httpOnly": false,
+      "secure": false,
+      "session": false,
+      "priority": "Medium",
+      "sourceScheme": "Secure"
+    },
+    {
+      "name": "g_state",
+      "value": "{\"i_l\":0,\"i_ll\":1777965475175,\"i_b\":\"8wHSLkH5e/Waww2999i8vCJIc8u1/mvtEQB+k99rAYA\",\"i_e\":{\"enable_itp_optimization\":23},\"i_et\":1777965453800}",
+      "domain": "bnbpick.io",
+      "path": "/",
+      "expires": 1793517475,
+      "size": 147,
+      "httpOnly": false,
+      "secure": false,
+      "session": false,
+      "priority": "Medium",
+      "sourceScheme": "Secure"
+    }
+  ],
+  "cookiesStatus": "valid",
+  "lastClaim": 1777965475803,
+  "timer": 1
+}
