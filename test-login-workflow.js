@@ -179,7 +179,7 @@ async function performLoginWithCaptcha(page, email, password) {
         const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
         if (loginBtn) loginBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
-    await delay(2000);
+    await delay(1000);
 
     // 3. Sélection "Cloudflare Turnstile" + pause 5 secondes
     console.log('🔍 Sélection du type de captcha...');
