@@ -30,11 +30,6 @@ if (JP_PROXY_LIST.length === 0) {
 const screenshotsDir = path.join(__dirname, 'screenshots');
 if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
-// Coordonnées fixes des étapes suivantes (popup)
-const STEP2_COORDS = { x: 651, y: 340 };
-const STEP3_COORDS = { x: 651, y: 350 };
-const STEP4_COORDS = { x: 651, y: 367 };
-
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 function parseProxyUrl(proxyUrl) {
@@ -82,7 +77,7 @@ async function addRedDot(page, x, y) {
         dot.style.width = '10px'; dot.style.height = '10px'; dot.style.borderRadius = '50%';
         dot.style.backgroundColor = 'red'; dot.style.zIndex = '99999'; dot.style.pointerEvents = 'none';
         dot.id = 'click-dot'; document.body.appendChild(dot);
-        setTimeout(() => dot.remove(), 5000); // garder le point 5 secondes
+        setTimeout(() => dot.remove(), 5000);
     }, x, y);
 }
 
@@ -110,7 +105,7 @@ async function connectWithProxy(proxyUrl) {
 
     const options = {
         headless: false,
-        turnstile: true,
+        turnstile: true,                 // ← solver automatique Turnstile
         proxy: proxyConfig,
         args: ['--no-sandbox', '--disable-setuid-sandbox']
     };
@@ -151,7 +146,7 @@ function startFFmpeg(videoPath) {
         '-i', display,
         '-c:v', 'libx264',
         '-preset', 'ultrafast',
-        '-crf', '0',           // qualité maximale
+        '-crf', '0',
         '-pix_fmt', 'yuv420p',
         '-y',
         videoPath
@@ -168,7 +163,7 @@ function stopFFmpeg(ffmpeg) {
     });
 }
 
-// --- Nouvelle séquence de login avec adaptation dynamique ---
+// --- Nouvelle séquence de login avec sélection exacte de "Cloudflare Turnstile" ---
 async function performLoginWithCaptcha(page, email, password) {
     if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
     const videoPath = path.join(screenshotsDir, `login_${email.replace(/[^a-zA-Z0-9]/g, '_')}.mp4`);
@@ -176,16 +171,51 @@ async function performLoginWithCaptcha(page, email, password) {
     await delay(1000);
 
     try {
+        // Remplissage des champs
         await fillField(page, 'input[type="email"], input[name="email"]', email, 'email');
         await fillField(page, 'input[type="password"]', password, 'password');
         await delay(2000);
 
-        // --- Scroll vers le bas pour rendre le captcha visible ---
+        // Scroll pour rendre le captcha visible
         console.log('📜 Scroll vers le captcha...');
         await page.evaluate(() => window.scrollBy(0, 400));
         await delay(1000);
 
-        // --- Récupérer les coordonnées du bouton "Log in" ---
+        // ---------- 🔥 SÉLECTION DU TYPE DE CAPTCHA ----------
+        console.log('🔍 Recherche du menu de sélection CAPTCHA...');
+        const selectSelector = 'select';   // À adapter si besoin (ex: .captcha-select)
+        await page.waitForSelector(selectSelector, { visible: true, timeout: 10000 });
+
+        // 1er clic : ouvre le menu déroulant (peut être inutile pour un vrai <select>, mais sans risque)
+        await page.click(selectSelector);
+        await delay(500);
+        console.log('📋 Menu déroulant ouvert');
+
+        // 2ème clic : sur l'option exacte "Cloudflare Turnstile"
+        const optionText = 'Cloudflare Turnstile';   // orthographe vérifiée sur ta capture
+        await page.waitForXPath(`//option[text()="${optionText}"]`, { visible: true, timeout: 5000 });
+        const [option] = await page.$x(`//option[text()="${optionText}"]`);
+        if (!option) throw new Error('❌ Option Cloudflare Turnstile introuvable');
+        await option.click();
+        console.log('✅ Option "Cloudflare Turnstile" sélectionnée');
+        await page.screenshot({ path: path.join(screenshotsDir, '01_option_selected.png'), fullPage: true });
+        await delay(2000);
+
+        // ---------- ATTENTE DU CHARGEMENT DU WIDGET TURNSTILE ----------
+        console.log('⏳ Attente de l’apparition du widget Turnstile...');
+        try {
+            // Turnstile apparaît souvent dans une iframe dédiée
+            await page.waitForSelector('iframe[src*="turnstile"]', { visible: true, timeout: 15000 });
+            console.log('🎯 Widget Turnstile détecté, le solver automatique (turnstile: true) va travailler');
+        } catch (e) {
+            console.warn('⚠️ Widget Turnstile non détecté via iframe, on continue malgré tout');
+        }
+
+        // On laisse du temps au solver pour résoudre le challenge
+        await delay(10000);   // ajustable selon la complexité du challenge
+
+        // ---------- CLIC SUR LE BOUTON "LOG IN" ----------
+        console.log('📍 Recherche du bouton "Log in"...');
         let loginCoords = await page.evaluate(() => {
             const btns = [...document.querySelectorAll('button')];
             const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
@@ -198,47 +228,14 @@ async function performLoginWithCaptcha(page, email, password) {
         });
 
         if (!loginCoords) {
-            // Fallback sur les anciennes coordonnées si le bouton n'est pas trouvé
-            console.warn('⚠️ Bouton Log in non trouvé, utilisation des coordonnées par défaut');
+            console.warn('⚠️ Bouton "Log in" non trouvé, utilisation des coordonnées par défaut');
             loginCoords = { x: 640, y: 615 };
         }
-        console.log(`📍 Bouton Log in trouvé à (${loginCoords.x}, ${loginCoords.y})`);
+        console.log(`🖱️ Clic sur "Log in" à (${loginCoords.x}, ${loginCoords.y})`);
+        await humanClickAt(page, loginCoords);
+        await delay(2000);
 
-        // Calcul du premier clic (captcha) : même X, Y = loginY - 132
-        const captchaCoords = {
-            x: loginCoords.x,
-            y: loginCoords.y - 132
-        };
-        console.log(`🖱️ Coordonnées adaptées pour le captcha : (${captchaCoords.x}, ${captchaCoords.y})`);
-
-        // --- 1er CLIC : double‑clic sur l'icône captcha ---
-        console.log('🖱️ Premier clic sur l\'icône captcha');
-        await humanClickAt(page, captchaCoords);
-        await delay(5000);
-        
-
-        // --- Les étapes suivantes restent inchangées (coordonnées fixes) ---
-        from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-
-# 1. Attendre que l'option soit visible et cliquable
-option = WebDriverWait(driver, 10).until(
-    EC.element_to_be_clickable((By.XPATH, "//*[text()='Cloudflare Turnstile']"))
-)
-option.click()
-
-        console.log('🖱️ Étape 3 : clic (651,380)');
-        await humanClickAt(page, STEP3_COORDS);
-        await page.screenshot({ path: path.join(screenshotsDir, '03_step3.png'), fullPage: true });
-        await delay(15000);
-
-        console.log('🖱️ Étape 4 : clic (651,367)');
-        await humanClickAt(page, STEP4_COORDS);
-        await page.screenshot({ path: path.join(screenshotsDir, '04_step4.png'), fullPage: true });
-        await delay(10000);
-
-        // Attendre la navigation
+        // Vérification de la connexion
         try {
             await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 40000 });
         } catch (navError) {
