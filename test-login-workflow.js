@@ -105,7 +105,7 @@ async function connectWithProxy(proxyUrl) {
 
     const options = {
         headless: false,
-        turnstile: true,                 // ← solver automatique Turnstile
+        turnstile: true,                 // solver automatique Turnstile
         proxy: proxyConfig,
         args: ['--no-sandbox', '--disable-setuid-sandbox']
     };
@@ -163,7 +163,7 @@ function stopFFmpeg(ffmpeg) {
     });
 }
 
-// --- Nouvelle séquence de login avec sélection exacte de "Cloudflare Turnstile" ---
+// --- Nouvelle séquence de login avec sélection fiable de "Cloudflare Turnstile" ---
 async function performLoginWithCaptcha(page, email, password) {
     if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
     const videoPath = path.join(screenshotsDir, `login_${email.replace(/[^a-zA-Z0-9]/g, '_')}.mp4`);
@@ -181,23 +181,28 @@ async function performLoginWithCaptcha(page, email, password) {
         await page.evaluate(() => window.scrollBy(0, 400));
         await delay(1000);
 
-        // ---------- 🔥 SÉLECTION DU TYPE DE CAPTCHA ----------
+        // ---------- 🔥 SÉLECTION DU TYPE DE CAPTCHA (méthode 100% compatible) ----------
         console.log('🔍 Recherche du menu de sélection CAPTCHA...');
-        const selectSelector = 'select';   // À adapter si besoin (ex: .captcha-select)
+        const selectSelector = 'select';   // À adapter si la balise est différente (ex: .captcha-select)
         await page.waitForSelector(selectSelector, { visible: true, timeout: 10000 });
 
-        // 1er clic : ouvre le menu déroulant (peut être inutile pour un vrai <select>, mais sans risque)
-        await page.click(selectSelector);
-        await delay(500);
-        console.log('📋 Menu déroulant ouvert');
+        // Récupérer toutes les options sous forme de texte + valeur
+        const availableOptions = await page.$$eval(`${selectSelector} option`, opts =>
+            opts.map(o => ({ text: o.textContent.trim(), value: o.value }))
+        );
+        console.log('📋 Options trouvées :', availableOptions);
 
-        // 2ème clic : sur l'option exacte "Cloudflare Turnstile"
-        const optionText = 'Cloudflare Turnstile';   // orthographe vérifiée sur ta capture
-        await page.waitForXPath(`//option[text()="${optionText}"]`, { visible: true, timeout: 5000 });
-        const [option] = await page.$x(`//option[text()="${optionText}"]`);
-        if (!option) throw new Error('❌ Option Cloudflare Turnstile introuvable');
-        await option.click();
-        console.log('✅ Option "Cloudflare Turnstile" sélectionnée');
+        const targetOptionText = 'Cloudflare Turnstile';   // 🔍 exactement comme sur ta capture
+        const target = availableOptions.find(o => o.text === targetOptionText);
+        if (!target) {
+            throw new Error(
+                `❌ Option "${targetOptionText}" introuvable. Options disponibles : ${JSON.stringify(availableOptions.map(o => o.text))}`
+            );
+        }
+
+        // Sélectionner l'option par sa valeur
+        await page.select(selectSelector, target.value);
+        console.log(`✅ Option "${targetOptionText}" sélectionnée (value="${target.value}")`);
         await page.screenshot({ path: path.join(screenshotsDir, '01_option_selected.png'), fullPage: true });
         await delay(2000);
 
@@ -211,8 +216,9 @@ async function performLoginWithCaptcha(page, email, password) {
             console.warn('⚠️ Widget Turnstile non détecté via iframe, on continue malgré tout');
         }
 
-        // On laisse du temps au solver pour résoudre le challenge
-        await delay(10000);   // ajustable selon la complexité du challenge
+        // Laisser le temps au solver pour résoudre le challenge
+        console.log('⏳ Pause de 15 secondes pour la résolution automatique...');
+        await delay(15000);   // Ajustable si le challenge est plus long
 
         // ---------- CLIC SUR LE BOUTON "LOG IN" ----------
         console.log('📍 Recherche du bouton "Log in"...');
