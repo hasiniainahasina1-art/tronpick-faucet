@@ -188,7 +188,15 @@ async function getLoginButtonCoords(page) {
     });
 }
 
-// --- NOUVELLE SÉQUENCE DE LOGIN (clic coordonné pour "Verify you are human") ---
+// --- Vérification si le texte "Verify you are human" est encore visible ---
+async function isVerifyTextVisible(page) {
+    return await page.evaluate(() => {
+        const bodyText = document.body.innerText;
+        return bodyText.includes('Verify you are human');
+    });
+}
+
+// --- NOUVELLE SÉQUENCE DE LOGIN (avec répétition automatique du clic de validation) ---
 async function performLoginWithCaptcha(page, email, password) {
     if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
     const videoPath = path.join(screenshotsDir, `login_${email.replace(/[^a-zA-Z0-9]/g, '_')}.mp4`);
@@ -201,16 +209,16 @@ async function performLoginWithCaptcha(page, email, password) {
         await fillFieldHuman(page, 'input[type="password"]', password, 'password');
         await randomDelay(500, 1000);
 
-        // 2. Scroll jusqu’au bouton "Log in"
+        // 2. Scroll jusqu’au bouton "Log in" puis pause 2 secondes
         console.log('📜 Scroll jusqu’au bouton Log in...');
         await page.evaluate(() => {
             const btns = [...document.querySelectorAll('button')];
             const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
             if (loginBtn) loginBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
         });
-        await delay(3000);
+        await delay(2000);
 
-        // 3. Sélection de Cloudflare Turnstile
+        // 3. Sélection "Cloudflare Turnstile" + pause 5 secondes
         console.log('🔍 Sélection du type de captcha...');
         const selectSelector = 'select';
         await page.waitForSelector(selectSelector, { visible: true, timeout: 10000 });
@@ -227,7 +235,7 @@ async function performLoginWithCaptcha(page, email, password) {
         await page.screenshot({ path: path.join(screenshotsDir, '01_option_selected.png'), fullPage: true });
         await delay(5000);
 
-        // 4. Récupération des coordonnées du bouton "Log in" pour calculer le clic "Verify you are human"
+        // 4. Récupération des coordonnées du bouton "Log in"
         let loginCoords = await getLoginButtonCoords(page);
         if (!loginCoords) {
             console.warn('⚠️ Bouton Log in non trouvé, utilisation du fallback (640,615)');
@@ -235,20 +243,40 @@ async function performLoginWithCaptcha(page, email, password) {
         }
         console.log(`📍 Bouton Log in trouvé à (${loginCoords.x}, ${loginCoords.y})`);
 
+        // 5. Clic sur "Verify you are human" (Y = loginCoords.y - 70, X = loginCoords.x)
         const verifyCoords = {
             x: loginCoords.x,
             y: loginCoords.y - 70
         };
         console.log(`🖱️ Clic sur "Verify you are human" à (${verifyCoords.x}, ${verifyCoords.y})`);
-        await humanClickAt(page, verifyCoords);
-        await page.screenshot({ path: path.join(screenshotsDir, '02_verify_clicked.png'), fullPage: true });
-        await delay(10000);
-        console.log(`🖱️ Clic sur "Verify you are human" à (${verifyCoords.x}, ${verifyCoords.y})`);
-        await humanClickAt(page, verifyCoords);
-        await page.screenshot({ path: path.join(screenshotsDir, '05_verify_clicked.png'), fullPage: true });
-        await delay(10000);
 
-        // 5. Clic sur le bouton "Log in"
+        // Boucle de répétition si la validation échoue
+        const maxAttempts = 3;
+        let validated = false;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            console.log(`🔄 Tentative ${attempt}/${maxAttempts} de validation Turnstile...`);
+            await humanClickAt(page, verifyCoords);
+            await page.screenshot({ path: path.join(screenshotsDir, `02_verify_attempt_${attempt}.png`), fullPage: true });
+
+            // Attendre 5 secondes
+            await delay(5000);
+
+            // Vérifier si le texte "Verify you are human" a disparu
+            const stillVisible = await isVerifyTextVisible(page);
+            if (!stillVisible) {
+                console.log('✅ Turnstile validé (le texte "Verify you are human" a disparu)');
+                validated = true;
+                break;
+            } else {
+                console.warn(`⚠️ Texte encore présent, nouvel essai...`);
+            }
+        }
+
+        if (!validated) {
+            console.warn('⚠️ Échec de validation Turnstile après plusieurs tentatives, on tente quand même la connexion');
+        }
+
+        // 6. Clic sur le bouton "Log in"
         console.log('🖱️ Clic sur le bouton Log in...');
         await humanClickAt(page, loginCoords);
         await randomDelay(2000, 3000);
