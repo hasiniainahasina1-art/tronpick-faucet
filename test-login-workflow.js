@@ -1,6 +1,5 @@
 const { connect } = require('puppeteer-real-browser');
 const { Octokit } = require('@octokit/rest');
-const fs = require('fs');
 
 // ---------- Variables d'environnement ----------
 const email = process.env.TEST_EMAIL;
@@ -14,10 +13,11 @@ const GH_REPO = process.env.GH_REPO;
 const GH_BRANCH = process.env.GH_BRANCH || 'main';
 const USER_ID = process.env.USER_ID;
 
-// Fichier individuel par compte
 const USER_FILE = USER_ID
     ? `account_${USER_ID}_${platform}_${email}.json`
     : `account_${email}_${platform}.json`;
+
+const GLOBAL_FILE = 'global_accounts.json';
 
 const JP_PROXY_LIST = (process.env.JP_PROXY_LIST || '').split(',').filter(p => p.trim() !== '');
 if (JP_PROXY_LIST.length === 0) {
@@ -50,7 +50,6 @@ function timeStrToMinutes(str) {
     return mins + secs / 60;
 }
 
-// --- Remplissage humain des champs ---
 async function fillFieldHuman(page, selector, value, fieldName) {
     console.log(`⌨️ Remplissage humain de ${fieldName}...`);
     await page.waitForSelector(selector, { visible: true, timeout: 10000 });
@@ -70,7 +69,6 @@ async function fillFieldHuman(page, selector, value, fieldName) {
     }
 }
 
-// --- Point rouge de débogage ---
 async function addRedDot(page, x, y) {
     await page.evaluate((x, y) => {
         const dot = document.createElement('div');
@@ -89,7 +87,6 @@ async function addRedDot(page, x, y) {
     }, x, y);
 }
 
-// --- Clic humain avec trajectoire courbe ---
 async function humanClickAt(page, coords) {
     await addRedDot(page, coords.x, coords.y);
     await randomDelay(150, 300);
@@ -107,7 +104,6 @@ async function humanClickAt(page, coords) {
     console.log(`🖱️ Clic à (${coords.x}, ${coords.y})`);
 }
 
-// --- Connexion proxy ---
 async function connectWithProxy(proxyUrl) {
     const proxyConfig = parseProxyUrl(proxyUrl);
     if (!proxyConfig) throw new Error('Proxy invalide');
@@ -122,7 +118,6 @@ async function connectWithProxy(proxyUrl) {
     return { browser, page };
 }
 
-// --- Sauvegarde GitHub ---
 async function saveAccount(accountData) {
     const octokit = new Octokit({ auth: GH_TOKEN });
     let sha = null;
@@ -132,6 +127,7 @@ async function saveAccount(accountData) {
         });
         sha = res.data.sha;
     } catch (e) {}
+
     const content = Buffer.from(JSON.stringify(accountData, null, 2)).toString('base64');
     await octokit.repos.createOrUpdateFileContents({
         owner: GH_USERNAME,
@@ -142,9 +138,56 @@ async function saveAccount(accountData) {
         branch: GH_BRANCH,
         sha
     });
+    console.log(`💾 Compte individuel sauvegardé dans ${USER_FILE}`);
 }
 
-// --- Récupération dynamique des coordonnées du bouton "Log in" ---
+async function getGlobalAccounts() {
+    const octokit = new Octokit({ auth: GH_TOKEN });
+    try {
+        const res = await octokit.repos.getContent({
+            owner: GH_USERNAME, repo: GH_REPO, path: GLOBAL_FILE, ref: GH_BRANCH
+        });
+        const content = Buffer.from(res.data.content, 'base64').toString('utf-8');
+        return JSON.parse(content);
+    } catch (e) {
+        return [];
+    }
+}
+
+async function updateGlobalAccounts(newEntry) {
+    const octokit = new Octokit({ auth: GH_TOKEN });
+
+    let sha = null;
+    let currentAccounts = [];
+    try {
+        const res = await octokit.repos.getContent({
+            owner: GH_USERNAME, repo: GH_REPO, path: GLOBAL_FILE, ref: GH_BRANCH
+        });
+        sha = res.data.sha;
+        const content = Buffer.from(res.data.content, 'base64').toString('utf-8');
+        currentAccounts = JSON.parse(content);
+    } catch (e) {}
+
+    currentAccounts.push(newEntry);
+
+    const content = Buffer.from(JSON.stringify(currentAccounts, null, 2)).toString('base64');
+    await octokit.repos.createOrUpdateFileContents({
+        owner: GH_USERNAME,
+        repo: GH_REPO,
+        path: GLOBAL_FILE,
+        message: `Ajout auto de ${newEntry.email}`,
+        content,
+        branch: GH_BRANCH,
+        sha
+    });
+    console.log(`🌍 Compte ajouté à ${GLOBAL_FILE} : ${newEntry.email} (${newEntry.platform})`);
+}
+
+async function isAccountDuplicate(email, platform) {
+    const accounts = await getGlobalAccounts();
+    return accounts.some(acc => acc.email === email && acc.platform === platform);
+}
+
 async function getLoginButtonCoords(page) {
     return await page.evaluate(() => {
         const btns = [...document.querySelectorAll('button')];
@@ -158,30 +201,50 @@ async function getLoginButtonCoords(page) {
     });
 }
 
-// --- Vérification si le texte "Verify you are human" est encore visible ---
 async function isVerifyTextVisible(page) {
     return await page.evaluate(() => {
         return document.body.innerText.includes('Verify you are human');
     });
 }
 
-// --- Séquence de login (sans captures ni vidéo) ---
+// --- Vérification renforcée de succès de connexion ---
+async function checkLoginSuccess(page) {
+    return await page.evaluate(() => {
+        // 1. Vérifier qu'on n'est plus sur login.php
+        if (window.location.href.includes('login.php')) return false;
+
+        // 2. Vérifier l'absence de messages d'erreur
+        const errorSelectors = ['.alert-danger', '.error', '[class*="error"]'];
+        for (const sel of errorSelectors) {
+            const el = document.querySelector(sel);
+            if (el && el.textContent.trim().length > 0) return false;
+        }
+
+        // 3. Vérifier la présence d'un élément positif (Logout, Dashboard, etc.)
+        const positiveTexts = ['Dashboard', 'Logout', 'Log out', 'My account', 'Account'];
+        const bodyText = document.body.innerText;
+        for (const txt of positiveTexts) {
+            if (bodyText.includes(txt)) return true;
+        }
+
+        // 4. Si on a quitté login.php sans erreur, on accepte (prudence)
+        return true;
+    });
+}
+
 async function performLoginWithCaptcha(page, email, password) {
-    // 1. Remplissage humain
     await fillFieldHuman(page, 'input[type="email"], input[name="email"]', email, 'email');
     await fillFieldHuman(page, 'input[type="password"]', password, 'password');
     await randomDelay(500, 1000);
 
-    // 2. Scroll jusqu’au bouton "Log in" puis pause 2 secondes
     console.log('📜 Scroll jusqu’au bouton Log in...');
     await page.evaluate(() => {
         const btns = [...document.querySelectorAll('button')];
         const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
         if (loginBtn) loginBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
-    await delay(1000);
+    await delay(2000);
 
-    // 3. Sélection "Cloudflare Turnstile" + pause 5 secondes
     console.log('🔍 Sélection du type de captcha...');
     const selectSelector = 'select';
     await page.waitForSelector(selectSelector, { visible: true, timeout: 10000 });
@@ -197,22 +260,16 @@ async function performLoginWithCaptcha(page, email, password) {
     console.log(`✅ Option "${targetOptionText}" sélectionnée`);
     await delay(5000);
 
-    // 4. Récupération des coordonnées du bouton "Log in"
     let loginCoords = await getLoginButtonCoords(page);
     if (!loginCoords) {
-        console.warn('⚠️ Bouton Log in non trouvé, utilisation du fallback (640,615)');
+        console.warn('⚠️ Bouton Log in non trouvé, fallback (640,615)');
         loginCoords = { x: 640, y: 615 };
     }
     console.log(`📍 Bouton Log in trouvé à (${loginCoords.x}, ${loginCoords.y})`);
 
-    // 5. Clic sur "Verify you are human" (Y = loginCoords.y - 70, X = loginCoords.x)
-    const verifyCoords = {
-        x: loginCoords.x,
-        y: loginCoords.y - 70
-    };
+    const verifyCoords = { x: loginCoords.x, y: loginCoords.y - 70 };
     console.log(`🖱️ Clic sur "Verify you are human" à (${verifyCoords.x}, ${verifyCoords.y})`);
 
-    // Boucle de répétition si la validation échoue
     const maxAttempts = 3;
     let validated = false;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -222,7 +279,7 @@ async function performLoginWithCaptcha(page, email, password) {
 
         const stillVisible = await isVerifyTextVisible(page);
         if (!stillVisible) {
-            console.log('✅ Turnstile validé (le texte "Verify you are human" a disparu)');
+            console.log('✅ Turnstile validé');
             validated = true;
             break;
         } else {
@@ -231,34 +288,29 @@ async function performLoginWithCaptcha(page, email, password) {
     }
 
     if (!validated) {
-        console.warn('⚠️ Échec de validation Turnstile après plusieurs tentatives, on tente quand même la connexion');
+        console.warn('⚠️ Échec de validation après plusieurs tentatives');
     }
 
-    // 6. Clic sur le bouton "Log in"
     console.log('🖱️ Clic sur le bouton Log in...');
     await humanClickAt(page, loginCoords);
     await randomDelay(2000, 3000);
 
-    // Vérification de la connexion
+    // Attendre navigation ou délai
     try {
         await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 40000 });
     } catch (navError) {
         console.warn('⚠️ Navigation non détectée, vérification manuelle...');
         await delay(5000);
-        if (page.url().includes('login.php')) {
-            const errorMsg = await page.evaluate(() => {
-                const el = document.querySelector('.alert-danger, .error');
-                return el ? el.textContent.trim() : null;
-            });
-            throw new Error(errorMsg || 'Échec connexion');
-        }
     }
-    if (page.url().includes('login.php')) {
+
+    // Vérification du succès
+    const success = await checkLoginSuccess(page);
+    if (!success) {
         const errorMsg = await page.evaluate(() => {
             const el = document.querySelector('.alert-danger, .error');
-            return el ? el.textContent.trim() : null;
+            return el ? el.textContent.trim() : 'Aucun message explicite';
         });
-        throw new Error(errorMsg || 'Échec connexion');
+        throw new Error(`Échec de connexion : ${errorMsg}`);
     }
 
     console.log('✅ Connexion réussie');
@@ -266,6 +318,15 @@ async function performLoginWithCaptcha(page, email, password) {
 
 // --- Main ---
 async function run() {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    console.log(`🔎 Vérification anti-doublon pour ${normalizedEmail} [${platform}]...`);
+    const duplicate = await isAccountDuplicate(normalizedEmail, platform);
+    if (duplicate) {
+        console.log('⚠️ Ce compte existe déjà dans le fichier global. Aucune action.');
+        process.exit(0);
+    }
+
     let browser;
     try {
         const proxyUrl = JP_PROXY_LIST[proxyIndex] || JP_PROXY_LIST[0];
@@ -280,16 +341,15 @@ async function run() {
         console.log(`🌐 Connexion à ${loginUrl}`);
         await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 60000 });
 
-        await performLoginWithCaptcha(page, email, password);
-        console.log('✅ Login réussi');
+        await performLoginWithCaptcha(page, normalizedEmail, password);
 
+        // Si on arrive ici, connexion OK
         const cookies = await page.cookies();
         console.log(`🍪 Cookies récupérés : ${cookies.length}`);
 
         await browser.close();
 
         const timerValue = timeStrToMinutes(initialTimerStr);
-        const normalizedEmail = email.trim().toLowerCase();
         const account = {
             email: normalizedEmail,
             password,
@@ -303,10 +363,17 @@ async function run() {
         };
 
         await saveAccount(account);
-        console.log(`✅ Compte ${normalizedEmail} enregistré avec succès (timer = ${initialTimerStr})`);
+        await updateGlobalAccounts({
+            email: normalizedEmail,
+            platform,
+            addedAt: new Date().toISOString()
+        });
+
+        console.log('🎉 Script terminé avec succès.');
         process.exit(0);
     } catch (err) {
         console.error('❌ Erreur fatale :', err.message);
+        // Aucune sauvegarde n'a lieu
         if (browser) await browser.close();
         process.exit(1);
     }
