@@ -1,8 +1,6 @@
 const { connect } = require('puppeteer-real-browser');
 const { Octokit } = require('@octokit/rest');
 const fs = require('fs');
-const path = require('path');
-const { spawn } = require('child_process');
 
 // ---------- Variables d'environnement ----------
 const email = process.env.TEST_EMAIL;
@@ -26,9 +24,6 @@ if (JP_PROXY_LIST.length === 0) {
     console.error('❌ JP_PROXY_LIST doit contenir au moins 1 proxy');
     process.exit(1);
 }
-
-const screenshotsDir = path.join(__dirname, 'screenshots');
-if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const randomDelay = (min, max) => delay(Math.floor(Math.random() * (max - min + 1) + min));
@@ -119,7 +114,7 @@ async function connectWithProxy(proxyUrl) {
     console.log(`🔄 Connexion avec proxy : ${proxyConfig.server}`);
     const options = {
         headless: false,
-        turnstile: true,                 // solver intégré Turnstile
+        turnstile: true,
         proxy: proxyConfig,
         args: ['--no-sandbox', '--disable-setuid-sandbox']
     };
@@ -149,31 +144,6 @@ async function saveAccount(accountData) {
     });
 }
 
-// --- FFmpeg ---
-function startFFmpeg(videoPath) {
-    const display = process.env.DISPLAY || ':99';
-    const args = [
-        '-f', 'x11grab',
-        '-video_size', '1280x720',
-        '-i', display,
-        '-c:v', 'libx264',
-        '-preset', 'ultrafast',
-        '-crf', '0',
-        '-pix_fmt', 'yuv420p',
-        '-y',
-        videoPath
-    ];
-    const ffmpeg = spawn('ffmpeg', args, { stdio: 'inherit' });
-    console.log(`🎥 FFmpeg démarré sur ${display}, vidéo → ${videoPath}`);
-    return ffmpeg;
-}
-function stopFFmpeg(ffmpeg) {
-    return new Promise((resolve) => {
-        ffmpeg.on('close', resolve);
-        ffmpeg.kill('SIGINT');
-    });
-}
-
 // --- Récupération dynamique des coordonnées du bouton "Log in" ---
 async function getLoginButtonCoords(page) {
     return await page.evaluate(() => {
@@ -191,110 +161,90 @@ async function getLoginButtonCoords(page) {
 // --- Vérification si le texte "Verify you are human" est encore visible ---
 async function isVerifyTextVisible(page) {
     return await page.evaluate(() => {
-        const bodyText = document.body.innerText;
-        return bodyText.includes('Verify you are human');
+        return document.body.innerText.includes('Verify you are human');
     });
 }
 
-// --- NOUVELLE SÉQUENCE DE LOGIN (avec répétition automatique du clic de validation) ---
+// --- Séquence de login (sans captures ni vidéo) ---
 async function performLoginWithCaptcha(page, email, password) {
-    if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
-    const videoPath = path.join(screenshotsDir, `login_${email.replace(/[^a-zA-Z0-9]/g, '_')}.mp4`);
-    const ffmpegProcess = startFFmpeg(videoPath);
-    await delay(1000);
+    // 1. Remplissage humain
+    await fillFieldHuman(page, 'input[type="email"], input[name="email"]', email, 'email');
+    await fillFieldHuman(page, 'input[type="password"]', password, 'password');
+    await randomDelay(500, 1000);
 
-    try {
-        // 1. Remplissage humain
-        await fillFieldHuman(page, 'input[type="email"], input[name="email"]', email, 'email');
-        await fillFieldHuman(page, 'input[type="password"]', password, 'password');
-        await randomDelay(500, 1000);
+    // 2. Scroll jusqu’au bouton "Log in" puis pause 2 secondes
+    console.log('📜 Scroll jusqu’au bouton Log in...');
+    await page.evaluate(() => {
+        const btns = [...document.querySelectorAll('button')];
+        const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
+        if (loginBtn) loginBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    await delay(2000);
 
-        // 2. Scroll jusqu’au bouton "Log in" puis pause 2 secondes
-        console.log('📜 Scroll jusqu’au bouton Log in...');
-        await page.evaluate(() => {
-            const btns = [...document.querySelectorAll('button')];
-            const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
-            if (loginBtn) loginBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        });
-        await delay(2000);
+    // 3. Sélection "Cloudflare Turnstile" + pause 5 secondes
+    console.log('🔍 Sélection du type de captcha...');
+    const selectSelector = 'select';
+    await page.waitForSelector(selectSelector, { visible: true, timeout: 10000 });
+    const availableOptions = await page.$$eval(`${selectSelector} option`, opts =>
+        opts.map(o => ({ text: o.textContent.trim(), value: o.value }))
+    );
+    console.log('📋 Options disponibles :', availableOptions);
 
-        // 3. Sélection "Cloudflare Turnstile" + pause 5 secondes
-        console.log('🔍 Sélection du type de captcha...');
-        const selectSelector = 'select';
-        await page.waitForSelector(selectSelector, { visible: true, timeout: 10000 });
-        const availableOptions = await page.$$eval(`${selectSelector} option`, opts =>
-            opts.map(o => ({ text: o.textContent.trim(), value: o.value }))
-        );
-        console.log('📋 Options disponibles :', availableOptions);
+    const targetOptionText = 'Cloudflare Turnstile';
+    const target = availableOptions.find(o => o.text === targetOptionText);
+    if (!target) throw new Error(`Option "${targetOptionText}" introuvable`);
+    await page.select(selectSelector, target.value);
+    console.log(`✅ Option "${targetOptionText}" sélectionnée`);
+    await delay(5000);
 
-        const targetOptionText = 'Cloudflare Turnstile';
-        const target = availableOptions.find(o => o.text === targetOptionText);
-        if (!target) throw new Error(`Option "${targetOptionText}" introuvable`);
-        await page.select(selectSelector, target.value);
-        console.log(`✅ Option "${targetOptionText}" sélectionnée`);
-        await page.screenshot({ path: path.join(screenshotsDir, '01_option_selected.png'), fullPage: true });
+    // 4. Récupération des coordonnées du bouton "Log in"
+    let loginCoords = await getLoginButtonCoords(page);
+    if (!loginCoords) {
+        console.warn('⚠️ Bouton Log in non trouvé, utilisation du fallback (640,615)');
+        loginCoords = { x: 640, y: 615 };
+    }
+    console.log(`📍 Bouton Log in trouvé à (${loginCoords.x}, ${loginCoords.y})`);
+
+    // 5. Clic sur "Verify you are human" (Y = loginCoords.y - 70, X = loginCoords.x)
+    const verifyCoords = {
+        x: loginCoords.x,
+        y: loginCoords.y - 70
+    };
+    console.log(`🖱️ Clic sur "Verify you are human" à (${verifyCoords.x}, ${verifyCoords.y})`);
+
+    // Boucle de répétition si la validation échoue
+    const maxAttempts = 3;
+    let validated = false;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        console.log(`🔄 Tentative ${attempt}/${maxAttempts} de validation Turnstile...`);
+        await humanClickAt(page, verifyCoords);
         await delay(5000);
 
-        // 4. Récupération des coordonnées du bouton "Log in"
-        let loginCoords = await getLoginButtonCoords(page);
-        if (!loginCoords) {
-            console.warn('⚠️ Bouton Log in non trouvé, utilisation du fallback (640,615)');
-            loginCoords = { x: 640, y: 615 };
+        const stillVisible = await isVerifyTextVisible(page);
+        if (!stillVisible) {
+            console.log('✅ Turnstile validé (le texte "Verify you are human" a disparu)');
+            validated = true;
+            break;
+        } else {
+            console.warn(`⚠️ Texte encore présent, nouvel essai...`);
         }
-        console.log(`📍 Bouton Log in trouvé à (${loginCoords.x}, ${loginCoords.y})`);
+    }
 
-        // 5. Clic sur "Verify you are human" (Y = loginCoords.y - 70, X = loginCoords.x)
-        const verifyCoords = {
-            x: loginCoords.x,
-            y: loginCoords.y - 70
-        };
-        console.log(`🖱️ Clic sur "Verify you are human" à (${verifyCoords.x}, ${verifyCoords.y})`);
+    if (!validated) {
+        console.warn('⚠️ Échec de validation Turnstile après plusieurs tentatives, on tente quand même la connexion');
+    }
 
-        // Boucle de répétition si la validation échoue
-        const maxAttempts = 3;
-        let validated = false;
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-            console.log(`🔄 Tentative ${attempt}/${maxAttempts} de validation Turnstile...`);
-            await humanClickAt(page, verifyCoords);
-            await page.screenshot({ path: path.join(screenshotsDir, `02_verify_attempt_${attempt}.png`), fullPage: true });
+    // 6. Clic sur le bouton "Log in"
+    console.log('🖱️ Clic sur le bouton Log in...');
+    await humanClickAt(page, loginCoords);
+    await randomDelay(2000, 3000);
 
-            // Attendre 5 secondes
-            await delay(5000);
-
-            // Vérifier si le texte "Verify you are human" a disparu
-            const stillVisible = await isVerifyTextVisible(page);
-            if (!stillVisible) {
-                console.log('✅ Turnstile validé (le texte "Verify you are human" a disparu)');
-                validated = true;
-                break;
-            } else {
-                console.warn(`⚠️ Texte encore présent, nouvel essai...`);
-            }
-        }
-
-        if (!validated) {
-            console.warn('⚠️ Échec de validation Turnstile après plusieurs tentatives, on tente quand même la connexion');
-        }
-
-        // 6. Clic sur le bouton "Log in"
-        console.log('🖱️ Clic sur le bouton Log in...');
-        await humanClickAt(page, loginCoords);
-        await randomDelay(2000, 3000);
-
-        // Vérification de la connexion
-        try {
-            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 40000 });
-        } catch (navError) {
-            console.warn('⚠️ Navigation non détectée, vérification manuelle...');
-            await delay(5000);
-            if (page.url().includes('login.php')) {
-                const errorMsg = await page.evaluate(() => {
-                    const el = document.querySelector('.alert-danger, .error');
-                    return el ? el.textContent.trim() : null;
-                });
-                throw new Error(errorMsg || 'Échec connexion');
-            }
-        }
+    // Vérification de la connexion
+    try {
+        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 40000 });
+    } catch (navError) {
+        console.warn('⚠️ Navigation non détectée, vérification manuelle...');
+        await delay(5000);
         if (page.url().includes('login.php')) {
             const errorMsg = await page.evaluate(() => {
                 const el = document.querySelector('.alert-danger, .error');
@@ -302,12 +252,16 @@ async function performLoginWithCaptcha(page, email, password) {
             });
             throw new Error(errorMsg || 'Échec connexion');
         }
-
-        console.log('✅ Connexion réussie');
-    } finally {
-        await stopFFmpeg(ffmpegProcess);
-        console.log('🎥 Vidéo sauvegardée.');
     }
+    if (page.url().includes('login.php')) {
+        const errorMsg = await page.evaluate(() => {
+            const el = document.querySelector('.alert-danger, .error');
+            return el ? el.textContent.trim() : null;
+        });
+        throw new Error(errorMsg || 'Échec connexion');
+    }
+
+    console.log('✅ Connexion réussie');
 }
 
 // --- Main ---
@@ -325,7 +279,6 @@ async function run() {
         const loginUrl = `https://${platform}.io/login.php`;
         console.log(`🌐 Connexion à ${loginUrl}`);
         await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 60000 });
-        await page.screenshot({ path: path.join(screenshotsDir, '00_login_page.png'), fullPage: true });
 
         await performLoginWithCaptcha(page, email, password);
         console.log('✅ Login réussi');
@@ -333,7 +286,6 @@ async function run() {
         const cookies = await page.cookies();
         console.log(`🍪 Cookies récupérés : ${cookies.length}`);
 
-        await page.screenshot({ path: path.join(screenshotsDir, '99_login_success.png'), fullPage: true });
         await browser.close();
 
         const timerValue = timeStrToMinutes(initialTimerStr);
@@ -355,13 +307,7 @@ async function run() {
         process.exit(0);
     } catch (err) {
         console.error('❌ Erreur fatale :', err.message);
-        if (browser) {
-            try {
-                const ss = await browser.screenshot({ fullPage: true });
-                fs.writeFileSync(path.join(screenshotsDir, 'error.png'), ss);
-            } catch (e) {}
-            await browser.close();
-        }
+        if (browser) await browser.close();
         process.exit(1);
     }
 }
