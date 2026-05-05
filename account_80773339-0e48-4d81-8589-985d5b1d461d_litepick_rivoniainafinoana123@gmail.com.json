@@ -1,0 +1,103 @@
+{
+  "email": "rivoniainafinoana123@gmail.com",
+  "password": "Finoana123.",
+  "platform": "litepick",
+  "proxyIndex": 0,
+  "enabled": true,
+  "cookies": [
+    {
+      "name": "_ga_05G4LHK31C",
+      "value": "GS2.1.s1777969193$o1$g1$t1777969213$j40$l0$h0",
+      "domain": ".litepick.io",
+      "path": "/",
+      "expires": 1812529213.986926,
+      "size": 59,
+      "httpOnly": false,
+      "secure": false,
+      "session": false,
+      "priority": "Medium",
+      "sourceScheme": "Secure"
+    },
+    {
+      "name": "_ga",
+      "value": "GA1.1.2054892644.1777969193",
+      "domain": ".litepick.io",
+      "path": "/",
+      "expires": 1812529213.982783,
+      "size": 30,
+      "httpOnly": false,
+      "secure": false,
+      "session": false,
+      "priority": "Medium",
+      "sourceScheme": "Secure"
+    },
+    {
+      "name": "user_session",
+      "value": "vmuatlb73b9u4ilruk0qbcbe5rp51ivn",
+      "domain": "litepick.io",
+      "path": "/",
+      "expires": 1778055615.189033,
+      "size": 44,
+      "httpOnly": true,
+      "secure": false,
+      "session": false,
+      "priority": "Medium",
+      "sourceScheme": "Secure"
+    },
+    {
+      "name": "fp",
+      "value": "gURbGxQrNbvEoT31",
+      "domain": "litepick.io",
+      "path": "/",
+      "expires": 1809505193,
+      "size": 18,
+      "httpOnly": false,
+      "secure": false,
+      "session": false,
+      "priority": "Medium",
+      "sourceScheme": "Secure"
+    },
+    {
+      "name": "csrf_cookie_name",
+      "value": "bfc19a913d41c24f9d54b47803bc7c71",
+      "domain": "litepick.io",
+      "path": "/",
+      "expires": 1777976415.18895,
+      "size": 48,
+      "httpOnly": false,
+      "secure": false,
+      "session": false,
+      "priority": "Medium",
+      "sourceScheme": "Secure"
+    },
+    {
+      "name": "g_state",
+      "value": "{\"i_l\":0,\"i_ll\":1777969215233,\"i_b\":\"1fdvqbmI6ZnAJKRpQ3N6uC8rMPFiogazUr/YnSJ6Ik0\",\"i_e\":{\"enable_itp_optimization\":0},\"i_et\":1777969193275}",
+      "domain": "litepick.io",
+      "path": "/",
+      "expires": 1793521215,
+      "size": 146,
+      "httpOnly": false,
+      "secure": false,
+      "session": false,
+      "priority": "Medium",
+      "sourceScheme": "Secure"
+    },
+    {
+      "name": "remember_token",
+      "value": "7f453bd48bcc9416e7a73fae721b1c38",
+      "domain": "litepick.io",
+      "path": "/",
+      "expires": 1780561212.190005,
+      "size": 46,
+      "httpOnly": false,
+      "secure": false,
+      "session": false,
+      "priority": "Medium",
+      "sourceScheme": "Secure"
+    }
+  ],
+  "cookiesStatus": "valid",
+  "lastClaim": 1777969215546,
+  "timer": 1
+}
