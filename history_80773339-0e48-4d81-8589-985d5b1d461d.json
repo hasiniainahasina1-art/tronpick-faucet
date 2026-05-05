@@ -326,5 +326,13 @@
     "success": true,
     "message": "×Success!You got 0.020000 TRX!",
     "bonus": 0.02
+  },
+  {
+    "email": "rivoniainafinoana123@gmail.com",
+    "platform": "solpick",
+    "timestamp": 1777969409922,
+    "success": true,
+    "message": "×Success!You got 0.000001000 SOL!",
+    "bonus": 0.000001
   }
 ]
