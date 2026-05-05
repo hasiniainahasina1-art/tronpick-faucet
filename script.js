@@ -326,6 +326,21 @@ async function claimWithCookies(account) {
             await delay(2000);
             await page.screenshot({ path: path.join(screenshotsDir, `03_turnstile_visible_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
 
+console.log('🔍 Sélection du type de captcha...');
+    const selectSelector = 'select';
+    await page.waitForSelector(selectSelector, { visible: true, timeout: 10000 });
+    const availableOptions = await page.$$eval(`${selectSelector} option`, opts =>
+        opts.map(o => ({ text: o.textContent.trim(), value: o.value }))
+    );
+    console.log('📋 Options disponibles :', availableOptions);
+
+    const targetOptionText = 'Cloudflare Turnstile';
+    const target = availableOptions.find(o => o.text === targetOptionText);
+    if (!target) throw new Error(`Option "${targetOptionText}" introuvable`);
+    await page.select(selectSelector, target.value);
+    console.log(`✅ Option "${targetOptionText}" sélectionnée`);
+    await delay(5000);
+            
             console.log('🖱️ Premier clic sur Turnstile faucet');
             await humanClickAt(page, CAPSAT);
             await page.screenshot({ path: path.join(screenshotsDir, `04_after_first_click_${email.replace(/[^a-zA-Z0-9]/g, '_')}.png`), fullPage: true });
