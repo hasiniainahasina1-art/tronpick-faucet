@@ -75,7 +75,7 @@ async function fillFieldHuman(page, selector, value, fieldName) {
     }
 }
 
-// --- Point rouge ---
+// --- Point rouge de débogage ---
 async function addRedDot(page, x, y) {
     await page.evaluate((x, y) => {
         const dot = document.createElement('div');
@@ -94,7 +94,7 @@ async function addRedDot(page, x, y) {
     }, x, y);
 }
 
-// --- Clic humain ---
+// --- Clic humain avec trajectoire courbe ---
 async function humanClickAt(page, coords) {
     await addRedDot(page, coords.x, coords.y);
     await randomDelay(150, 300);
@@ -119,7 +119,7 @@ async function connectWithProxy(proxyUrl) {
     console.log(`🔄 Connexion avec proxy : ${proxyConfig.server}`);
     const options = {
         headless: false,
-        turnstile: true,
+        turnstile: true,                 // solver intégré Turnstile
         proxy: proxyConfig,
         args: ['--no-sandbox', '--disable-setuid-sandbox']
     };
@@ -174,53 +174,21 @@ function stopFFmpeg(ffmpeg) {
     });
 }
 
-// --- Fonction pour cliquer sur un texte dans la page ou les iframes (sans XPath) ---
-async function clickOnText(page, text) {
-    // Cherche dans le document principal d'abord
-    const clickedInMain = await page.evaluate((searchText) => {
-        const elements = document.querySelectorAll('*');
-        for (const el of elements) {
-            if (el.textContent?.trim() === searchText) {
-                el.click();
-                return true;
-            }
-        }
-        return false;
-    }, text);
-
-    if (clickedInMain) {
-        console.log(`✅ Texte "${text}" trouvé et cliqué dans le DOM principal`);
-        return true;
-    }
-
-    // Cherche dans toutes les iframes
-    const frames = page.frames();
-    for (const frame of frames) {
-        try {
-            const clickedInFrame = await frame.evaluate((searchText) => {
-                const elements = document.querySelectorAll('*');
-                for (const el of elements) {
-                    if (el.textContent?.trim() === searchText) {
-                        el.click();
-                        return true;
-                    }
-                }
-                return false;
-            }, text);
-            if (clickedInFrame) {
-                console.log(`✅ Texte "${text}" trouvé et cliqué dans une iframe (url: ${frame.url()})`);
-                return true;
-            }
-        } catch (e) {
-            // Ignorer les iframes cross-origin inaccessibles
-        }
-    }
-
-    console.warn(`⚠️ Texte "${text}" introuvable`);
-    return false;
+// --- Récupération dynamique des coordonnées du bouton "Log in" ---
+async function getLoginButtonCoords(page) {
+    return await page.evaluate(() => {
+        const btns = [...document.querySelectorAll('button')];
+        const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
+        if (!loginBtn) return null;
+        const rect = loginBtn.getBoundingClientRect();
+        return {
+            x: Math.round(rect.left + rect.width / 2),
+            y: Math.round(rect.top + rect.height / 2)
+        };
+    });
 }
 
-// --- NOUVELLE SÉQUENCE DE LOGIN HUMAINE ---
+// --- NOUVELLE SÉQUENCE DE LOGIN (clic coordonné pour "Verify you are human") ---
 async function performLoginWithCaptcha(page, email, password) {
     if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
     const videoPath = path.join(screenshotsDir, `login_${email.replace(/[^a-zA-Z0-9]/g, '_')}.mp4`);
@@ -259,26 +227,25 @@ async function performLoginWithCaptcha(page, email, password) {
         await page.screenshot({ path: path.join(screenshotsDir, '01_option_selected.png'), fullPage: true });
         await delay(5000);
 
-        // 4. Clic sur "Verify you are human"
-        console.log('🕵️ Recherche du texte "Verify you are human"...');
-        const verifyText = 'Verify you are human';
-        const clicked = await clickOnText(page, verifyText);
+        // 4. Récupération des coordonnées du bouton "Log in" pour calculer le clic "Verify you are human"
+        let loginCoords = await getLoginButtonCoords(page);
+        if (!loginCoords) {
+            console.warn('⚠️ Bouton Log in non trouvé, utilisation du fallback (640,615)');
+            loginCoords = { x: 640, y: 615 };
+        }
+        console.log(`📍 Bouton Log in trouvé à (${loginCoords.x}, ${loginCoords.y})`);
+
+        const verifyCoords = {
+            x: loginCoords.x,
+            y: loginCoords.y - 65
+        };
+        console.log(`🖱️ Clic sur "Verify you are human" à (${verifyCoords.x}, ${verifyCoords.y})`);
+        await humanClickAt(page, verifyCoords);
         await page.screenshot({ path: path.join(screenshotsDir, '02_verify_clicked.png'), fullPage: true });
         await delay(10000);
 
         // 5. Clic sur le bouton "Log in"
-        console.log('📍 Clic sur le bouton Log in...');
-        let loginCoords = await page.evaluate(() => {
-            const btns = [...document.querySelectorAll('button')];
-            const loginBtn = btns.find(b => b.textContent.trim() === 'Log in');
-            if (!loginBtn) return null;
-            const rect = loginBtn.getBoundingClientRect();
-            return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
-        });
-        if (!loginCoords) {
-            console.warn('⚠️ Bouton Log in non trouvé, fallback (640,615)');
-            loginCoords = { x: 640, y: 615 };
-        }
+        console.log('🖱️ Clic sur le bouton Log in...');
         await humanClickAt(page, loginCoords);
         await randomDelay(2000, 3000);
 
